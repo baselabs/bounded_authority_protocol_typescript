@@ -1,0 +1,33 @@
+{
+  "name": "@bounded-authority/verifier",
+  "version": "0.1.0",
+  "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority — a typed TypeScript reimplementation of the BAP v1 verification profile.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --test --import tsx/esm test/*.test.ts",
+    "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
+    "conformance": "tsx conformance/run.ts",
+    "census": "tsx conformance/census.ts"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
