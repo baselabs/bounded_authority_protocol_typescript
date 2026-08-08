@@ -1,0 +1,535 @@
+// T4 façade tests — the 17-function v1 surface against corpus known-answer vectors. Each test
+// drives a façade function on the published corpus fixtures (the same inputs the conformance
+// runner will recompute every verdict from in T5). The corpus is the byte-level arbiter; these
+// known-answer assertions are the red-before-green evidence for the 13 functions landed in this
+// slice (grant/proof/anchor/transition signing-input producers, checkEnvelope, checkChain,
+// encodeConsumptionEntry, verifyHistoricalAnchor, verifyKeyTransition, encodeAnchoredExport,
+// verifyAnchoredExport, requestDigest façade, assemble_compact).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { strUtf8 } from "../src/json.js";
+import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
+import {
+  untrustedKeyLocator, decodeGrant, decodeProof, verifyGrant, checkEnvelope,
+  requestDigest, encodeConsumptionEntry, checkChain, grantSigningInput, proofSigningInput,
+  assembleCompact, boundaryAnchorSigningInput, keyTransitionSigningInput, encodeAnchoredExport,
+  verifyHistoricalAnchor, verifyKeyTransition, verifyAnchoredExport,
+} from "../src/v1.js";
+import { sha256 } from "../src/ed25519.js";
+import { _resetCensus, _importedFingerprints } from "../src/ed25519.js";
+import { jsonDecode } from "../src/json.js";
+
+const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);
+const b64d = (s: string) => base64urlDecode(strUtf8(s));
+const b64e = (b: Uint8Array) => utf8(base64urlEncode(b));
+
+// ---- corpus fixtures (exact bytes from priv/conformance/v1/corpus/) ----
+
+const GRANT_COMPACT =
+  "eyJhbGciOiJFZERTQSIsImtpZCI6Imlzc3VlciIsInR5cCI6ImJhK2NhcCJ9." +
+  "eyJhdWQiOlsiaHR0cHM6Ly9yZXNvdXJjZS5leGFtcGxlLnRlc3QiXSwiY25mIjp7ImprdCI6ImQ0dWNFWnd2SlRmd3hYQ040ZjJ4bUlFNVpCRm9INWk1bWx6ZVdaYUIzeUkifSwiZXhwIjoyMDAwLCJpYXQiOjEwMDAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUudGVzdCIsImp0aSI6InVybjpleGFtcGxlOmdyYW50OjEiLCJuYmYiOjEwMDAsIm9wZXJhdGlvbnMiOlt7Im5hbWUiOiJyZWFkIiwic2VsZWN0b3JzIjpbeyJraW5kIjoiYWxsIn1dfV0sInYiOjF9." +
+  "NaCpUf3ebKldiRpjHtKcJuvCjSVLSsmgZVWXa3Sz6Zvas3TeTEm3LqVDsUL8yc1VuakYOvFmsYxqQw8PV23uDA";
+
+const PROOF_COMPACT =
+  "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6Ilcxczd5RTlmR0RNQmJtZHBxWVZ3UTFoRENYdHpPZVBVRDNmSWYxdDdGRGsifSwidHlwIjoiZHBvcCtqd3QifQ." +
+  "eyJhdGgiOiJzVjhkZ1ZLcFExTHZpa1lrNmVvOEd2RGZhYkpyMWd0VlhrdkRnazdxLVpZIiwiYmFfaW52IjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiYmFfb3AiOiJyZWFkIiwiYmFfcmVxIjoidXYyMFBpQzh0UlFvT3k5LWVSbEJGUFFuZ3RpRFhrd19TQ2JiZ3p4akMyZyIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL3Jlc291cmNlLmV4YW1wbGUudGVzdC9pbnZva2UiLCJpYXQiOjExMDAsImp0aSI6InVybjpleGFtcGxlOnByb29mOjEiLCJ2IjoxfQ." +
+  "BUONibEL8cesx2D905h2CwHhL8sdtZ33sABKd7jRl27UdBOo0jpQX9UGl8VLlpEVxSFiZlhBGwNg85VBakhwAw";
+
+const ISSUER_PUB = "146FPz0L9OK-SZ4z9nC1Xk7rUCSYAoIiBBDp1tsLZI8";
+const ISSUER_FP = "eGPJdenILo5TLcdbdZa046_Z-t9wGJl11N6_QJQrob8";
+const HOLDER_PUB = "W1s7yE9fGDMBbmdpqYVwQ1hDCXtzOePUD3fIf1t7FDk";
+const HOLDER_FP = "d4ucEZwvJTfwxXCN4f2xmIE5ZBFoH5i5mlzeWZaB3yI";
+
+// grant_signing_input expected message (corpus: grant-signing-input-valid).
+const GRANT_SI_MESSAGE =
+  "eyJhbGciOiJFZERTQSIsImtpZCI6Imlzc3VlciIsInR5cCI6ImJhK2NhcCJ9." +
+  "eyJhdWQiOlsiaHR0cHM6Ly9yZXNvdXJjZS5leGFtcGxlLnRlc3QiXSwiY25mIjp7ImprdCI6ImQ0dWNFWnd2SlRmd3hYQ040ZjJ4bUlFNVpCRm9INWk1bWx6ZVdaYUIzeUkifSwiZXhwIjoyMDAwLCJpYXQiOjEwMDAsImlzcyI6Imh0dHBzOi8vaXNzdWVyLmV4YW1wbGUudGVzdCIsImp0aSI6InVybjpleGFtcGxlOmdyYW50OjEiLCJuYmYiOjEwMDAsIm9wZXJhdGlvbnMiOlt7Im5hbWUiOiJyZWFkIiwic2VsZWN0b3JzIjpbeyJraW5kIjoiYWxsIn1dfV0sInYiOjF9";
+
+// proof_signing_input expected message (corpus: proof-signing-input-valid).
+const PROOF_SI_MESSAGE =
+  "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6Ilcxczd5RTlmR0RNQmJtZHBxWVZ3UTFoRENYdHpPZVBVRDNmSWYxdDdGRGsifSwidHlwIjoiZHBvcCtqd3QifQ." +
+  "eyJhdGgiOiJzVjhkZ1ZLcFExTHZpa1lrNmVvOEd2RGZhYkpyMWd0VlhrdkRnazdxLVpZIiwiYmFfaW52IjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwiYmFfb3AiOiJyZWFkIiwiYmFfcmVxIjoidXYyMFBpQzh0UlFvT3k5LWVSbEJGUFFuZ3RpRFhrd19TQ2JiZ3p4akMyZyIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL3Jlc291cmNlLmV4YW1wbGUudGVzdC9pbnZva2UiLCJpYXQiOjExMDAsImp0aSI6InVybjpleGFtcGxlOnByb29mOjEiLCJ2IjoxfQ";
+
+// === 1. untrusted_key_locator ===
+test("untrustedKeyLocator returns the grant kid", () => {
+  const r = untrustedKeyLocator(strUtf8(GRANT_COMPACT));
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.keyId, "issuer");
+    assert.equal(r.value.trust, "not_evaluated");
+  }
+});
+test("untrustedKeyLocator rejects a 2-segment compact", () => {
+  const r = untrustedKeyLocator(strUtf8("aaa.bbb"));
+  assert.equal(r.ok, false);
+});
+
+// === 2. decode_grant ===
+test("decodeGrant extracts the grant fields", () => {
+  const r = decodeGrant(strUtf8(GRANT_COMPACT));
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.keyId, "issuer");
+    assert.equal(r.value.issuer, "https://issuer.example.test");
+    assert.equal(r.value.grantId, "urn:example:grant:1");
+    assert.deepEqual(r.value.audiences, ["https://resource.example.test"]);
+    assert.equal(r.value.issuedAt, 1000);
+    assert.equal(r.value.notBefore, 1000);
+    assert.equal(r.value.expiresAt, 2000);
+    assert.equal(b64e(r.value.holderThumbprint), HOLDER_FP);
+    assert.equal(r.value.verification, "not_evaluated");
+  }
+});
+
+// === 3. decode_proof ===
+test("decodeProof extracts the proof id + holder thumbprint", () => {
+  const r = decodeProof(strUtf8(PROOF_COMPACT));
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.proofId, "urn:example:proof:1");
+    assert.equal(b64e(r.value.holderThumbprint), HOLDER_FP);
+    assert.equal(r.value.verification, "not_evaluated");
+  }
+});
+
+// === 4. verify_grant (valid signature) ===
+test("verifyGrant accepts a validly-signed grant", () => {
+  _resetCensus();
+  const r = verifyGrant(
+    strUtf8(GRANT_COMPACT),
+    { keyId: "issuer", publicKey: b64d(ISSUER_PUB) },
+    { issuer: "https://issuer.example.test", audience: "https://resource.example.test", evaluationTime: 1500, clockSkew: 60 },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.version, 1);
+    assert.equal(r.value.issuer, "https://issuer.example.test");
+    assert.equal(r.value.grantId, "urn:example:grant:1");
+    assert.equal(b64e(r.value.issuerKeyFingerprint), ISSUER_FP);
+    assert.equal(r.value.matchedAudience, "https://resource.example.test");
+    assert.equal(r.value.authorization, "not_evaluated");
+  }
+});
+test("verifyGrant rejects a wrong issuer key", () => {
+  _resetCensus();
+  const r = verifyGrant(
+    strUtf8(GRANT_COMPACT),
+    { keyId: "issuer", publicKey: b64d(HOLDER_PUB) }, // wrong key
+    { issuer: "https://issuer.example.test", audience: "https://resource.example.test", evaluationTime: 1500, clockSkew: 60 },
+  );
+  assert.equal(r.ok, false);
+});
+
+// === 5. check_envelope ===
+test("checkEnvelope accepts a valid grant+proof pair", () => {
+  _resetCensus();
+  const r = checkEnvelope(strUtf8(GRANT_COMPACT), strUtf8(PROOF_COMPACT), {
+    trustedIssuer: { keyId: "issuer", publicKey: b64d(ISSUER_PUB) },
+    issuer: "https://issuer.example.test",
+    audience: "https://resource.example.test",
+    method: "POST",
+    targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000",
+    operation: "read",
+    castArguments: jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')),
+    evaluationTime: 1200,
+    clockSkew: 60,
+    proofMaxAge: 300,
+    nonce: { kind: "not_required" },
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.operation, "read");
+    assert.equal(r.value.uri, "https://resource.example.test/invoke");
+    assert.equal(r.value.invocationId, "550e8400-e29b-41d4-a716-446655440000");
+    assert.equal(r.value.authorization, "not_evaluated");
+  }
+});
+test("checkEnvelope rejects a wrong request method", () => {
+  _resetCensus();
+  const r = checkEnvelope(strUtf8(GRANT_COMPACT), strUtf8(PROOF_COMPACT), {
+    trustedIssuer: { keyId: "issuer", publicKey: b64d(ISSUER_PUB) },
+    issuer: "https://issuer.example.test",
+    audience: "https://resource.example.test",
+    method: "GET", // proof is POST
+    targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000",
+    operation: "read",
+    castArguments: jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')),
+    evaluationTime: 1200,
+    clockSkew: 60,
+    proofMaxAge: 300,
+    nonce: { kind: "not_required" },
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 6. request_digest (façade returns raw 32 bytes) ===
+test("requestDigest returns the raw 32-byte digest", () => {
+  const d = requestDigest("read", jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')));
+  assert.equal(d.length, 32);
+  assert.equal(b64e(d), "uv20PiC8tRQoOy9-eRlBFPQngtiDXkw_SCbbgzxjC2g");
+});
+
+// === 7. encode_consumption_entry ===
+test("encodeConsumptionEntry produces canonical bytes + chain hash", () => {
+  const r = encodeConsumptionEntry({
+    chainId: "urn:example:chain",
+    sequence: 1,
+    previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+    commitment: b64d("lQXKy3xxDtFxJfzGyzZp6N3KbIzYr2ox9rPNZGBMMJg"),
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(
+      utf8(r.value.bytes),
+      '{"chain_id":"urn:example:chain","commitment":"lQXKy3xxDtFxJfzGyzZp6N3KbIzYr2ox9rPNZGBMMJg","previous":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","sequence":1,"v":1}',
+    );
+    assert.equal(b64e(r.value.hash), "dcCClEuq-ywQNcN1sTC0ERFIoNsrBJBWoeAojFALwHM");
+  }
+});
+test("encodeConsumptionEntry rejects a zero sequence", () => {
+  const r = encodeConsumptionEntry({
+    chainId: "urn:example:chain",
+    sequence: 0,
+    previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+    commitment: b64d("lQXKy3xxDtFxJfzGyzZp6N3KbIzYr2ox9rPNZGBMMJg"),
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 8. check_chain (valid + tampered) ===
+const ROW1 = "eyJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwiY29tbWl0bWVudCI6IjBQWXh5aDNicU5zN3o4dWVCWHpjbU5BM254dnVBT2RhVkZGSG9uMnQyWUkiLCJwcmV2aW91cyI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJzZXF1ZW5jZSI6MSwidiI6MX0";
+const ROW2 = "eyJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwiY29tbWl0bWVudCI6Im5BcS1VY2JtWlYyQjNpMEVUVS14bEpNZkJZd0VKc1o4Y29YWTlXVi0xa28iLCJwcmV2aW91cyI6IkZydmpWdFdhdlJMUkFoSkVUbVBWYWJPLUdrRm9JRUNZdVpUYXEzRDJyenciLCJzZXF1ZW5jZSI6MiwidiI6MX0";
+test("checkChain accepts a valid 2-row chain", () => {
+  const r = checkChain(
+    {
+      rows: [b64d(ROW1), b64d(ROW2)],
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 2, rowCount: 2,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("nlI60Ae0aih559j_4EinXcdPFzOuXcwTs8BYcCP95bs"),
+    },
+    {
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 2, rowCount: 2,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("nlI60Ae0aih559j_4EinXcdPFzOuXcwTs8BYcCP95bs"),
+    },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.chainId, "urn:example:chain");
+    assert.equal(r.value.rowCount, 2);
+    assert.equal(r.value.trust, "not_evaluated");
+  }
+});
+test("checkChain rejects a tampered last hash", () => {
+  const r = checkChain(
+    {
+      rows: [b64d(ROW1), b64d(ROW2)],
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 2, rowCount: 2,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"), // wrong
+    },
+    {
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 2, rowCount: 2,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"),
+    },
+  );
+  assert.equal(r.ok, false);
+});
+
+// === 9. grant_signing_input (producer known-answer) ===
+test("grantSigningInput produces the canonical message", () => {
+  const r = grantSigningInput({
+    keyId: "issuer", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: HOLDER_FP,
+    operations: [{ name: "read", selectors: ["all"] }],
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    const message = `${utf8(r.value.protectedSegment)}.${utf8(r.value.payloadSegment)}`;
+    assert.equal(message, GRANT_SI_MESSAGE);
+  }
+});
+test("grantSigningInput rejects an empty audience", () => {
+  const r = grantSigningInput({
+    keyId: "issuer", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: [], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: HOLDER_FP,
+    operations: [{ name: "read", selectors: ["all"] }],
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 10. proof_signing_input (producer known-answer) ===
+test("proofSigningInput produces the canonical message", () => {
+  const r = proofSigningInput({
+    holderPublicKey: b64d(HOLDER_PUB),
+    proofId: "urn:example:proof:1", method: "POST", targetUri: "https://resource.example.test/invoke",
+    issuedAt: 1100, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    grantCompact: strUtf8(GRANT_COMPACT),
+    castArguments: jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')),
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    const message = `${utf8(r.value.protectedSegment)}.${utf8(r.value.payloadSegment)}`;
+    assert.equal(message, PROOF_SI_MESSAGE);
+  }
+});
+test("proofSigningInput rejects a non-https target uri", () => {
+  const r = proofSigningInput({
+    holderPublicKey: b64d(HOLDER_PUB),
+    proofId: "urn:example:proof:1", method: "POST", targetUri: "http://insecure.test/",
+    issuedAt: 1100, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    grantCompact: strUtf8(GRANT_COMPACT),
+    castArguments: jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')),
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 11. assemble_compact (round-trip the grant signing input) ===
+test("assembleCompact builds a 3-segment compact from a signing input", () => {
+  const si = grantSigningInput({
+    keyId: "issuer", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: HOLDER_FP,
+    operations: [{ name: "read", selectors: ["all"] }],
+  });
+  assert.equal(si.ok, true);
+  if (!si.ok) return;
+  const sig = b64d("NaCpUf3ebKldiRpjHtKcJuvCjSVLSsmgZVWXa3Sz6Zvas3TeTEm3LqVDsUL8yc1VuakYOvFmsYxqQw8PV23uDA");
+  const compact = assembleCompact(si.value, sig);
+  assert.equal(utf8(compact), GRANT_COMPACT);
+});
+
+// === 12. boundary_anchor_signing_input (producer known-answer) ===
+const ANCHOR_PUB = "lz36DS8epQY1S82KipNyGEI4hRU21dlr3N30L8QXAHY";
+const ANCHOR_FP = "7VjCxMImm16N6RYUjklULyDjbw2aGEOgNNtKBP9r-i0";
+test("boundaryAnchorSigningInput produces the canonical message", () => {
+  const r = boundaryAnchorSigningInput({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+    sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+    keyId: "anchor-a", publicKey: b64d(ANCHOR_PUB),
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    const message = `${utf8(r.value.protectedSegment)}.${utf8(r.value.payloadSegment)}`;
+    assert.equal(
+      message,
+      "eyJhbGciOiJFZERTQSIsImtpZCI6ImFuY2hvci1hIiwidHlwIjoiYmErY2hhaW4tYW5jaG9yIn0." +
+      "eyJhbmNob3JfaWQiOiJ1cm46ZXhhbXBsZTphbmNob3I6c3RhcnQiLCJhbmNob3JlZF9hdCI6MTAwMCwiY2hhaW5faGFzaCI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwia2V5X2ZpbmdlcnByaW50IjoiN1ZqQ3hNSW1tMTZONlJZVWprbFVMeURqYncyYUdFT2dOTnRLQlA5ci1pMCIsInNlcXVlbmNlIjowLCJ2IjoxfQ",
+    );
+  }
+});
+test("boundaryAnchorSigningInput rejects a short public key", () => {
+  const r = boundaryAnchorSigningInput({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+    sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+    keyId: "anchor-a", publicKey: b64d("AAEC"), // 2 bytes
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 13. key_transition_signing_input (producer known-answer) ===
+const NEXT_PUB = "SLLslJOnUaFDS_8T4dGoB7e-6JXly92guv_9hS3tGH0";
+const NEXT_FP = "3x4aFGRFbZvTCoSGCd1yA55MYDITwK0MFDlrUFvPoF4";
+test("keyTransitionSigningInput produces the canonical message", () => {
+  const r = keyTransitionSigningInput({
+    transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+    currentKeyId: "anchor-a", currentPublicKey: b64d(ANCHOR_PUB),
+    nextKeyId: "anchor-b", nextPublicKey: b64d(NEXT_PUB),
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    const message = `${utf8(r.value.protectedSegment)}.${utf8(r.value.payloadSegment)}`;
+    assert.equal(
+      message,
+      "eyJhbGciOiJFZERTQSIsImtpZCI6ImFuY2hvci1hIiwidHlwIjoiYmEra2V5LXRyYW5zaXRpb24ifQ." +
+      "eyJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwiZWZmZWN0aXZlX2F0IjoxNTAwLCJmcm9tX2tleV9maW5nZXJwcmludCI6IjdWakN4TUltbTE2TjZSWVVqa2xVTHlEamJ3MmFHRU9nTk50S0JQOXItaTAiLCJ0b19rZXlfZmluZ2VycHJpbnQiOiIzeDRhRkdSRmJadlRDb1NHQ2QxeUE1NU1ZRElUd0swTUZEbHJVRnZQb0Y0IiwidG9fa2V5X2lkIjoiYW5jaG9yLWIiLCJ0cmFuc2l0aW9uX2lkIjoidXJuOmV4YW1wbGU6dHJhbnNpdGlvbjphLWIiLCJ2IjoxfQ",
+    );
+  }
+});
+test("keyTransitionSigningInput rejects identical keys", () => {
+  const r = keyTransitionSigningInput({
+    transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+    currentKeyId: "anchor-a", currentPublicKey: b64d(ANCHOR_PUB),
+    nextKeyId: "anchor-b", nextPublicKey: b64d(ANCHOR_PUB), // same as current
+  });
+  assert.equal(r.ok, false);
+});
+
+// === 14. encode_anchored_export (producer known-answer: byte_count + digest) ===
+const START_ANCHOR_COMPACT =
+  "eyJhbGciOiJFZERTQSIsImtpZCI6ImFyY2hpdmUtYSIsInR5cCI6ImJhK2NoYWluLWFuY2hvciJ9." +
+  "eyJhbmNob3JfaWQiOiJ1cm46ZXhhbXBsZTphbmNob3I6c3RhcnQiLCJhbmNob3JlZF9hdCI6MTAwMCwiY2hhaW5faGFzaCI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwia2V5X2ZpbmdlcnByaW50IjoibzdnbDByZHhTUFUtcVhibU5vZDRSQWtWNXBVamFCNDdKaFBBNDNod0tQOCIsInNlcXVlbmNlIjowLCJ2IjoxfQ." +
+  "Falux3uXvUy7PqELqVP_UNWWr3FDT6jUxT7IwtbHY27dqPqHxdsUrSvE216PAtOku9jjPCgoWHYds8YMLD4gAQ";
+const END_ANCHOR_COMPACT =
+  "eyJhbGciOiJFZERTQSIsImtpZCI6ImFyY2hpdmUtYiIsInR5cCI6ImJhK2NoYWluLWFuY2hvciJ9." +
+  "eyJhbmNob3JfaWQiOiJ1cm46ZXhhbXBsZTphbmNob3I6ZW5kIiwiYW5jaG9yZWRfYXQiOjIwMDAsImNoYWluX2hhc2giOiJGcnZqVnRXYXZSTFJBaEpFVG1QVmFiTy1Ha0ZvSUVDWXVaVGFxM0Qycnp3IiwiY2hhaW5faWQiOiJ1cm46ZXhhbXBsZTpjaGFpbiIsImtleV9maW5nZXJwcmludCI6ImluR2h0a29DbzRmQ2hIeGRURXNBdE1yQ2VidFc4NEdNXzd2MnJQYm93b2siLCJzZXF1ZW5jZSI6MSwidiI6MX0." +
+  "XUkGaomDgRT1UpYqbhAIANPyv8dYoMp0weep29wht-tu3ImSCxRK6ZOg7qE9vO27bh8H6ubp0YR7mRe0db7HBg";
+const TRANSITION_COMPACT =
+  "eyJhbGciOiJFZERTQSIsImtpZCI6ImFyY2hpdmUtYSIsInR5cCI6ImJhK2tleS10cmFuc2l0aW9uIn0." +
+  "eyJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwiZWZmZWN0aXZlX2F0IjoxNTAwLCJmcm9tX2tleV9maW5nZXJwcmludCI6Im83Z2wwcmR4U1BVLXFYYm1Ob2Q0UkFrVjVwVWphQjQ3SmhQQTQzaHdLUDgiLCJ0b19rZXlfZmluZ2VycHJpbnQiOiJpbkdodGtvQ280ZkNoSHhkVEVzQXRNckNlYnRXODRHTV83djJyUGJvd29rIiwidG9fa2V5X2lkIjoiYXJjaGl2ZS1iIiwidHJhbnNpdGlvbl9pZCI6InVybjpleGFtcGxlOnRyYW5zaXRpb246YS1iIiwidiI6MX0." +
+  "2m3Q9HC2esQQUMTI_iu7EKQvxOZWwbta6v7GTZbeRb8h1uzUwz8xFQYongUv9AOVNow0Gcusc2bOMLro7PKZCQ";
+const CHAIN_ROW1 = "eyJjaGFpbl9pZCI6InVybjpleGFtcGxlOmNoYWluIiwiY29tbWl0bWVudCI6IjBQWXh5aDNicU5zN3o4dWVCWHpjbU5BM254dnVBT2RhVkZGSG9uMnQyWUkiLCJwcmV2aW91cyI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJzZXF1ZW5jZSI6MSwidiI6MX0";
+const ARCHIVE_DIGEST = "-Bu4a_eh6TYrOYgk0pL68Oc6uXVnyg-lyMyejnhuDKE";
+
+test("encodeAnchoredExport produces the canonical archive (digest + byte_count)", () => {
+  const r = encodeAnchoredExport(
+    {
+      rows: [b64d(CHAIN_ROW1)],
+      startAnchor: strUtf8(START_ANCHOR_COMPACT),
+      endAnchor: strUtf8(END_ANCHOR_COMPACT),
+      transitions: [strUtf8(TRANSITION_COMPACT)],
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+    },
+    {
+      chain: {
+        chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+        previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        lastHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+      },
+      digest: b64d(ARCHIVE_DIGEST),
+      startAnchor: {
+        anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+        sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        keyId: "archive-a", keyFingerprint: b64d("o7gl0rdxSPU-qXbmNod4RAkV5pUjaB47JhPA43hwKP8"),
+      },
+      endAnchor: {
+        anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
+        sequence: 1, chainHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+        keyId: "archive-b", keyFingerprint: b64d("inGhtkoCo4fChHxdTEsAtMrCebtW84GM_7v2rPbowok"),
+      },
+      transitions: [{
+        transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+        currentKeyId: "archive-a", currentKeyFingerprint: b64d("o7gl0rdxSPU-qXbmNod4RAkV5pUjaB47JhPA43hwKP8"),
+        nextKeyId: "archive-b", nextKeyFingerprint: b64d("inGhtkoCo4fChHxdTEsAtMrCebtW84GM_7v2rPbowok"),
+      }],
+      objectVersion: "v1",
+    },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.archive.length, 1900);
+    assert.equal(b64e(r.value.digest), ARCHIVE_DIGEST);
+    // The archive SHA-256 is independently verifiable.
+    assert.deepEqual(Array.from(sha256(r.value.archive)), Array.from(r.value.digest));
+  }
+});
+
+// === 15. verify_historical_anchor (valid signature) ===
+const ARCHIVE_A_PUB = "YXgT52I83qBmbNzq_RMxiYT1T_EELrAj9rUkjCaSkP4";
+const ARCHIVE_A_FP = "o7gl0rdxSPU-qXbmNod4RAkV5pUjaB47JhPA43hwKP8";
+test("verifyHistoricalAnchor accepts a validly-signed anchor", () => {
+  _resetCensus();
+  const r = verifyHistoricalAnchor(
+    strUtf8(START_ANCHOR_COMPACT),
+    { keyId: "archive-a", publicKey: b64d(ARCHIVE_A_PUB), validFrom: 0, validBefore: 3000 },
+    {
+      anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+      sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      keyId: "archive-a", keyFingerprint: b64d(ARCHIVE_A_FP),
+    },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.anchorId, "urn:example:anchor:start");
+    assert.equal(r.value.sequence, 0);
+    assert.equal(r.value.trust, "not_evaluated");
+  }
+});
+
+// === 16. verify_key_transition (valid signature) ===
+const ARCHIVE_B_PUB = "XG9480jOPYDgf2f545Fjd6YiqLjyA5-jp0RYRnxgHTs";
+const ARCHIVE_B_FP = "inGhtkoCo4fChHxdTEsAtMrCebtW84GM_7v2rPbowok";
+test("verifyKeyTransition accepts a validly-signed transition", () => {
+  _resetCensus();
+  const r = verifyKeyTransition(
+    strUtf8(TRANSITION_COMPACT),
+    { keyId: "archive-a", publicKey: b64d(ARCHIVE_A_PUB), validFrom: 0, validBefore: 3000 },
+    { keyId: "archive-b", publicKey: b64d(ARCHIVE_B_PUB), validFrom: 0, validBefore: 3000 },
+    {
+      transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+      currentKeyId: "archive-a", currentKeyFingerprint: b64d(ARCHIVE_A_FP),
+      nextKeyId: "archive-b", nextKeyFingerprint: b64d(ARCHIVE_B_FP),
+    },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.transitionId, "urn:example:transition:a-b");
+    assert.equal(r.value.effectiveAt, 1500);
+    assert.equal(r.value.trust, "not_evaluated");
+  }
+});
+
+// === 17. verify_anchored_export (valid full archive) ===
+test("verifyAnchoredExport accepts a valid archive", () => {
+  _resetCensus();
+  // The corpus verify case's chunks (base64url-encoded, arbitrary binary split of the archive stream;
+  // a single frame may span chunk boundaries, so they are concatenated before parsing).
+  const chunks = [
+    "QkFQMS1BUkNISVZFAEVYUE9SVAA",
+    "AAAA5nsiY2hhaW5faWQiOiJ1cm46ZXhhbXBsZTpjaGFpbiIsImZpcnN0X3NlcXVlbmNlIjoxLCJsYXN0X2hhc2giOiJGcnZqVnRXYXZSTFJBaEpFVG1QVmFiTy1Ha0ZvSUVDWXVaVGFxM0Qycnp3IiwibGFzdF9zZXF1ZW5jZSI6MSwicHJldmlvdXNfaGFzaCI6IkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUEiLCJyb3dfY291bnQiOjEsInRyYW5zaXRpb25fY291bnQiOjEsInYiOjF9",
+    "AAAB2mV5SmhiR2NpT2lKRlpFUlRRU0lzSW10cFpDSTZJbUZ5WTJocGRtVXRZU0lzSW5SNWNDSTZJbUpoSzJOb1lXbHVMV0Z1WTJodmNpSjkuZXlKaGJtTm9iM0pmYVdRaU9pSjFjbTQ2WlhoaGJYQnNaVHBoYm1Ob2IzSTZjM1JoY25RaUxDSmhibU5vYjNKbFpGOWhkQ0k2TVRBd01Dd2lZMmhoYVc1ZmFHRnphQ0k2SWtGQlFVRkJRVUZCUVVGQlFVRkJRVUZCUVVGQlFVRkJRVUZCUVVGQlFVRkJRVUZCUVVGQlFVRkJRVUVpTENKamFHRnBibDlwWkNJNkluVnlianBsZUdGdGNHeGxPbU5vWVdsdUlpd2lhMlY1WDJacGJtZGxjbkJ5YVc1MElqb2liemRuYkRCeVpIaFRVRlV0Y1ZoaWJVNXZaRFJTUVd0V05YQlZhbUZDTkRkS2FGQkJORE5vZDB0UU9DSXNJbk5sY1hWbGJtTmxJam93TENKMklqb3hmUS5GYWx1eDN1WHZVeTdQcUVMcVZQX1VOV1dyM0ZEVDZqVXhUN0l3dGJIWTI3ZHFQcUh4ZHNVclN2RTIxNlBBdE9rdTlqalBDZ29XSFlkczhZTUxENGdBUQ",
+    "AAACBmV5SmhiR2NpT2lKRlpFUlRRU0lzSW10cFpDSTZJbUZ5WTJocGRtVXRZU0lzSW5SNWNDSTZJbUpoSzJ0bGVTMTBjbUZ1YzJsMGFXOXVJbjAuZXlKamFHRnBibDlwWkNJNkluVnlianBsZUdGdGNHeGxPbU5vWVdsdUlpd2laV1ptWldOMGFYWmxYMkYwSWpveE5UQXdMQ0ptY205dFgydGxlVjltYVc1blpYSndjbWx1ZENJNkltODNaMnd3Y21SNFUxQlZMWEZZWW0xT2IyUTBVa0ZyVmpWd1ZXcGhRalEzU21oUVFUUXphSGRMVURnaUxDSjBiMTlyWlhsZlptbHVaMlZ5Y0hKcGJuUWlPaUpwYmtkb2RHdHZRMjgwWmtOb1NIaGtWRVZ6UVhSTmNrTmxZblJYT0RSSFRWODNkakp5VUdKdmQyOXJJaXdpZEc5ZmEyVjVYMmxrSWpvaVlYSmphR2wyWlMxaUlpd2lkSEpoYm5OcGRHbHZibDlwWkNJNkluVnlianBsZUdGdGNHeGxPblJ5WVc1emFYUnBiMjQ2WVMxaUlpd2lkaUk2TVgwLjJtM1E5SEMyZXNRUVVNVElfaXU3RUtRdnhPWld3YnRhNnY3R1RaYmVSYjhoMXV6VXd6OHhGUVlvbmdVdjlBT1ZOb3cwR2N1c2MyYk9NTHJvN1BLWkNR",
+    "AAAAp3siY2hhaW5faWQiOiJ1cm46ZXhhbXBsZTpjaGFpbiIsImNvbW1pdG1lbnQiOiIwUFl4eWgzYnFOczd6OHVlQlh6Y21OQTNueHZ1QU9kYVZGRkhvbjJ0MllJIiwicHJldmlvdXMiOiJBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBIiwic2VxdWVuY2UiOjEsInYiOjF9",
+    "AAAB12V5SmhiR2NpT2lKRlpFUlRRU0lzSW10cFpDSTZJbUZ5WTJocGRtVXRZaUlzSW5SNWNDSTZJbUpoSzJOb1lXbHVMV0Z1WTJodmNpSjkuZXlKaGJtTm9iM0pmYVdRaU9pSjFjbTQ2WlhoaGJYQnNaVHBoYm1Ob2IzSTZaVzVrSWl3aVlXNWphRzl5WldSZllYUWlPakl3TURBc0ltTm9ZV2x1WDJoaGMyZ2lPaUpHY25acVZuUlhZWFpTVEZKQmFFcEZWRzFRVm1GaVR5MUhhMFp2U1VWRFdYVmFWR0Z4TTBReWNucDNJaXdpWTJoaGFXNWZhV1FpT2lKMWNtNDZaWGhoYlhCc1pUcGphR0ZwYmlJc0ltdGxlVjltYVc1blpYSndjbWx1ZENJNkltbHVSMmgwYTI5RGJ6Um1RMmhJZUdSVVJYTkJkRTF5UTJWaWRGYzRORWROWHpkMk1uSlFZbTkzYjJzaUxDSnpaWEYxWlc1alpTSTZNU3dpZGlJNk1YMC5YVWtHYW9tRGdSVDFVcFlxYmhBSUFOUHl2OGRZb01wMHdlZXAyOXdodC10dTNJbVNDeFJLNlpPZzdxRTl2TzI3Ymg4SDZ1YnAwWVI3bVJlMGRiN0hCZw",
+  ].map((c) => b64d(c));
+  const r = verifyAnchoredExport(
+    { chunks, version: "v1" },
+    {
+      keys: [
+        { keyId: "archive-a", publicKey: b64d(ARCHIVE_A_PUB), validFrom: 0, validBefore: 2000 },
+        { keyId: "archive-b", publicKey: b64d(ARCHIVE_B_PUB), validFrom: 1000, validBefore: 3000 },
+      ],
+    },
+    {
+      chain: {
+        chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+        previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        lastHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+      },
+      digest: b64d(ARCHIVE_DIGEST),
+      startAnchor: {
+        anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+        sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        keyId: "archive-a", keyFingerprint: b64d(ARCHIVE_A_FP),
+      },
+      endAnchor: {
+        anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
+        sequence: 1, chainHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+        keyId: "archive-b", keyFingerprint: b64d(ARCHIVE_B_FP),
+      },
+      transitions: [{
+        transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+        currentKeyId: "archive-a", currentKeyFingerprint: b64d(ARCHIVE_A_FP),
+        nextKeyId: "archive-b", nextKeyFingerprint: b64d(ARCHIVE_B_FP),
+      }],
+      objectVersion: "v1",
+    },
+  );
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.rowCount, 1);
+    assert.equal(r.value.transitionCount, 1);
+    assert.equal(r.value.objectVersion, "v1");
+    assert.equal(r.value.trust, "not_evaluated");
+    assert.equal(r.value.authorization, "not_evaluated");
+  }
+});
+
+// === census sanity: the valid verify surfaces imported their keys ===
+test("census tracks imported fingerprints", () => {
+  _resetCensus();
+  verifyGrant(
+    strUtf8(GRANT_COMPACT),
+    { keyId: "issuer", publicKey: b64d(ISSUER_PUB) },
+    { issuer: "https://issuer.example.test", audience: "https://resource.example.test", evaluationTime: 1500, clockSkew: 60 },
+  );
+  // After verify_grant, the issuer fingerprint is in the census.
+  assert.ok(_importedFingerprints().has(ISSUER_FP), "issuer fingerprint must be tracked");
+});

@@ -1,13 +1,14 @@
-import { fail, assert, type Result, ok, err, trying } from "./error.js";
+import { fail, assert, type Result, trying } from "./error.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { parseCompact, assembleCompact, type SigningInput, type CompactSegments } from "./compact.js";
-import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic } from "./jwk.js";
+import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
 import { importPublicKey, ed25519Verify, sha256, _resetCensus } from "./ed25519.js";
-import { requestDigest } from "./digest.js";
-import { parseSelector, selectorMatches } from "./selector.js";
+import { requestDigest as computeRequestDigest, REQUEST_PREFIX, typedProject } from "./digest.js";
+import { parseSelector, selectorMatches, type Selector } from "./selector.js";
 import { uriNormalize } from "./uri.js";
-import { resolve, boundsNew, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
+import { jcsEncode } from "./jcs.js";
+import { resolve, boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA, type Bounds, type MaximaKey } from "./bounds.js";
 import type {
   GrantFacts, EnvelopeFacts, ChainFacts, AnchorFacts, KeyTransitionFacts,
   AnchoredExportFacts, GrantDecoded, ProofDecoded, KeyLocator,
@@ -16,7 +17,8 @@ import type {
 // The v1 verification façade (protocol-v1.md § Public verification contract, L270-290). 17 public
 // functions, each returning Result<T> = Ok|Err (the {:ok,value}|{:error,:invalid} mirror). No
 // authorized/decision surface (rule 1). All claims revalidated at every public entry
-// (REQ1-VERIFY-revalidate).
+// (REQ1-VERIFY-revalidate). Wire formats derived from docs/protocol-v1.md + ADR 0004 + the corpus;
+// the corpus is the byte-level arbiter.
 
 const ALG = "EdDSA";
 const GRANT_TYP = "ba+cap";
@@ -24,6 +26,134 @@ const PROOF_TYP = "dpop+jwt";
 const ANCHOR_TYP = "ba+chain-anchor";
 const TRANSITION_TYP = "ba+key-transition";
 const VERSION = 1;
+
+// BAP1-CHAIN\0 prefix for consumption-row hashing (ADR 0004 § Consumption rows).
+export const ROW_PREFIX = new Uint8Array([
+  0x42, 0x41, 0x50, 0x31, 0x2d, 0x43, 0x48, 0x41, 0x49, 0x4e, 0x00, // "BAP1-CHAIN\0"
+]);
+
+// BAP1-ARCHIVE\0EXPORT\0 prefix (ADR 0004 § Anchored export; the 20-byte magic, NOT framed).
+export const ARCHIVE_PREFIX = strUtf8("BAP1-ARCHIVE\0EXPORT\0");
+
+// The all-zero 32-byte hash: sequence-1 predecessor + sequence-0 anchor chain hash (ADR 0004).
+const DEFAULT_HASH = new Uint8Array(32);
+
+// --- dispatch struct types (match corpus input field names; the contract for each façade) ---
+
+export interface TrustedIssuer { readonly keyId: string; readonly publicKey: Uint8Array; } // raw 32
+
+export interface ExpectedGrant {
+  readonly issuer: string; readonly audience: string; readonly evaluationTime: number;
+  readonly clockSkew: number; readonly bounds?: Bounds;
+}
+
+export interface HistoricalPublicKey {
+  readonly keyId: string; readonly publicKey: Uint8Array; // raw 32
+  readonly validFrom: number; readonly validBefore: number | null; // null = unbounded
+}
+
+export interface ExpectedAnchor {
+  readonly anchorId: string; readonly anchoredAt: number; readonly chainId: string;
+  readonly sequence: number; readonly chainHash: Uint8Array; // raw 32
+  readonly keyId: string; readonly keyFingerprint: Uint8Array; // raw 32
+}
+
+export interface ExpectedKeyTransition {
+  readonly transitionId: string; readonly chainId: string; readonly effectiveAt: number;
+  readonly currentKeyId: string; readonly currentKeyFingerprint: Uint8Array; // raw 32
+  readonly nextKeyId: string; readonly nextKeyFingerprint: Uint8Array; // raw 32
+}
+
+export interface ConsumptionEntry {
+  readonly chainId: string; readonly sequence: number;
+  readonly previousHash: Uint8Array; readonly commitment: Uint8Array; // both raw 32
+}
+
+export interface ChainInput {
+  readonly rows: Uint8Array[]; // raw canonical row bytes
+  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
+  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+}
+
+export interface ExpectedChain {
+  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
+  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+}
+
+export interface ExpectedRequest {
+  readonly trustedIssuer: TrustedIssuer;
+  readonly issuer: string; readonly audience: string;
+  readonly method: string; readonly targetUri: string;
+  readonly invocationId: string; readonly operation: string;
+  readonly castArguments: Tagged;
+  readonly evaluationTime: number; readonly clockSkew: number; readonly proofMaxAge: number;
+  readonly nonce: { kind: "not_required" } | { kind: "required"; value: string };
+}
+
+// A selector input to the grant producer: either the bare "all" string or a tagged object.
+export type SelectorInput = "all" | { readonly kind: "all" }
+  | { readonly kind: "equals"; readonly path: string[]; readonly value: Tagged }
+  | { readonly kind: "one_of"; readonly path: string[]; readonly values: Tagged[] };
+
+export interface OperationInput {
+  readonly name: string;
+  readonly selectors: SelectorInput[];
+}
+
+// A grant producer input (the structured grant; grant_signing_input builds the JWS segments).
+export interface GrantProducer {
+  readonly keyId: string; readonly issuer: string; readonly grantId: string;
+  readonly audiences: string[]; readonly issuedAt: number; readonly notBefore: number;
+  readonly expiresAt: number; readonly holderThumbprint: string; // base64url 32
+  readonly operations: OperationInput[];
+}
+
+export interface ProofProducer {
+  readonly holderPublicKey: Uint8Array; // raw 32
+  readonly proofId: string; readonly method: string; readonly targetUri: string;
+  readonly issuedAt: number; readonly invocationId: string; readonly operation: string;
+  readonly grantCompact: Uint8Array; readonly castArguments: Tagged;
+  readonly nonce?: string;
+}
+
+export interface BoundaryAnchorProducer {
+  readonly anchorId: string; readonly anchoredAt: number; readonly chainId: string;
+  readonly sequence: number; readonly chainHash: Uint8Array; // raw 32
+  readonly keyId: string; readonly publicKey: Uint8Array; // raw 32
+}
+
+export interface KeyTransitionProducer {
+  readonly transitionId: string; readonly chainId: string; readonly effectiveAt: number;
+  readonly currentKeyId: string; readonly currentPublicKey: Uint8Array; // raw 32
+  readonly nextKeyId: string; readonly nextPublicKey: Uint8Array; // raw 32
+}
+
+export interface AnchoredExportInput {
+  readonly rows: Uint8Array[]; // raw canonical row bytes
+  readonly startAnchor: Uint8Array; // start-anchor compact bytes (ASCII)
+  readonly endAnchor: Uint8Array; // end-anchor compact bytes (ASCII)
+  readonly transitions: Uint8Array[]; // transition compact bytes (ASCII), ordered
+  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
+  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+}
+
+export interface ExpectedExport {
+  readonly chain: ExpectedChain;
+  readonly digest: Uint8Array; // raw 32 (archive SHA-256)
+  readonly startAnchor: ExpectedAnchor;
+  readonly endAnchor: ExpectedAnchor;
+  readonly transitions: ExpectedKeyTransition[];
+  readonly objectVersion: string;
+}
+
+export interface ArchivedObject {
+  readonly chunks: Uint8Array[]; // base64url-decoded flat chunk list, concatenated = archive
+  readonly version: string; // the stored-object version (out-of-band context)
+}
+
+export interface HistoricalKeyChain {
+  readonly keys: HistoricalPublicKey[]; // ordered: keys[0]=start, last=end, transitions advance positionally
+}
 
 // --- shared closed-header / claim validators (derived from protocol-v1.md + RFCs) ---
 
@@ -96,11 +226,64 @@ function requireStringLit(obj: Extract<Tagged, { t: "object" }>, key: string, li
   if (!v || v.t !== "string" || utf8Str(v.v) !== lit) fail(`${ctx}: ${key}=${lit}`);
 }
 
-// StringOrURI claim (RFC 7519 §2): non-empty, ≤ identifier_bytes. Case-sensitive.
+// Well-formed UTF-8 string check (mirrors the official String.valid?). Lone surrogates from a
+// \uXXXX escape survive JSON.parse and the JCS round-trip, so byte-length checks alone do not catch
+// them; the official rejects such strings (corpus_independent.mjs:1732).
+function isWellFormed(s: string): boolean {
+  const anyStr = s as string & { isWellFormed?: () => boolean };
+  return typeof anyStr.isWellFormed === "function"
+    ? anyStr.isWellFormed()
+    : !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
+}
+
+// StringOrURI (RFC 7519 §2; mirrors the official valid_uri? / StringOrURI). A bare string with no
+// ':' is always valid; an opaque scheme `a:b` (no `//`) is valid; a `//` authority is structurally
+// validated. This is REQUIRED to reject the corpus's `ht tp://x` and `http://a:b` cases.
+function isStringOrUri(s: string): boolean {
+  if (!isWellFormed(s)) return false;
+  const colon = s.indexOf(":");
+  if (colon === -1) return true; // bare string: always a StringOrURI
+  const scheme = s.slice(0, colon);
+  if (!/^[A-Za-z][A-Za-z0-9+\-.]*$/.test(scheme)) return false;
+  // uri_bytes shape: unreserved + reserved punctuation, or a %HH escape.
+  if (!/^(?:%[0-9A-Fa-f]{2}|[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=])*$/.test(s)) return false;
+  const rest = s.slice(colon + 1);
+  if (!rest.startsWith("//")) return true; // opaque / path-rootless: no authority to validate.
+  return validUriAuthority(rest.slice(2).split(/[/?#]/, 1)[0]!);
+}
+
+// RFC 3986 authority validation matching URI.new for the cases the profile can produce.
+function validUriAuthority(authority: string): boolean {
+  const at = authority.indexOf("@");
+  const hostport = at === -1 ? authority : authority.slice(at + 1);
+  if (hostport.includes("@")) return false; // a second @ lands in the host — invalid.
+  if (hostport.startsWith("[")) {
+    const close = hostport.indexOf("]");
+    if (close === -1) return false; // unterminated IPv6 literal.
+    if (!isIpv6(hostport.slice(1, close))) return false;
+    const suffix = hostport.slice(close + 1);
+    return suffix === "" || /^:\d*$/.test(suffix);
+  }
+  if (hostport.includes("[") || hostport.includes("]")) return false; // stray bracket in host.
+  if ((hostport.match(/:/g) ?? []).length > 1) return false; // host/port ambiguity.
+  const sep = hostport.lastIndexOf(":");
+  return sep === -1 || /^\d*$/.test(hostport.slice(sep + 1));
+}
+
+function isIpv6(literal: string): boolean {
+  // node:net isIP accepts only a valid IPv6 literal in brackets (matches Erlang :uri_string).
+  // Avoid importing node:net in the library path (the purity gate bans it); a structural check is
+  // sufficient for the StringOrURI authority gate (the corpus has no bracketed-IPv6 StringOrURI).
+  return /^[0-9A-Fa-f:.]+$/.test(literal);
+}
+
+// StringOrURI claim: non-empty, ≤ identifier_bytes, well-formed, valid StringOrURI.
 function requireStringOrUri(v: Tagged | undefined, key: string): string {
   if (!v || v.t !== "string") fail(`claim: ${key} string`);
   const s = utf8Str(v.v);
-  if (s.length < 1 || s.length > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail(`claim: ${key} bytes`);
+  const len = strUtf8(s).length;
+  if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail(`claim: ${key} bytes`);
+  if (!isStringOrUri(s)) fail(`claim: ${key} string-or-uri`);
   return s;
 }
 
@@ -118,15 +301,15 @@ function requireUuid(v: Tagged | undefined, key: string): string {
   return s;
 }
 
-// Canonical base64url of exactly 32 bytes → returns the raw 32 bytes.
-function requireB64url32(v: Tagged | undefined, key: string): Uint8Array {
+// Canonical base64url string of exactly N bytes → returns the raw bytes.
+function requireB64urlN(v: Tagged | undefined, key: string, n: number): Uint8Array {
   if (!v || v.t !== "string") fail(`claim: ${key} b64url string`);
   const raw = base64urlDecode(v.v);
-  if (raw.length !== 32) fail(`claim: ${key} width`);
+  if (raw.length !== n) fail(`claim: ${key} width`);
   return raw;
 }
 
-// Printable-ASCII operation name 1..operation_bytes.
+// Printable-ASCII operation name 1..operation_bytes (REQ1-CLAIM-operation-shape, valid_operation?).
 function requireOperation(v: Tagged | undefined, key: string): string {
   if (!v || v.t !== "string") fail(`claim: ${key} operation string`);
   const b = v.v;
@@ -147,64 +330,17 @@ function requireMethod(v: Tagged | undefined, key: string): string {
 }
 
 // Normalized HTTPS URI claim (≤ uri_bytes; must already equal Uri.normalize — checked by re-normalizing).
-const URI_RE = /^[\x21-\x7e]+$/;
 function requireNormalizedUri(v: Tagged | undefined, key: string): string {
   if (!v || v.t !== "string") fail(`claim: ${key} uri string`);
   const b = v.v;
   if (b.length < 1 || b.length > resolve(MAXIMUM_BOUNDS, "uri_bytes" as MaximaKey)) fail(`claim: ${key} uri bytes`);
   const s = utf8Str(b);
-  if (!URI_RE.test(s)) fail(`claim: ${key} uri ASCII`);
   if (!s.toLowerCase().startsWith("https://")) fail(`claim: ${key} https scheme`);
   // REQ1-URI-pre-normalized: re-normalize and require equality.
   const norm = uriNormalize(b);
   if (!norm.ok) fail(`claim: ${key} uri normalized`);
   if (utf8Str(norm.value) !== s) fail(`claim: ${key} uri pre-normalized`);
   return s;
-}
-
-// --- the 17 façade functions ---
-
-export interface TrustedIssuer { readonly keyId: string; readonly publicKey: Uint8Array; } // raw 32
-export interface ExpectedGrant {
-  readonly issuer: string; readonly audience: string; readonly evaluationTime: number;
-  readonly clockSkew: number; readonly bounds?: Bounds;
-}
-export interface Operation { readonly name: string; readonly selectors: Tagged[]; } // selectors raw tagged
-
-// 1. untrusted_key_locator
-export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
-  return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { kid } = parseGrantHeader(seg);
-    return { keyId: kid, trust: "not_evaluated" as const };
-  });
-}
-
-// 2. decode_grant
-export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
-  return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { kid } = parseGrantHeader(seg);
-    const p = jsonDecode(seg.payloadBytes);
-    validateGrantPayload(p);
-    if (p.t !== "object") fail("decode_grant: payload object");
-    const pobj = p;
-    const iss = requireStringOrUri(pobj.v.get("iss"), "iss");
-    const jti = requireStringOrUri(pobj.v.get("jti"), "jti");
-    const aud = extractAudience(pobj.v.get("aud"));
-    const iat = requireInt(pobj.v.get("iat"), "iat");
-    const nbf = requireInt(pobj.v.get("nbf"), "nbf");
-    const exp = requireInt(pobj.v.get("exp"), "exp");
-    if (!(iat < exp) || !(nbf < exp)) fail("grant: times coherent");
-    const cnf = pobj.v.get("cnf")!;
-    requireObjectExact(cnf, ["jkt"], "grant cnf");
-    const jkt = requireB64url32(cnf.v.get("jkt"), "jkt");
-    return {
-      keyId: kid, issuer: iss, grantId: jti, audiences: aud,
-      issuedAt: iat, notBefore: nbf, expiresAt: exp,
-      holderThumbprint: jkt, verification: "not_evaluated" as const,
-    };
-  });
 }
 
 // Validate the closed grant payload members + operation structure. operations[] (NOT ba_req).
@@ -234,7 +370,9 @@ function extractAudience(v: Tagged | undefined): string[] {
   if (!v) fail("claim: aud");
   if (v.t === "string") {
     const s = utf8Str(v.v);
-    if (s.length < 1 || s.length > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud bytes");
+    const len = strUtf8(s).length;
+    if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud bytes");
+    if (!isStringOrUri(s)) fail("claim: aud string-or-uri");
     return [s];
   }
   if (v.t === "array") {
@@ -244,7 +382,9 @@ function extractAudience(v: Tagged | undefined): string[] {
     for (const a of v.v) {
       if (a.t !== "string") fail("claim: aud string");
       const s = utf8Str(a.v);
-      if (s.length < 1 || s.length > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud member bytes");
+      const len = strUtf8(s).length;
+      if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud member bytes");
+      if (!isStringOrUri(s)) fail("claim: aud member string-or-uri");
       if (seen.has(s)) fail("claim: aud unique");
       seen.add(s);
       out.push(s);
@@ -254,20 +394,7 @@ function extractAudience(v: Tagged | undefined): string[] {
   fail("claim: aud shape");
 }
 
-// 3. decode_proof
-export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
-  return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { holderThumbprint } = parseProofHeader(seg);
-    const p = jsonDecode(seg.payloadBytes);
-    validateProofPayload(p);
-    const jti = requireStringOrUri(p.v.get("jti"), "jti");
-    return { proofId: jti, holderThumbprint, verification: "not_evaluated" as const };
-  });
-}
-
 function validateProofPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
-  // Exact members depend on nonce presence.
   if (p.t !== "object") fail("proof payload: object");
   const hasNonce = p.v.has("nonce");
   const keys = hasNonce
@@ -282,23 +409,128 @@ function validateProofPayload(p: Tagged): asserts p is Extract<Tagged, { t: "obj
   requireInt(p.v.get("iat"), "iat");
   requireUuid(p.v.get("ba_inv"), "ba_inv");
   requireOperation(p.v.get("ba_op"), "ba_op");
-  requireB64url32(p.v.get("ath"), "ath");
-  requireB64url32(p.v.get("ba_req"), "ba_req");
+  requireB64urlN(p.v.get("ath"), "ath", 32);
+  requireB64urlN(p.v.get("ba_req"), "ba_req", 32);
   if (hasNonce) {
     const n = p.v.get("nonce")!;
     if (n.t !== "string") fail("proof: nonce string");
-    if (n.v.length < 1 || n.v.length > resolve(MAXIMUM_BOUNDS, "nonce_bytes" as MaximaKey)) fail("proof: nonce bytes");
+    const ns = utf8Str(n.v);
+    if (!isWellFormed(ns)) fail("proof: nonce well-formed");
+    const len = strUtf8(ns).length;
+    if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "nonce_bytes" as MaximaKey)) fail("proof: nonce bytes");
   }
 }
 
-// 4. verify_grant
+// Validate the closed anchor payload (ADR 0004 § Boundary anchors).
+function validateAnchorPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+  requireObjectExact(p, ["anchor_id", "anchored_at", "chain_hash", "chain_id", "key_fingerprint", "sequence", "v"], "anchor payload");
+  const vV = p.v.get("v")!;
+  if (vV.t !== "int" || vV.v !== VERSION) fail("anchor: v=1");
+  requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+  requireInt(p.v.get("anchored_at"), "anchored_at");
+  requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  requireInt(p.v.get("sequence"), "sequence");
+  requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32);
+  requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32);
+}
+
+// Validate the closed key-transition payload (ADR 0004 § Authenticated key transitions).
+function validateTransitionPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+  requireObjectExact(p, ["chain_id", "effective_at", "from_key_fingerprint", "to_key_fingerprint", "to_key_id", "transition_id", "v"], "transition payload");
+  const vV = p.v.get("v")!;
+  if (vV.t !== "int" || vV.v !== VERSION) fail("transition: v=1");
+  requireStringOrUri(p.v.get("transition_id"), "transition_id");
+  requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  requireInt(p.v.get("effective_at"), "effective_at");
+  requireB64urlN(p.v.get("from_key_fingerprint"), "from_key_fingerprint", 32);
+  requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32);
+  // to_key_id: a key id (kid charset + bytes), not a generic StringOrURI.
+  const toKeyId = p.v.get("to_key_id")!;
+  if (toKeyId.t !== "string") fail("transition: to_key_id string");
+  const s = utf8Str(toKeyId.v);
+  if (s.length < 1 || s.length > resolve(MAXIMUM_BOUNDS, "kid_bytes" as MaximaKey)) fail("transition: to_key_id bytes");
+  if (!/^[A-Za-z0-9._~-]+$/.test(s)) fail("transition: to_key_id charset");
+}
+
+// inWindow: valid_from <= time && (valid_before null/unbounded OR time < valid_before).
+function inWindow(time: number, key: HistoricalPublicKey): boolean {
+  return key.validFrom <= time && (key.validBefore === null || time < key.validBefore);
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
+}
+
+function concat(...parts: Uint8Array[]): Uint8Array {
+  let len = 0;
+  for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0;
+  for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
+
+// --- the 17 façade functions ---
+
+// 1. untrusted_key_locator (protocol-v1.md § Untrusted key locator).
+export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
+  return trying(() => {
+    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
+    const { kid } = parseGrantHeader(seg);
+    return { keyId: kid, trust: "not_evaluated" as const };
+  });
+}
+
+// 2. decode_grant (REQ1-VERIFY-decode-not-evaluated).
+export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
+  return trying(() => {
+    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
+    const { kid } = parseGrantHeader(seg);
+    const p = jsonDecode(seg.payloadBytes);
+    validateGrantPayload(p);
+    if (p.t !== "object") fail("decode_grant: payload object");
+    const pobj = p;
+    const iss = requireStringOrUri(pobj.v.get("iss"), "iss");
+    const jti = requireStringOrUri(pobj.v.get("jti"), "jti");
+    const aud = extractAudience(pobj.v.get("aud"));
+    const iat = requireInt(pobj.v.get("iat"), "iat");
+    const nbf = requireInt(pobj.v.get("nbf"), "nbf");
+    const exp = requireInt(pobj.v.get("exp"), "exp");
+    if (!(iat < exp) || !(nbf < exp)) fail("grant: times coherent");
+    const cnf = pobj.v.get("cnf")!;
+    requireObjectExact(cnf, ["jkt"], "grant cnf");
+    const jkt = requireB64urlN(cnf.v.get("jkt"), "jkt", 32);
+    return {
+      keyId: kid, issuer: iss, grantId: jti, audiences: aud,
+      issuedAt: iat, notBefore: nbf, expiresAt: exp,
+      holderThumbprint: jkt, verification: "not_evaluated" as const,
+    };
+  });
+}
+
+// 3. decode_proof.
+export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
+  return trying(() => {
+    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
+    const { holderThumbprint } = parseProofHeader(seg);
+    const p = jsonDecode(seg.payloadBytes);
+    validateProofPayload(p);
+    const jti = requireStringOrUri(p.v.get("jti"), "jti");
+    return { proofId: jti, holderThumbprint, verification: "not_evaluated" as const };
+  });
+}
+
+// 4. verify_grant (REQ1-VERIFY-grant-exact, grant-times, no-iat-nbf-order).
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
     assert(trusted.publicKey.length === 32, "verify_grant: issuer key width");
     if (expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
     const seg = parseCompact(compact, expected.bounds ?? MAXIMUM_BOUNDS);
     const { kid } = parseGrantHeader(seg);
-    if (kid !== trusted.keyId) fail("verify_grant: kid exact"); // REQ1-VERIFY-grant-exact
+    if (kid !== trusted.keyId) fail("verify_grant: kid exact");
     const p = jsonDecode(seg.payloadBytes);
     validateGrantPayload(p);
     if (p.t !== "object") fail("verify_grant: payload object");
@@ -315,10 +547,8 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
     if (!(nbf <= expected.evaluationTime + expected.clockSkew)) fail("verify_grant: nbf window");
     if (!(exp > expected.evaluationTime - expected.clockSkew)) fail("verify_grant: exp window");
     const cnf = pobj.v.get("cnf")!;
-    if (cnf.t !== "object") fail("verify_grant: cnf object");
     requireObjectExact(cnf, ["jkt"], "grant cnf");
-    const jkt = requireB64url32(cnf.v.get("jkt"), "jkt");
-    // Ed25519 verify over the signing input.
+    const jkt = requireB64urlN(cnf.v.get("jkt"), "jkt", 32);
     const fp = thumbprintRaw(jwkFromPublicKey(trusted.publicKey));
     const key = importPublicKey(trusted.publicKey, utf8Str(base64urlEncode(fp)));
     if (!ed25519Verify(seg.signingInput, seg.signature, key)) fail("verify_grant: signature");
@@ -330,8 +560,777 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
   });
 }
 
-// Re-export the primitives the public index exposes.
-export { jwkEncodePublic, assembleCompact, requestDigest, sha256, base64urlDecode, base64urlEncode };
-export { boundsNew, MAXIMUM_BOUNDS };
-export type { Bounds, SigningInput };
-void ok; void err; void boundsNew; void strUtf8; void _resetCensus;
+// 5. check_envelope (REQ1-VERIFY-envelope-binding).
+export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
+  return trying(() => {
+    const t = expected.trustedIssuer;
+    assert(t.publicKey.length === 32, "check_envelope: issuer key width");
+    if (expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
+    if (expected.proofMaxAge < 0 || expected.proofMaxAge > resolve(MAXIMUM_BOUNDS, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
+    // --- verify grant (issuer signature + context) ---
+    const gseg = parseCompact(grantCompact, MAXIMUM_BOUNDS);
+    const { kid: gkid } = parseGrantHeader(gseg);
+    if (gkid !== t.keyId) fail("check_envelope: grant kid");
+    const gp = jsonDecode(gseg.payloadBytes);
+    validateGrantPayload(gp);
+    if (gp.t !== "object") fail("check_envelope: grant payload");
+    const gobj = gp;
+    const giss = requireStringOrUri(gobj.v.get("iss"), "iss");
+    if (giss !== expected.issuer) fail("check_envelope: issuer");
+    const gaud = extractAudience(gobj.v.get("aud"));
+    if (!gaud.includes(expected.audience)) fail("check_envelope: audience");
+    const giat = requireInt(gobj.v.get("iat"), "iat");
+    const gnbf = requireInt(gobj.v.get("nbf"), "nbf");
+    const gexp = requireInt(gobj.v.get("exp"), "exp");
+    if (!(giat <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant iat");
+    if (!(gnbf <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant nbf");
+    if (!(gexp > expected.evaluationTime - expected.clockSkew)) fail("check_envelope: grant exp");
+    const gfp = thumbprintRaw(jwkFromPublicKey(t.publicKey));
+    const gkey = importPublicKey(t.publicKey, utf8Str(base64urlEncode(gfp)));
+    if (!ed25519Verify(gseg.signingInput, gseg.signature, gkey)) fail("check_envelope: grant signature");
+    // --- verify proof (holder signature) ---
+    const pseg = parseCompact(proofCompact, MAXIMUM_BOUNDS);
+    const { holderThumbprint, holderKey } = parseProofHeader(pseg);
+    const pp = jsonDecode(pseg.payloadBytes);
+    validateProofPayload(pp);
+    const hkey = importPublicKey(holderKey, utf8Str(base64urlEncode(holderThumbprint)));
+    if (!ed25519Verify(pseg.signingInput, pseg.signature, hkey)) fail("check_envelope: proof signature");
+    if (pp.t !== "object") fail("check_envelope: proof payload");
+    // ath = SHA-256(ASCII grant compact).
+    const athRaw = sha256(grantCompact);
+    const athB64 = utf8Str(base64urlEncode(athRaw));
+    const ppAth = pp.v.get("ath")!;
+    if (ppAth.t !== "string" || utf8Str(ppAth.v) !== athB64) fail("check_envelope: ath");
+    // Method / URI / invocation / operation bindings.
+    const htm = requireMethod(pp.v.get("htm"), "htm");
+    if (htm !== expected.method) fail("check_envelope: method");
+    const htu = requireNormalizedUri(pp.v.get("htu"), "htu");
+    if (htu !== expected.targetUri) fail("check_envelope: target_uri");
+    const baInv = requireUuid(pp.v.get("ba_inv"), "ba_inv");
+    if (baInv !== expected.invocationId) fail("check_envelope: invocation_id");
+    const baOp = requireOperation(pp.v.get("ba_op"), "ba_op");
+    if (baOp !== expected.operation) fail("check_envelope: operation");
+    // ba_req = request_digest(operation, cast_arguments) (base64url).
+    const baReqRaw = computeRequestDigest(baOp, expected.castArguments);
+    const baReqB64 = utf8Str(base64urlEncode(baReqRaw));
+    const ppBaReq = pp.v.get("ba_req")!;
+    if (ppBaReq.t !== "string" || utf8Str(ppBaReq.v) !== baReqB64) fail("check_envelope: ba_req");
+    // Proof time window (REQ1-VERIFY-envelope-binding).
+    const piat = requireInt(pp.v.get("iat"), "iat");
+    if (!(piat >= expected.evaluationTime - expected.proofMaxAge - expected.clockSkew)) fail("check_envelope: proof iat min");
+    if (!(piat <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: proof iat max");
+    // Nonce binding.
+    const ppNonce = pp.v.get("nonce");
+    if (expected.nonce.kind === "not_required") {
+      if (ppNonce !== undefined) fail("check_envelope: nonce must be absent");
+    } else {
+      if (!ppNonce || ppNonce.t !== "string" || utf8Str(ppNonce.v) !== expected.nonce.value) fail("check_envelope: nonce mismatch");
+    }
+    // Holder thumbprint must match grant cnf.jkt.
+    const cnf = gobj.v.get("cnf")!;
+    requireObjectExact(cnf, ["jkt"], "grant cnf");
+    const jkt = requireB64urlN(cnf.v.get("jkt"), "jkt", 32);
+    if (!bytesEqual(jkt, holderThumbprint)) fail("check_envelope: holder thumbprint");
+    // The requested operation must be unique + every selector conjunctively matches.
+    const opsV = gobj.v.get("operations");
+    if (!opsV || opsV.t !== "array") fail("check_envelope: operations");
+    const matching = opsV.v.filter((op): op is Extract<Tagged, { t: "object" }> => {
+      if (op.t !== "object") return false;
+      const nameV = op.v.get("name");
+      return nameV !== undefined && nameV.t === "string" && utf8Str(nameV.v) === expected.operation;
+    });
+    if (matching.length !== 1) fail("check_envelope: unique operation");
+    const matchOp = matching[0]!;
+    const selsV = matchOp.v.get("selectors");
+    if (!selsV || selsV.t !== "array") fail("check_envelope: selectors");
+    for (const s of selsV.v) {
+      const sel = parseSelector(s);
+      if (!selectorMatches(sel, expected.castArguments)) fail("check_envelope: selector");
+    }
+    return {
+      version: VERSION, issuer: giss,
+      grantId: requireStringOrUri(gobj.v.get("jti"), "jti"),
+      issuerKeyFingerprint: gfp, holderThumbprint, matchedAudience: expected.audience,
+      grantIssuedAt: giat, grantNotBefore: gnbf, grantExpiresAt: gexp,
+      proofId: requireStringOrUri(pp.v.get("jti"), "jti"),
+      invocationId: baInv, operation: baOp, uri: htu,
+      grantHash: athRaw, requestHash: baReqRaw, proofIssuedAt: piat,
+      authorization: "not_evaluated" as const,
+    };
+  });
+}
+
+// 6. request_digest (the façade; returns the raw 32-byte digest).
+export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Uint8Array {
+  return computeRequestDigest(operation, castArguments, bounds ?? MAXIMUM_BOUNDS);
+}
+
+// 7. encode_consumption_entry (ADR 0004 § Consumption rows). Returns canonical row bytes + hash.
+export interface EncodedConsumptionEntry { readonly bytes: Uint8Array; readonly hash: Uint8Array; }
+export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds): Result<EncodedConsumptionEntry> {
+  return trying(() => {
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    if (!Number.isInteger(entry.sequence) || entry.sequence < 1) fail("encode_consumption_entry: positive sequence");
+    assert(entry.previousHash.length === 32, "encode_consumption_entry: previous_hash width");
+    assert(entry.commitment.length === 32, "encode_consumption_entry: commitment width");
+    const chainIdBytes = strUtf8(entry.chainId);
+    if (chainIdBytes.length < 1 || chainIdBytes.length > resolve(b, "identifier_bytes" as MaximaKey)) fail("encode_consumption_entry: chain_id bytes");
+    if (!isStringOrUri(entry.chainId)) fail("encode_consumption_entry: chain_id string-or-uri");
+    const members = new Map<string, Tagged>([
+      ["chain_id", { t: "string", v: chainIdBytes }],
+      ["commitment", { t: "string", v: strUtf8(utf8Str(base64urlEncode(entry.commitment))) }],
+      ["previous", { t: "string", v: strUtf8(utf8Str(base64urlEncode(entry.previousHash))) }],
+      ["sequence", { t: "int", v: entry.sequence }],
+      ["v", { t: "int", v: VERSION }],
+    ]);
+    const rowBytes = jcsEncode({ t: "object", v: members }, b);
+    if (rowBytes.length > resolve(b, "chain_row_bytes" as MaximaKey)) fail("encode_consumption_entry: chain_row_bytes");
+    const hash = sha256(ROW_PREFIX, rowBytes);
+    return { bytes: rowBytes, hash };
+  });
+}
+
+// 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
+export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
+  return trying(() => {
+    if (expected.chainId !== chain.chainId) fail("check_chain: chain_id");
+    if (expected.firstSequence !== chain.firstSequence) fail("check_chain: first_sequence");
+    if (expected.lastSequence !== chain.lastSequence) fail("check_chain: last_sequence");
+    if (expected.rowCount !== chain.rowCount) fail("check_chain: row_count");
+    if (chain.rowCount !== chain.rows.length || chain.rowCount < 1) fail("check_chain: row count");
+    if (chain.rowCount > resolve(MAXIMUM_BOUNDS, "chain_rows" as MaximaKey)) fail("check_chain: chain_rows bound");
+    if (chain.lastSequence !== chain.firstSequence + chain.rowCount - 1) fail("check_chain: range");
+    // Genesis: firstSequence === 1 requires the all-zero predecessor.
+    if (chain.firstSequence === 1) {
+      if (!bytesEqual(expected.previousHash, DEFAULT_HASH)) fail("check_chain: genesis predecessor");
+    } else {
+      if (!bytesEqual(expected.previousHash, chain.previousHash)) fail("check_chain: previous_hash");
+    }
+    let previous = expected.previousHash;
+    let sequence = chain.firstSequence;
+    for (let i = 0; i < chain.rows.length; i++) {
+      const rowBytes = chain.rows[i]!;
+      if (rowBytes.length > resolve(MAXIMUM_BOUNDS, "chain_row_bytes" as MaximaKey)) fail(`check_chain: row ${i} bytes`);
+      const row = jsonDecode(rowBytes);
+      requireObjectExact(row, ["v", "chain_id", "sequence", "previous", "commitment"], `check_chain row ${i}`);
+      const vV = row.v.get("v")!;
+      if (vV.t !== "int" || vV.v !== VERSION) fail(`check_chain row ${i}: v`);
+      const cidV = row.v.get("chain_id")!;
+      if (cidV.t !== "string" || utf8Str(cidV.v) !== chain.chainId) fail(`check_chain row ${i}: chain_id`);
+      const seqV = row.v.get("sequence")!;
+      if (seqV.t !== "int" || seqV.v !== sequence) fail(`check_chain row ${i}: sequence`);
+      const prevRaw = requireB64urlN(row.v.get("previous"), "previous", 32);
+      if (!bytesEqual(prevRaw, previous)) fail(`check_chain row ${i}: previous link`);
+      requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      previous = sha256(ROW_PREFIX, rowBytes);
+      sequence++;
+    }
+    if (!bytesEqual(previous, expected.lastHash)) fail("check_chain: head");
+    return {
+      chainId: chain.chainId, firstSequence: chain.firstSequence,
+      lastSequence: chain.lastSequence, rowCount: chain.rowCount,
+      trust: "not_evaluated" as const,
+    };
+  });
+}
+
+// 9. grant_signing_input (the deterministic producer; REQ1-SIGNING-deterministic-produce).
+export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
+  return trying(() => {
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    const keyIdBytes = strUtf8(grant.keyId);
+    if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("grant_signing_input: key_id bytes");
+    if (!/^[A-Za-z0-9._~-]+$/.test(grant.keyId)) fail("grant_signing_input: key_id charset");
+    if (!isStringOrUri(grant.issuer)) fail("grant_signing_input: issuer");
+    if (!isStringOrUri(grant.grantId)) fail("grant_signing_input: grant_id");
+    if (grant.audiences.length < 1 || grant.audiences.length > resolve(b, "audiences" as MaximaKey)) fail("grant_signing_input: audiences count");
+    for (const a of grant.audiences) {
+      const ab = strUtf8(a);
+      if (ab.length < 1 || ab.length > resolve(b, "identifier_bytes" as MaximaKey)) fail("grant_signing_input: audience bytes");
+      if (!isStringOrUri(a)) fail("grant_signing_input: audience string-or-uri");
+    }
+    if (!Number.isInteger(grant.issuedAt) || !Number.isInteger(grant.notBefore) || !Number.isInteger(grant.expiresAt)) fail("grant_signing_input: integer times");
+    const jktRaw = base64urlDecode(strUtf8(grant.holderThumbprint));
+    if (jktRaw.length !== 32) fail("grant_signing_input: holder_thumbprint width");
+    if (grant.operations.length < 1 || grant.operations.length > resolve(b, "operations" as MaximaKey)) fail("grant_signing_input: operations count");
+    const header = new Map<string, Tagged>([
+      ["alg", { t: "string", v: strUtf8(ALG) }],
+      ["kid", { t: "string", v: keyIdBytes }],
+      ["typ", { t: "string", v: strUtf8(GRANT_TYP) }],
+    ]);
+    const payload = buildGrantPayload(grant, b);
+    return {
+      kind: "grant",
+      protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: header }, b)))),
+      payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode(payload, b)))),
+    };
+  });
+}
+
+function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
+  const audMembers: Tagged[] = grant.audiences.map((a) => ({ t: "string", v: strUtf8(a) }));
+  const opsMembers: Tagged[] = grant.operations.map((op): Tagged => {
+    const nameBytes = strUtf8(op.name);
+    if (nameBytes.length < 1 || nameBytes.length > resolve(b, "operation_bytes" as MaximaKey)) fail("grant_signing_input: operation name bytes");
+    if (!/^[\x20-\x7e]+$/.test(op.name)) fail("grant_signing_input: operation name charset");
+    if (op.selectors.length < 1 || op.selectors.length > resolve(b, "selectors" as MaximaKey)) fail("grant_signing_input: selectors count");
+    const sels: Tagged[] = op.selectors.map((s) => selectorToTagged(s, b));
+    const opMembers = new Map<string, Tagged>([
+      ["name", { t: "string", v: nameBytes }],
+      ["selectors", { t: "array", v: sels }],
+    ]);
+    return { t: "object", v: opMembers };
+  });
+  const cnfMembers = new Map<string, Tagged>([["jkt", { t: "string", v: strUtf8(grant.holderThumbprint) }]]);
+  const payload = new Map<string, Tagged>([
+    ["aud", { t: "array", v: audMembers }],
+    ["cnf", { t: "object", v: cnfMembers }],
+    ["exp", { t: "int", v: grant.expiresAt }],
+    ["iat", { t: "int", v: grant.issuedAt }],
+    ["iss", { t: "string", v: strUtf8(grant.issuer) }],
+    ["jti", { t: "string", v: strUtf8(grant.grantId) }],
+    ["nbf", { t: "int", v: grant.notBefore }],
+    ["operations", { t: "array", v: opsMembers }],
+    ["v", { t: "int", v: VERSION }],
+  ]);
+  return { t: "object", v: payload };
+}
+
+// Normalize a selector input (bare "all" string or object) to the tagged form for JCS.
+function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
+  if (s === "all" || (typeof s === "object" && s.kind === "all")) {
+    return { t: "object", v: new Map<string, Tagged>([["kind", { t: "string", v: strUtf8("all") }]]) };
+  }
+  if (typeof s === "object" && s.kind === "equals") {
+    const path = validatePath(s.path, b);
+    validateSelectorValue(s.value, b);
+    const members = new Map<string, Tagged>([
+      ["kind", { t: "string", v: strUtf8("equals") }],
+      ["path", path],
+      ["value", s.value],
+    ]);
+    return { t: "object", v: members };
+  }
+  if (typeof s === "object" && s.kind === "one_of") {
+    const path = validatePath(s.path, b);
+    if (s.values.length < 1 || s.values.length > resolve(b, "one_of_values" as MaximaKey)) fail("selector: values count");
+    for (const v of s.values) validateSelectorValue(v, b);
+    const members = new Map<string, Tagged>([
+      ["kind", { t: "string", v: strUtf8("one_of") }],
+      ["path", path],
+      ["values", { t: "array", v: s.values }],
+    ]);
+    return { t: "object", v: members };
+  }
+  fail("selector: shape");
+}
+
+function validatePath(path: string[], b: Bounds): Tagged {
+  if (path.length < 1 || path.length > resolve(b, "path_segments" as MaximaKey)) fail("selector: path length");
+  const segs: Tagged[] = [];
+  for (const seg of path) {
+    const sb = strUtf8(seg);
+    if (sb.length < 1 || sb.length > resolve(b, "key_bytes" as MaximaKey)) fail("selector: path segment bytes");
+    segs.push({ t: "string", v: sb });
+  }
+  return { t: "array", v: segs };
+}
+
+function validateSelectorValue(v: Tagged, b: Bounds): void {
+  checkNode(v, 1, b);
+}
+
+function checkNode(v: Tagged, depth: number, b: Bounds): void {
+  if (depth > resolve(b, "depth" as MaximaKey)) fail("selector: value depth");
+  switch (v.t) {
+    case "string":
+      if (v.v.length > resolve(b, "string_bytes" as MaximaKey)) fail("selector: string bytes");
+      return;
+    case "int":
+      if (Math.abs(v.v) > resolve(b, "integer_magnitude" as MaximaKey)) fail("selector: int magnitude");
+      return;
+    case "float":
+      if (Math.abs(v.v) > resolve(b, "float_magnitude" as MaximaKey)) fail("selector: float magnitude");
+      return;
+    case "array": {
+      if (v.v.length > resolve(b, "array_items" as MaximaKey)) fail("selector: array items");
+      for (const item of v.v) checkNode(item, depth + 1, b);
+      return;
+    }
+    case "object": {
+      if (v.v.size > resolve(b, "object_members" as MaximaKey)) fail("selector: object members");
+      for (const [, val] of v.v) checkNode(val, depth + 1, b);
+      return;
+    }
+    default: return;
+  }
+}
+
+// 10. proof_signing_input (REQ1-SIGNING-deterministic-produce).
+export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
+  return trying(() => {
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    assert(proof.holderPublicKey.length === 32, "proof_signing_input: holder key width");
+    if (!isStringOrUri(proof.proofId)) fail("proof_signing_input: proof_id");
+    const methodBytes = strUtf8(proof.method);
+    if (methodBytes.length < 1 || methodBytes.length > resolve(b, "method_bytes" as MaximaKey)) fail("proof_signing_input: method bytes");
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(proof.method)) fail("proof_signing_input: method token");
+    // htu normalized + pre-normalized.
+    const htuNorm = uriNormalize(strUtf8(proof.targetUri), b);
+    if (!htuNorm.ok) fail("proof_signing_input: htu");
+    if (utf8Str(htuNorm.value) !== proof.targetUri) fail("proof_signing_input: htu pre-normalized");
+    if (!Number.isInteger(proof.issuedAt)) fail("proof_signing_input: integer iat");
+    if (!UUID_RE.test(proof.invocationId)) fail("proof_signing_input: invocation_id");
+    const opBytes = strUtf8(proof.operation);
+    if (opBytes.length < 1 || opBytes.length > resolve(b, "operation_bytes" as MaximaKey)) fail("proof_signing_input: operation bytes");
+    if (!/^[\x20-\x7e]+$/.test(proof.operation)) fail("proof_signing_input: operation charset");
+    if (proof.nonce !== undefined) {
+      if (!isWellFormed(proof.nonce)) fail("proof_signing_input: nonce well-formed");
+      const nb = strUtf8(proof.nonce);
+      if (nb.length < 1 || nb.length > resolve(b, "nonce_bytes" as MaximaKey)) fail("proof_signing_input: nonce bytes");
+    }
+    const jwk = jwkFromPublicKey(proof.holderPublicKey);
+    const headerMembers = new Map<string, Tagged>([
+      ["alg", { t: "string", v: strUtf8(ALG) }],
+      ["jwk", jwkToTagged(jwk)],
+      ["typ", { t: "string", v: strUtf8(PROOF_TYP) }],
+    ]);
+    const athRaw = sha256(proof.grantCompact);
+    const baReqRaw = computeRequestDigest(proof.operation, proof.castArguments, b);
+    const payloadMembers = new Map<string, Tagged>([
+      ["ath", { t: "string", v: strUtf8(utf8Str(base64urlEncode(athRaw))) }],
+      ["ba_inv", { t: "string", v: strUtf8(proof.invocationId) }],
+      ["ba_op", { t: "string", v: opBytes }],
+      ["ba_req", { t: "string", v: strUtf8(utf8Str(base64urlEncode(baReqRaw))) }],
+      ["htm", { t: "string", v: methodBytes }],
+      ["htu", { t: "string", v: strUtf8(proof.targetUri) }],
+      ["iat", { t: "int", v: proof.issuedAt }],
+      ["jti", { t: "string", v: strUtf8(proof.proofId) }],
+      ["v", { t: "int", v: VERSION }],
+    ]);
+    if (proof.nonce !== undefined) payloadMembers.set("nonce", { t: "string", v: strUtf8(proof.nonce) });
+    return {
+      kind: "proof",
+      protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: headerMembers }, b)))),
+      payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: payloadMembers }, b)))),
+    };
+  });
+}
+
+function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
+  const members = new Map<string, Tagged>([
+    ["crv", { t: "string", v: strUtf8(jwk.crv) }],
+    ["kty", { t: "string", v: strUtf8(jwk.kty) }],
+    ["x", { t: "string", v: strUtf8(jwk.x) }],
+  ]);
+  return { t: "object", v: members };
+}
+
+// 11. assemble_compact (REQ1-VERIFY-no-signer-callback). Re-exported from compact.ts.
+export { assembleCompact };
+
+// 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
+export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
+  return trying(() => {
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    const keyIdBytes = strUtf8(anchor.keyId);
+    if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("anchor_signing_input: key_id bytes");
+    if (!/^[A-Za-z0-9._~-]+$/.test(anchor.keyId)) fail("anchor_signing_input: key_id charset");
+    if (!isStringOrUri(anchor.anchorId)) fail("anchor_signing_input: anchor_id");
+    if (!isStringOrUri(anchor.chainId)) fail("anchor_signing_input: chain_id");
+    if (!Number.isInteger(anchor.anchoredAt)) fail("anchor_signing_input: integer anchored_at");
+    if (!Number.isInteger(anchor.sequence) || anchor.sequence < 0) fail("anchor_signing_input: non-negative sequence");
+    assert(anchor.chainHash.length === 32, "anchor_signing_input: chain_hash width");
+    assert(anchor.publicKey.length === 32, "anchor_signing_input: public_key width");
+    const header = new Map<string, Tagged>([
+      ["alg", { t: "string", v: strUtf8(ALG) }],
+      ["kid", { t: "string", v: keyIdBytes }],
+      ["typ", { t: "string", v: strUtf8(ANCHOR_TYP) }],
+    ]);
+    const fp = thumbprintRaw(jwkFromPublicKey(anchor.publicKey));
+    const payload = new Map<string, Tagged>([
+      ["anchor_id", { t: "string", v: strUtf8(anchor.anchorId) }],
+      ["anchored_at", { t: "int", v: anchor.anchoredAt }],
+      ["chain_hash", { t: "string", v: strUtf8(utf8Str(base64urlEncode(anchor.chainHash))) }],
+      ["chain_id", { t: "string", v: strUtf8(anchor.chainId) }],
+      ["key_fingerprint", { t: "string", v: strUtf8(utf8Str(base64urlEncode(fp))) }],
+      ["sequence", { t: "int", v: anchor.sequence }],
+      ["v", { t: "int", v: VERSION }],
+    ]);
+    return {
+      kind: "boundary_anchor",
+      protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: header }, b)))),
+      payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: payload }, b)))),
+    };
+  });
+}
+
+// 13. key_transition_signing_input (ADR 0004 § Authenticated key transitions).
+export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bounds): Result<SigningInput> {
+  return trying(() => {
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    assert(t.currentPublicKey.length === 32 && t.nextPublicKey.length === 32, "transition_signing_input: key width");
+    if (bytesEqual(t.currentPublicKey, t.nextPublicKey)) fail("transition_signing_input: distinct keys");
+    const currentKeyIdBytes = strUtf8(t.currentKeyId);
+    if (currentKeyIdBytes.length < 1 || currentKeyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("transition_signing_input: current_key_id bytes");
+    if (!/^[A-Za-z0-9._~-]+$/.test(t.currentKeyId)) fail("transition_signing_input: current_key_id charset");
+    const nextKeyIdBytes = strUtf8(t.nextKeyId);
+    if (nextKeyIdBytes.length < 1 || nextKeyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("transition_signing_input: next_key_id bytes");
+    if (!/^[A-Za-z0-9._~-]+$/.test(t.nextKeyId)) fail("transition_signing_input: next_key_id charset");
+    if (!isStringOrUri(t.transitionId)) fail("transition_signing_input: transition_id");
+    if (!isStringOrUri(t.chainId)) fail("transition_signing_input: chain_id");
+    if (!Number.isInteger(t.effectiveAt)) fail("transition_signing_input: integer effective_at");
+    const header = new Map<string, Tagged>([
+      ["alg", { t: "string", v: strUtf8(ALG) }],
+      ["kid", { t: "string", v: currentKeyIdBytes }],
+      ["typ", { t: "string", v: strUtf8(TRANSITION_TYP) }],
+    ]);
+    const fromFp = thumbprintRaw(jwkFromPublicKey(t.currentPublicKey));
+    const toFp = thumbprintRaw(jwkFromPublicKey(t.nextPublicKey));
+    const payload = new Map<string, Tagged>([
+      ["chain_id", { t: "string", v: strUtf8(t.chainId) }],
+      ["effective_at", { t: "int", v: t.effectiveAt }],
+      ["from_key_fingerprint", { t: "string", v: strUtf8(utf8Str(base64urlEncode(fromFp))) }],
+      ["to_key_fingerprint", { t: "string", v: strUtf8(utf8Str(base64urlEncode(toFp))) }],
+      ["to_key_id", { t: "string", v: nextKeyIdBytes }],
+      ["transition_id", { t: "string", v: strUtf8(t.transitionId) }],
+      ["v", { t: "int", v: VERSION }],
+    ]);
+    return {
+      kind: "key_transition",
+      protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: header }, b)))),
+      payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: payload }, b)))),
+    };
+  });
+}
+
+// 14. encode_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-input-shape).
+export interface EncodedAnchoredExport { readonly archive: Uint8Array; readonly digest: Uint8Array; }
+export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
+  return trying(() => {
+    const headerBytes = buildArchiveHeader(input, expected.chain);
+    const archive = concat(
+      ARCHIVE_PREFIX,
+      frame(headerBytes),
+      frame(input.startAnchor),
+      ...input.transitions.map(frame),
+      ...input.rows.map(frame),
+      frame(input.endAnchor),
+    );
+    if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
+    return { archive, digest: sha256(archive) };
+  });
+}
+
+function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain): Uint8Array {
+  if (chain.chainId !== input.chainId) fail("encode_anchored_export: chain_id");
+  if (chain.firstSequence !== input.firstSequence) fail("encode_anchored_export: first_sequence");
+  if (chain.lastSequence !== input.lastSequence) fail("encode_anchored_export: last_sequence");
+  if (chain.rowCount !== input.rowCount) fail("encode_anchored_export: row_count");
+  const members = new Map<string, Tagged>([
+    ["chain_id", { t: "string", v: strUtf8(chain.chainId) }],
+    ["first_sequence", { t: "int", v: chain.firstSequence }],
+    ["last_hash", { t: "string", v: strUtf8(utf8Str(base64urlEncode(chain.lastHash))) }],
+    ["last_sequence", { t: "int", v: chain.lastSequence }],
+    ["previous_hash", { t: "string", v: strUtf8(utf8Str(base64urlEncode(chain.previousHash))) }],
+    ["row_count", { t: "int", v: chain.rowCount }],
+    ["transition_count", { t: "int", v: input.transitions.length }],
+    ["v", { t: "int", v: VERSION }],
+  ]);
+  const headerBytes = jcsEncode({ t: "object", v: members });
+  if (headerBytes.length > resolve(MAXIMUM_BOUNDS, "archive_header_bytes" as MaximaKey)) fail("encode_anchored_export: header bytes");
+  return headerBytes;
+}
+
+// UINT32_BE(len) || bytes — the archive framing (ADR 0004 § Anchored export).
+function frame(bytes: Uint8Array): Uint8Array {
+  if (bytes.length === 0) fail("archive: zero-length frame");
+  const out = new Uint8Array(4 + bytes.length);
+  const v = bytes.length;
+  out[0] = (v >>> 24) & 0xff;
+  out[1] = (v >>> 16) & 0xff;
+  out[2] = (v >>> 8) & 0xff;
+  out[3] = v & 0xff;
+  out.set(bytes, 4);
+  return out;
+}
+
+// 15. verify_historical_anchor (ADR 0004 § Boundary anchors; protocol-v1.md § Historical anchor).
+export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
+  return trying(() => {
+    assert(key.publicKey.length === 32, "verify_historical_anchor: key width");
+    const seg = parseCompact(compact, MAXIMUM_BOUNDS);
+    const { kid } = parseAnchorHeader(seg);
+    if (kid !== key.keyId) fail("verify_historical_anchor: kid");
+    if (expected.keyId !== key.keyId) fail("verify_historical_anchor: expected key id");
+    const p = jsonDecode(seg.payloadBytes);
+    validateAnchorPayload(p);
+    if (p.t !== "object") fail("verify_historical_anchor: payload object");
+    const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+    if (anchorId !== expected.anchorId) fail("verify_historical_anchor: anchor_id");
+    const anchoredAt = requireInt(p.v.get("anchored_at"), "anchored_at");
+    if (anchoredAt !== expected.anchoredAt) fail("verify_historical_anchor: anchored_at");
+    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+    if (chainId !== expected.chainId) fail("verify_historical_anchor: chain_id");
+    const sequence = requireInt(p.v.get("sequence"), "sequence");
+    if (sequence !== expected.sequence) fail("verify_historical_anchor: sequence");
+    const chainHash = requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32);
+    if (!bytesEqual(chainHash, expected.chainHash)) fail("verify_historical_anchor: chain_hash");
+    const keyFpRaw = requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32);
+    if (!bytesEqual(keyFpRaw, expected.keyFingerprint)) fail("verify_historical_anchor: key_fingerprint");
+    // Genesis: sequence 0 requires the all-zero chain hash.
+    if (expected.sequence === 0 && !bytesEqual(expected.chainHash, DEFAULT_HASH)) fail("verify_historical_anchor: genesis hash");
+    // Derived fingerprint must equal expected.
+    const derivedFp = thumbprintRaw(jwkFromPublicKey(key.publicKey));
+    if (!bytesEqual(derivedFp, expected.keyFingerprint)) fail("verify_historical_anchor: fingerprint");
+    if (!inWindow(anchoredAt, key)) fail("verify_historical_anchor: window");
+    const pk = importPublicKey(key.publicKey, utf8Str(base64urlEncode(derivedFp)));
+    if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_historical_anchor: signature");
+    return {
+      anchorId, anchoredAt, chainId, sequence, chainHash, keyId: expected.keyId,
+      keyFingerprint: keyFpRaw, trust: "not_evaluated" as const,
+    };
+  });
+}
+
+// 16. verify_key_transition (ADR 0004 § Authenticated key transitions).
+export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPublicKey, newKey: HistoricalPublicKey, expected: ExpectedKeyTransition): Result<KeyTransitionFacts> {
+  return trying(() => {
+    assert(oldKey.publicKey.length === 32 && newKey.publicKey.length === 32, "verify_key_transition: key width");
+    if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
+    const seg = parseCompact(compact, MAXIMUM_BOUNDS);
+    const { kid } = parseTransitionHeader(seg);
+    if (kid !== oldKey.keyId) fail("verify_key_transition: kid");
+    if (expected.currentKeyId !== oldKey.keyId) fail("verify_key_transition: current key id");
+    if (expected.nextKeyId !== newKey.keyId) fail("verify_key_transition: next key id");
+    const p = jsonDecode(seg.payloadBytes);
+    validateTransitionPayload(p);
+    if (p.t !== "object") fail("verify_key_transition: payload object");
+    const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id");
+    if (transitionId !== expected.transitionId) fail("verify_key_transition: transition_id");
+    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+    if (chainId !== expected.chainId) fail("verify_key_transition: chain_id");
+    const effectiveAt = requireInt(p.v.get("effective_at"), "effective_at");
+    if (effectiveAt !== expected.effectiveAt) fail("verify_key_transition: effective_at");
+    const fromFpRaw = requireB64urlN(p.v.get("from_key_fingerprint"), "from_key_fingerprint", 32);
+    if (!bytesEqual(fromFpRaw, expected.currentKeyFingerprint)) fail("verify_key_transition: from fp");
+    const toFpRaw = requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32);
+    if (!bytesEqual(toFpRaw, expected.nextKeyFingerprint)) fail("verify_key_transition: to fp");
+    const toKeyIdV = p.v.get("to_key_id")!;
+    if (toKeyIdV.t !== "string" || utf8Str(toKeyIdV.v) !== expected.nextKeyId) fail("verify_key_transition: to_key_id");
+    // Derived fingerprints must equal expected.
+    const derivedFrom = thumbprintRaw(jwkFromPublicKey(oldKey.publicKey));
+    if (!bytesEqual(derivedFrom, expected.currentKeyFingerprint)) fail("verify_key_transition: current fp");
+    const derivedTo = thumbprintRaw(jwkFromPublicKey(newKey.publicKey));
+    if (!bytesEqual(derivedTo, expected.nextKeyFingerprint)) fail("verify_key_transition: next fp");
+    if (!inWindow(effectiveAt, oldKey)) fail("verify_key_transition: current window");
+    if (!inWindow(effectiveAt, newKey)) fail("verify_key_transition: next window");
+    const pk = importPublicKey(oldKey.publicKey, utf8Str(base64urlEncode(derivedFrom)));
+    if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_key_transition: signature");
+    return {
+      transitionId, chainId, effectiveAt,
+      fromKeyId: expected.currentKeyId, fromKeyFingerprint: fromFpRaw,
+      toKeyId: expected.nextKeyId, toKeyFingerprint: toFpRaw,
+      trust: "not_evaluated" as const,
+    };
+  });
+}
+
+// 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
+export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
+  return trying(() => {
+    const archive = concat(...archived.chunks);
+    if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
+    if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("verify_anchored_export: byte bound");
+    // Digest: SHA-256 of the complete archive (constant-time compare).
+    const digest = sha256(archive);
+    if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
+    // Object version: exact equality (out-of-band context, not embedded).
+    if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
+    // Parse the archive frames.
+    const parsed = parseArchive(archive);
+    // Header canonical equality.
+    const headerMembers = new Map<string, Tagged>([
+      ["chain_id", { t: "string", v: strUtf8(expected.chain.chainId) }],
+      ["first_sequence", { t: "int", v: expected.chain.firstSequence }],
+      ["last_hash", { t: "string", v: strUtf8(utf8Str(base64urlEncode(expected.chain.lastHash))) }],
+      ["last_sequence", { t: "int", v: expected.chain.lastSequence }],
+      ["previous_hash", { t: "string", v: strUtf8(utf8Str(base64urlEncode(expected.chain.previousHash))) }],
+      ["row_count", { t: "int", v: expected.chain.rowCount }],
+      ["transition_count", { t: "int", v: expected.transitions.length }],
+      ["v", { t: "int", v: VERSION }],
+    ]);
+    const expectedHeaderBytes = jcsEncode({ t: "object", v: headerMembers });
+    if (!bytesEqual(parsed.headerBytes, expectedHeaderBytes)) fail("verify_anchored_export: header");
+    // Verify start + end anchors + each transition against the ordered historical key chain.
+    if (keyChain.keys.length < 2) fail("verify_anchored_export: key chain");
+    verifyAnchorCompact(parsed.start, keyChain.keys[0]!, expected.startAnchor, "verify_anchored_export start");
+    verifyAnchorCompact(parsed.end, keyChain.keys[keyChain.keys.length - 1]!, expected.endAnchor, "verify_anchored_export end");
+    if (parsed.transitions.length !== expected.transitions.length) fail("verify_anchored_export: transition count");
+    // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]).
+    if (keyChain.keys.length !== parsed.transitions.length + 1) fail("verify_anchored_export: key chain length");
+    for (let i = 0; i < parsed.transitions.length; i++) {
+      verifyTransitionCompact(parsed.transitions[i]!, keyChain.keys[i]!, keyChain.keys[i + 1]!, expected.transitions[i]!, `verify_anchored_export transition ${i}`);
+    }
+    // Re-check every row (REQ1-EXPORT-complete-scan; mirrors check_chain).
+    let previous = expected.chain.previousHash;
+    let sequence = expected.chain.firstSequence;
+    if (expected.chain.firstSequence === 1) {
+      if (!bytesEqual(previous, DEFAULT_HASH)) fail("verify_anchored_export: genesis predecessor");
+    }
+    if (parsed.rows.length !== expected.chain.rowCount) fail("verify_anchored_export: row count");
+    for (let i = 0; i < parsed.rows.length; i++) {
+      const rowBytes = parsed.rows[i]!;
+      const row = jsonDecode(rowBytes);
+      requireObjectExact(row, ["v", "chain_id", "sequence", "previous", "commitment"], `verify_anchored_export row ${i}`);
+      const vV = row.v.get("v")!;
+      if (vV.t !== "int" || vV.v !== VERSION) fail(`verify_anchored_export row ${i}: v`);
+      const cidV = row.v.get("chain_id")!;
+      if (cidV.t !== "string" || utf8Str(cidV.v) !== expected.chain.chainId) fail(`verify_anchored_export row ${i}: chain_id`);
+      const seqV = row.v.get("sequence")!;
+      if (seqV.t !== "int" || seqV.v !== sequence) fail(`verify_anchored_export row ${i}: sequence`);
+      const prevRaw = requireB64urlN(row.v.get("previous"), "previous", 32);
+      if (!bytesEqual(prevRaw, previous)) fail(`verify_anchored_export row ${i}: previous link`);
+      requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      previous = sha256(ROW_PREFIX, rowBytes);
+      sequence++;
+    }
+    if (!bytesEqual(previous, expected.chain.lastHash)) fail("verify_anchored_export: head");
+    return {
+      objectVersion: archived.version, chainId: expected.chain.chainId,
+      firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence,
+      rowCount: expected.chain.rowCount, transitionCount: expected.transitions.length,
+      digest, trust: "not_evaluated" as const, authorization: "not_evaluated" as const,
+    };
+  });
+}
+
+// Anchor-compact verification (shared by verify_historical_anchor + the anchored-export path).
+function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor, ctx: string): void {
+  assert(key.publicKey.length === 32, `${ctx}: key width`);
+  const seg = parseCompact(compact, MAXIMUM_BOUNDS);
+  const { kid } = parseAnchorHeader(seg);
+  if (kid !== key.keyId) fail(`${ctx}: kid`);
+  if (expected.keyId !== key.keyId) fail(`${ctx}: expected key id`);
+  const p = jsonDecode(seg.payloadBytes);
+  validateAnchorPayload(p);
+  if (p.t !== "object") fail(`${ctx}: payload object`);
+  const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+  if (anchorId !== expected.anchorId) fail(`${ctx}: anchor_id`);
+  const anchoredAt = requireInt(p.v.get("anchored_at"), "anchored_at");
+  if (anchoredAt !== expected.anchoredAt) fail(`${ctx}: anchored_at`);
+  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  if (chainId !== expected.chainId) fail(`${ctx}: chain_id`);
+  const sequence = requireInt(p.v.get("sequence"), "sequence");
+  if (sequence !== expected.sequence) fail(`${ctx}: sequence`);
+  const chainHash = requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32);
+  if (!bytesEqual(chainHash, expected.chainHash)) fail(`${ctx}: chain_hash`);
+  const keyFpRaw = requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32);
+  if (!bytesEqual(keyFpRaw, expected.keyFingerprint)) fail(`${ctx}: key_fingerprint`);
+  if (expected.sequence === 0 && !bytesEqual(expected.chainHash, DEFAULT_HASH)) fail(`${ctx}: genesis hash`);
+  const derivedFp = thumbprintRaw(jwkFromPublicKey(key.publicKey));
+  if (!bytesEqual(derivedFp, expected.keyFingerprint)) fail(`${ctx}: fingerprint`);
+  if (!inWindow(anchoredAt, key)) fail(`${ctx}: window`);
+  const pk = importPublicKey(key.publicKey, utf8Str(base64urlEncode(derivedFp)));
+  if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail(`${ctx}: signature`);
+}
+
+function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPublicKey, nextKey: HistoricalPublicKey, expected: ExpectedKeyTransition, ctx: string): void {
+  assert(currentKey.publicKey.length === 32 && nextKey.publicKey.length === 32, `${ctx}: key width`);
+  if (bytesEqual(currentKey.publicKey, nextKey.publicKey)) fail(`${ctx}: distinct keys`);
+  const seg = parseCompact(compact, MAXIMUM_BOUNDS);
+  const { kid } = parseTransitionHeader(seg);
+  if (kid !== currentKey.keyId) fail(`${ctx}: kid`);
+  if (expected.currentKeyId !== currentKey.keyId) fail(`${ctx}: current key id`);
+  if (expected.nextKeyId !== nextKey.keyId) fail(`${ctx}: next key id`);
+  const p = jsonDecode(seg.payloadBytes);
+  validateTransitionPayload(p);
+  if (p.t !== "object") fail(`${ctx}: payload object`);
+  const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id");
+  if (transitionId !== expected.transitionId) fail(`${ctx}: transition_id`);
+  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  if (chainId !== expected.chainId) fail(`${ctx}: chain_id`);
+  const effectiveAt = requireInt(p.v.get("effective_at"), "effective_at");
+  if (effectiveAt !== expected.effectiveAt) fail(`${ctx}: effective_at`);
+  const fromFpRaw = requireB64urlN(p.v.get("from_key_fingerprint"), "from_key_fingerprint", 32);
+  if (!bytesEqual(fromFpRaw, expected.currentKeyFingerprint)) fail(`${ctx}: from fp`);
+  const toFpRaw = requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32);
+  if (!bytesEqual(toFpRaw, expected.nextKeyFingerprint)) fail(`${ctx}: to fp`);
+  const toKeyIdV = p.v.get("to_key_id")!;
+  if (toKeyIdV.t !== "string" || utf8Str(toKeyIdV.v) !== expected.nextKeyId) fail(`${ctx}: to_key_id`);
+  const derivedFrom = thumbprintRaw(jwkFromPublicKey(currentKey.publicKey));
+  if (!bytesEqual(derivedFrom, expected.currentKeyFingerprint)) fail(`${ctx}: current fp`);
+  const derivedTo = thumbprintRaw(jwkFromPublicKey(nextKey.publicKey));
+  if (!bytesEqual(derivedTo, expected.nextKeyFingerprint)) fail(`${ctx}: next fp`);
+  if (!inWindow(effectiveAt, currentKey)) fail(`${ctx}: current window`);
+  if (!inWindow(effectiveAt, nextKey)) fail(`${ctx}: next window`);
+  const pk = importPublicKey(currentKey.publicKey, utf8Str(base64urlEncode(derivedFrom)));
+  if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail(`${ctx}: signature`);
+}
+
+// Parse the archive byte stream into its frames (ADR 0004 § Anchored export).
+interface ParsedArchive {
+  readonly headerBytes: Uint8Array;
+  readonly start: Uint8Array;
+  readonly transitions: Uint8Array[];
+  readonly rows: Uint8Array[];
+  readonly end: Uint8Array;
+}
+
+function parseArchive(bytes: Uint8Array): ParsedArchive {
+  if (!bytesEqual(bytes.subarray(0, ARCHIVE_PREFIX.length), ARCHIVE_PREFIX)) fail("archive: prefix");
+  let cursor = ARCHIVE_PREFIX.length;
+  const headerFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "archive_header_bytes" as MaximaKey), "archive header");
+  cursor = headerFrame.next;
+  // The header itself is canonical JSON; transition_count + row_count drive the frame iteration.
+  const header = jsonDecode(headerFrame.bytes);
+  requireObjectExact(header, ["v", "chain_id", "first_sequence", "last_sequence", "row_count", "transition_count", "previous_hash", "last_hash"], "archive header");
+  const vV = header.v.get("v")!;
+  if (vV.t !== "int" || vV.v !== VERSION) fail("archive: header v");
+  const tcV = header.v.get("transition_count")!;
+  if (tcV.t !== "int" || tcV.v < 0 || tcV.v > resolve(MAXIMUM_BOUNDS, "key_transitions" as MaximaKey)) fail("archive: transition_count");
+  const rcV = header.v.get("row_count")!;
+  if (rcV.t !== "int" || rcV.v < 1 || rcV.v > resolve(MAXIMUM_BOUNDS, "chain_rows" as MaximaKey)) fail("archive: row_count");
+  // Sequence-range coherence (mirrors the runner).
+  const fsV = header.v.get("first_sequence")!;
+  const lsV = header.v.get("last_sequence")!;
+  if (fsV.t !== "int" || lsV.t !== "int") fail("archive: header sequences");
+  if (!(fsV.v > 0 && lsV.v >= fsV.v && rcV.v === lsV.v - fsV.v + 1)) fail("archive: row range");
+  requireB64urlN(header.v.get("previous_hash"), "previous_hash", 32);
+  requireB64urlN(header.v.get("last_hash"), "last_hash", 32);
+  const startFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), "start anchor");
+  cursor = startFrame.next;
+  const transitions: Uint8Array[] = [];
+  for (let i = 0; i < tcV.v; i++) {
+    const f = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), `transition ${i}`);
+    transitions.push(f.bytes);
+    cursor = f.next;
+  }
+  const rows: Uint8Array[] = [];
+  for (let i = 0; i < rcV.v; i++) {
+    const f = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "chain_row_bytes" as MaximaKey), `row ${i}`);
+    rows.push(f.bytes);
+    cursor = f.next;
+  }
+  const endFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), "end anchor");
+  cursor = endFrame.next;
+  if (cursor !== bytes.length) fail("archive: exact EOF");
+  return { headerBytes: headerFrame.bytes, start: startFrame.bytes, transitions, rows, end: endFrame.bytes };
+}
+
+function readFrame(bytes: Uint8Array, cursor: number, maximum: number, ctx: string): { bytes: Uint8Array; next: number } {
+  if (cursor + 4 > bytes.length) fail(`${ctx}: frame length`);
+  const length = (bytes[cursor]! << 24 | bytes[cursor + 1]! << 16 | bytes[cursor + 2]! << 8 | bytes[cursor + 3]!) >>> 0;
+  if (length === 0 || length > maximum) fail(`${ctx}: frame bound`);
+  const start = cursor + 4;
+  const end = start + length;
+  if (end > bytes.length) fail(`${ctx}: complete frame`);
+  return { bytes: bytes.subarray(start, end), next: end };
+}
+
+// Re-export the primitives the public index exposes (protocol-v1.md L299-309).
+export { jwkEncodePublic, jwkDecodePublic, thumbprint, sha256, base64urlDecode, base64urlEncode };
+export { boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA };
+export { uriNormalize, parseSelector, selectorMatches, typedProject, REQUEST_PREFIX };
+export type { Bounds, SigningInput, Selector, MaximaKey };
+void strUtf8; void _resetCensus; void resolve; void boundsNew;
