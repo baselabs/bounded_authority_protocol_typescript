@@ -1,6 +1,6 @@
-import { fail, assert } from "./error.js";
+import { fail } from "./error.js";
 import { jcsEncode } from "./jcs.js";
-import { strUtf8, utf8Str, type Tagged } from "./json.js";
+import { utf8Str, type Tagged } from "./json.js";
 import { typedProject } from "./digest.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
@@ -27,10 +27,11 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
   if (!kindV || kindV.t !== "string") fail("selector: kind");
   const kind = utf8Str(kindV.v);
   if (!SELECTOR_KINDS.has(kind)) fail("selector: kind closed set");
-  if (kind === "all") {
-    if (obj.v.size !== 1) fail("selector: all members");
-    return { kind: "all" };
-  }
+  // The member-set check mirrors the official's open-map `selector/2` clause for `all`: a selector
+  // carrying kind:"all" decodes as :all on ANY of the three closed member sets (kind / kind,path,value
+  // / kind,path,values). Requiring members === "kind" alone made this runner STRICTER than the
+  // official — the one divergence direction that fails a conforming implementation.
+  if (kind === "all") return { kind: "all" };
   // equals / one_of need path + value/values.
   if (kind === "equals") {
     if (obj.v.size !== 3) fail("selector: equals members");

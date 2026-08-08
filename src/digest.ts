@@ -48,11 +48,51 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds: 
   // The projection: [operation_string, typed(cast_arguments)].
   const projected = typedProject(castArguments);
   const array: Tagged = { t: "array", v: [{ t: "string", v: opBytes }, projected] };
-  // JCS over the projection, enforcing per-node + jcs_bytes bounds.
+  // Per-node bounds on the TYPED projection (not the raw args): `typed` deepens/triples the tree, so
+  // the depth boundary is ~15 (not 32) and total_nodes is reachable inline. Mirrors the official
+  // Jcs.encode per-node gate (corpus_independent.mjs:1913 withinJsonBounds + countJsonNodes).
+  if (!withinTaggedBounds(array, 0, bounds)) fail("request_digest: cast_arguments bounds");
+  if (countTaggedNodes(array) > resolve(bounds, "total_nodes" as MaximaKey)) fail("request_digest: total_nodes");
+  // JCS over the projection, enforcing jcs_bytes bound.
   const jcs = jcsEncode(array, bounds);
   if (jcs.length > resolve(bounds, "jcs_bytes" as MaximaKey)) fail("request_digest: jcs_bytes bound");
   const digest = sha256(REQUEST_PREFIX, jcs);
   return digest; // raw 32 bytes
+}
+
+// Per-node-type bounds gate over the tagged algebra: a SCALAR is valid at level <= depth; a
+// CONTAINER at level < depth (its children sit at level+1). Root value at level 0. Also enforces
+// members/items/string-bytes/magnitude per node.
+function withinTaggedBounds(v: Tagged, level: number, bounds: Bounds): boolean {
+  switch (v.t) {
+    case "null":
+    case "bool":
+      return level <= resolve(bounds, "depth" as MaximaKey);
+    case "int":
+      return level <= resolve(bounds, "depth" as MaximaKey) && Math.abs(v.v) <= resolve(bounds, "integer_magnitude" as MaximaKey);
+    case "float":
+      return level <= resolve(bounds, "depth" as MaximaKey) && Number.isFinite(v.v) && Math.abs(v.v) <= resolve(bounds, "float_magnitude" as MaximaKey);
+    case "string":
+      return level <= resolve(bounds, "depth" as MaximaKey) && v.v.length <= resolve(bounds, "string_bytes" as MaximaKey);
+    case "array":
+      return level < resolve(bounds, "depth" as MaximaKey)
+        && v.v.length <= resolve(bounds, "array_items" as MaximaKey)
+        && v.v.every((item) => withinTaggedBounds(item, level + 1, bounds));
+    case "object":
+      return level < resolve(bounds, "depth" as MaximaKey)
+        && v.v.size <= resolve(bounds, "object_members" as MaximaKey)
+        && [...v.v.values()].every((val) => withinTaggedBounds(val, level + 1, bounds));
+  }
+}
+
+// Node count: one node per value (scalar OR container); object keys are not nodes. Mirrors the
+// official next_node! (jcs.ex:105) for the total_nodes gate on the typed projection.
+function countTaggedNodes(v: Tagged): number {
+  switch (v.t) {
+    case "array": return 1 + v.v.reduce((n, item) => n + countTaggedNodes(item), 0);
+    case "object": return 1 + [...v.v.values()].reduce((n, val) => n + countTaggedNodes(val), 0);
+    default: return 1;
+  }
 }
 
 export function requestDigestB64url(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): string {

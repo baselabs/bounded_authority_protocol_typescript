@@ -83,13 +83,8 @@ function formatFloat(n: number): string {
   return JSON.stringify(n);
 }
 
-// RFC 8785 §3.2.2.1 string escaping: mandatory-escape chars + UTF-8 for the rest.
-const MUST_ESCAPE: boolean[] = new Array(0x20).fill(false);
-for (let i = 0; i < 0x20; i++) MUST_ESCAPE[i] = true;
-// 0x22 ("), 0x5c (\) must always escape; 0x7f (DEL) must escape per RFC 8785.
-function mustEscapeByte(b: number): boolean {
-  return b < 0x20 || b === 0x22 || b === 0x5c || b === 0x7f;
-}
+// RFC 8785 §3.2.2.1 string escaping: mandatory-escape chars (< 0x20, 0x22 ", 0x5c \, 0x7f DEL) +
+// UTF-8 for the rest. The escapeString function below applies this inline.
 
 // The short escapes per RFC 8785 §3.2.2.1 (b, f, n, r, t + the two structural " \).
 const SHORT_ESCAPES: Record<number, string> = {

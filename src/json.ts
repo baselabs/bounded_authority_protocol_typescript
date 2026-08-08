@@ -56,7 +56,7 @@ export function jsonDecode(src: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Ta
   if (src.length > maxJsonBytes) fail("json: input exceeds json_bytes bound");
   const ctx: DecodeCtx = { src, pos: 0, bounds, nodes: 0, depth: 0 };
   skipWs(ctx);
-  const value = parseValue(ctx);
+  const value = parseValue(ctx, 0);
   // REQ1-JSON-single-value: after the value, only JSON whitespace may remain.
   skipWs(ctx);
   if (ctx.pos !== src.length) fail("json: trailing bytes");
@@ -71,21 +71,34 @@ function node(ctx: DecodeCtx): void {
   ctx.nodes++;
 }
 
-function parseValue(ctx: DecodeCtx): Tagged {
-  if (ctx.depth > resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
-  ctx.depth++;
+// Per-node-type depth gate (mirrors the official Jcs.encode/Json.decode model, corpus_independent
+// .mjs:1913): root value at level 0; a SCALAR is valid at level <= depth; a CONTAINER is valid at
+// level < depth (its children sit at level+1). A uniform `level > depth` gate wrongly accepts a
+// container at the deepest legal scalar level.
+function parseValue(ctx: DecodeCtx, level: number): Tagged {
   const src = ctx.src;
   const c = src[ctx.pos];
   if (c === undefined) fail("json: unexpected end of input");
   let v: Tagged;
-  if (c === 0x22 /* " */) v = parseString(ctx);
-  else if (c === 0x7b /* { */) v = parseObject(ctx);
-  else if (c === 0x5b /* [ */) v = parseArray(ctx);
-  else if (c === 0x74 /* t */ || c === 0x66 /* f */) v = parseBool(ctx);
-  else if (c === 0x6e /* n */) v = parseNull(ctx);
-  else if (c === 0x2d /* - */ || (c >= 0x30 && c <= 0x39)) v = parseNumber(ctx);
-  else fail("json: unexpected byte");
-  ctx.depth--;
+  if (c === 0x22 /* " */) {
+    if (level > resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseString(ctx);
+  } else if (c === 0x7b /* { */) {
+    if (level >= resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseObject(ctx, level + 1);
+  } else if (c === 0x5b /* [ */) {
+    if (level >= resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseArray(ctx, level + 1);
+  } else if (c === 0x74 /* t */ || c === 0x66 /* f */) {
+    if (level > resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseBool(ctx);
+  } else if (c === 0x6e /* n */) {
+    if (level > resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseNull(ctx);
+  } else if (c === 0x2d /* - */ || (c >= 0x30 && c <= 0x39)) {
+    if (level > resolve(ctx.bounds, "depth" as MaximaKey)) fail("json: depth bound");
+    v = parseNumber(ctx);
+  } else fail("json: unexpected byte");
   return v;
 }
 
@@ -273,7 +286,7 @@ function parseNumber(ctx: DecodeCtx): Tagged {
 }
 
 // Null-prototype object parse: Object.create(null) shape; duplicate keys reject at every depth.
-function parseObject(ctx: DecodeCtx): Tagged {
+function parseObject(ctx: DecodeCtx, childLevel: number): Tagged {
   node(ctx);
   const src = ctx.src;
   ctx.pos++; // skip {
@@ -296,7 +309,7 @@ function parseObject(ctx: DecodeCtx): Tagged {
     if (src[ctx.pos] !== 0x3a /* : */) fail("json: expected colon");
     ctx.pos++;
     skipWs(ctx);
-    const value = parseValue(ctx);
+    const value = parseValue(ctx, childLevel);
     members.set(nameStr, value);
     count++;
     if (count > resolve(ctx.bounds, "object_members" as MaximaKey)) fail("json: object_members bound");
@@ -315,7 +328,7 @@ function parseObject(ctx: DecodeCtx): Tagged {
   return { t: "object", v: members };
 }
 
-function parseArray(ctx: DecodeCtx): Tagged {
+function parseArray(ctx: DecodeCtx, childLevel: number): Tagged {
   node(ctx);
   const src = ctx.src;
   ctx.pos++; // skip [
@@ -327,7 +340,7 @@ function parseArray(ctx: DecodeCtx): Tagged {
   }
   for (;;) {
     skipWs(ctx);
-    const value = parseValue(ctx);
+    const value = parseValue(ctx, childLevel);
     items.push(value);
     if (items.length > resolve(ctx.bounds, "array_items" as MaximaKey)) fail("json: array_items bound");
     skipWs(ctx);

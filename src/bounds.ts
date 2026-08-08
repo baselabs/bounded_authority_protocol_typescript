@@ -74,10 +74,15 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
   for (const [key, value] of Object.entries(tightening)) {
     if (!(key in MAXIMA)) fail(`bounds.new: unknown limit ${key}`);
     if (!Number.isInteger(value)) fail(`bounds.new: non-integer limit ${key}`);
-    if (value <= 0) fail(`bounds.new: non-positive limit ${key}`);
     const mk = key as MaximaKey;
-    if (FIXED_WIDTH_KEYS.has(mk)) fail(`bounds.new: fixed-width key ${key} immutable`);
-    if (value > MAXIMA[mk]) fail(`bounds.new: widening limit ${key}`);
+    if (FIXED_WIDTH_KEYS.has(mk)) {
+      // REQ1-BOUNDS-fixed-widths: fixed-width keys cannot be tightened or widened, but setting to
+      // the exact maximum is an identity no-op (valid). Any other value rejects.
+      if (value !== MAXIMA[mk]) fail(`bounds.new: fixed-width key ${key} must equal maximum`);
+    } else {
+      if (value <= 0) fail(`bounds.new: non-positive limit ${key}`);
+      if (value > MAXIMA[mk]) fail(`bounds.new: widening limit ${key}`);
+    }
     overrides.set(mk, value);
   }
   return { maximum: MAXIMA, overrides };

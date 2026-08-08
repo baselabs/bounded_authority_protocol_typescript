@@ -88,8 +88,14 @@ test("bounds.new tightens a maximum", () => {
   const b = boundsNew({ depth: 16 });
   assert.equal(b.overrides.get("depth"), 16);
 });
+test("bounds.new accepts fixed-width key at exact maximum (identity)", () => {
+  // REQ1-BOUNDS-fixed-widths: fixed-width keys cannot be tightened or widened, but setting to the
+  // exact maximum is a no-op identity (corpus: bounds-new-exact-{digest,public_key,signature}_bytes).
+  const b = boundsNew({ signature_bytes: 64 });
+  assert.equal(b.overrides.get("signature_bytes"), 64);
+});
 rejects("bounds.new widening", () => boundsNew({ depth: 999 }));
-rejects("bounds.new fixed-width key", () => boundsNew({ signature_bytes: 64 }));
+rejects("bounds.new fixed-width key off-maximum", () => boundsNew({ signature_bytes: 32 }));
 rejects("bounds.new unknown key", () => boundsNew({ bogus: 1 } as Record<string, number>));
 
 const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);

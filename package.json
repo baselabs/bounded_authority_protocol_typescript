@@ -19,6 +19,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "license-check": "node tools/license-check.mjs",
     "test": "node --test --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
     "conformance": "tsx conformance/run.ts",
@@ -28,6 +29,7 @@
     "eslint": "^9.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
     "@types/node": "^20.0.0"
   }
 }

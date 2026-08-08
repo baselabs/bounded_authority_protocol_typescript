@@ -1,4 +1,4 @@
-import { fail, assert, type Result, ok, err } from "./error.js";
+import { fail, type Result, ok, err } from "./error.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import { utf8Str, strUtf8 } from "./json.js";
 
