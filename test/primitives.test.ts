@@ -7,6 +7,9 @@ import { jcsEncode } from "../src/jcs.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { boundsNew, MAXIMA } from "../src/bounds.js";
 import { InvalidError } from "../src/error.js";
+import { jwkFromPublicKey, thumbprint, jwkEncodePublic, jwkDecodePublic, thumbprintRaw, publicKeyThumbprintRaw } from "../src/jwk.js";
+import { uriNormalize } from "../src/uri.js";
+import { ed25519Verify, importPublicKey, _resetCensus, sha256 } from "../src/ed25519.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
 
@@ -90,3 +93,68 @@ rejects("bounds.new fixed-width key", () => boundsNew({ signature_bytes: 64 }));
 rejects("bounds.new unknown key", () => boundsNew({ bogus: 1 } as Record<string, number>));
 
 const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);
+
+// --- JWK + Ed25519 + SHA-256 known-answer (from the corpus) ---
+const KNOWN_X = "W1s7yE9fGDMBbmdpqYVwQ1hDCXtzOePUD3fIf1t7FDk";
+const KNOWN_TP = "d4ucEZwvJTfwxXCN4f2xmIE5ZBFoH5i5mlzeWZaB3yI";
+
+test("jwk.thumbprint known-answer", () => {
+  const raw = base64urlDecode(strUtf8(KNOWN_X));
+  assert.equal(raw.length, 32);
+  assert.equal(thumbprint(jwkFromPublicKey(raw)), KNOWN_TP);
+});
+test("jwk.encode_public known-answer (canonical OKP JSON)", () => {
+  const raw = base64urlDecode(strUtf8(KNOWN_X));
+  const enc = jwkEncodePublic(raw);
+  assert.equal(utf8(enc), `{"crv":"Ed25519","kty":"OKP","x":"${KNOWN_X}"}`);
+});
+test("jwk.decode_public round-trips encode_public", () => {
+  const raw = base64urlDecode(strUtf8(KNOWN_X));
+  const enc = jwkEncodePublic(raw);
+  const dec2 = jwkDecodePublic(enc);
+  assert.equal(dec2.ok, true);
+  if (dec2.ok) assert.deepEqual(Array.from(dec2.value), Array.from(raw));
+});
+test("thumbprintRaw == publicKeyThumbprintRaw", () => {
+  const raw = base64urlDecode(strUtf8(KNOWN_X));
+  assert.deepEqual(Array.from(thumbprintRaw(jwkFromPublicKey(raw))), Array.from(publicKeyThumbprintRaw(raw)));
+});
+test("ed25519 rejects a forged signature", () => {
+  _resetCensus();
+  const raw = base64urlDecode(strUtf8(KNOWN_X));
+  const key = importPublicKey(raw, KNOWN_TP);
+  const msg = strUtf8("hello");
+  const badSig = new Uint8Array(64); // all zeros — never valid
+  assert.equal(ed25519Verify(msg, badSig, key), false);
+});
+test("sha256 known-answer", () => {
+  // SHA-256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  const h = sha256();
+  assert.equal(utf8(base64urlEncode(h)), "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU");
+});
+
+// --- URI normalize known-answer (from the corpus) ---
+function uriEq(input: string, expected: string) {
+  test(`uri.normalize ${input} → ${expected}`, () => {
+    const r = uriNormalize(strUtf8(input));
+    assert.equal(r.ok, true, `expected ok for ${input}`);
+    if (r.ok) assert.equal(utf8(r.value), expected);
+  });
+}
+uriEq("https://example.test/path", "https://example.test/path");
+uriEq("https://EXAMPLE.test/", "https://example.test/");
+uriEq("https://example.com:443/", "https://example.com/");
+uriEq("https://example.com:0443/", "https://example.com/");
+uriEq("https://example.com:8443/a%2Fb", "https://example.com:8443/a%2Fb");
+uriEq("https://example.com/%7e", "https://example.com/~");
+uriEq("https://example.com/a/../b", "https://example.com/b");
+uriEq("https://[2001:db8::1]/", "https://[2001:db8::1]/");
+uriEq("https://192.0.2.1/", "https://192.0.2.1/");
+test("uri.normalize rejects http scheme (returns Err)", () => {
+  const r = uriNormalize(strUtf8("http://example.com/"));
+  assert.equal(r.ok, false);
+});
+test("uri.normalize rejects malformed (returns Err)", () => {
+  const r = uriNormalize(strUtf8("https://example.com:99999/"));
+  assert.equal(r.ok, false);
+});
