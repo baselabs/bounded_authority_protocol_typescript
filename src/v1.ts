@@ -57,12 +57,14 @@ export interface ExpectedAnchor {
   readonly anchorId: string; readonly anchoredAt: number; readonly chainId: string;
   readonly sequence: number; readonly chainHash: Uint8Array; // raw 32
   readonly keyId: string; readonly keyFingerprint: Uint8Array; // raw 32
+  readonly bounds?: Bounds;
 }
 
 export interface ExpectedKeyTransition {
   readonly transitionId: string; readonly chainId: string; readonly effectiveAt: number;
   readonly currentKeyId: string; readonly currentKeyFingerprint: Uint8Array; // raw 32
   readonly nextKeyId: string; readonly nextKeyFingerprint: Uint8Array; // raw 32
+  readonly bounds?: Bounds;
 }
 
 export interface ConsumptionEntry {
@@ -79,6 +81,7 @@ export interface ChainInput {
 export interface ExpectedChain {
   readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
   readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+  readonly bounds?: Bounds;
 }
 
 export interface ExpectedRequest {
@@ -89,6 +92,7 @@ export interface ExpectedRequest {
   readonly castArguments: Tagged;
   readonly evaluationTime: number; readonly clockSkew: number; readonly proofMaxAge: number;
   readonly nonce: { kind: "not_required" } | { kind: "required"; value: string };
+  readonly bounds?: Bounds;
 }
 
 // A selector input to the grant producer: either the bare "all" string or a tagged object.
@@ -145,6 +149,7 @@ export interface ExpectedExport {
   readonly endAnchor: ExpectedAnchor;
   readonly transitions: ExpectedKeyTransition[];
   readonly objectVersion: string;
+  readonly bounds?: Bounds;
 }
 
 export interface ArchivedObject {
@@ -159,17 +164,17 @@ export interface HistoricalKeyChain {
 // --- shared closed-header / claim validators (derived from protocol-v1.md + RFCs) ---
 
 // Parse a protected header object; validate the closed member set + alg + typ + kid.
-function parseGrantHeader(seg: CompactSegments): { kid: string } {
-  const h = jsonDecode(seg.protectedBytes);
+function parseGrantHeader(seg: CompactSegments, bounds: Bounds): { kid: string } {
+  const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "typ", "kid"], "grant header");
   requireStringLit(h, "alg", ALG, "grant header alg");
   requireStringLit(h, "typ", GRANT_TYP, "grant header typ");
-  const kid = requireKid(h);
+  const kid = requireKid(h, bounds);
   return { kid };
 }
 
-function parseProofHeader(seg: CompactSegments): { holderThumbprint: Uint8Array; holderKey: Uint8Array } {
-  const h = jsonDecode(seg.protectedBytes);
+function parseProofHeader(seg: CompactSegments, bounds: Bounds): { holderThumbprint: Uint8Array; holderKey: Uint8Array } {
+  const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "typ", "jwk"], "proof header");
   requireStringLit(h, "alg", ALG, "proof header alg");
   requireStringLit(h, "typ", PROOF_TYP, "proof header typ");
@@ -187,29 +192,29 @@ function parseProofHeader(seg: CompactSegments): { holderThumbprint: Uint8Array;
   return { holderThumbprint: tp, holderKey: rawKey };
 }
 
-function parseAnchorHeader(seg: CompactSegments): { kid: string } {
-  const h = jsonDecode(seg.protectedBytes);
+function parseAnchorHeader(seg: CompactSegments, bounds: Bounds): { kid: string } {
+  const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "typ", "kid"], "anchor header");
   requireStringLit(h, "alg", ALG, "anchor header alg");
   requireStringLit(h, "typ", ANCHOR_TYP, "anchor header typ");
-  const kid = requireKid(h);
+  const kid = requireKid(h, bounds);
   return { kid };
 }
 
-function parseTransitionHeader(seg: CompactSegments): { kid: string } {
-  const h = jsonDecode(seg.protectedBytes);
+function parseTransitionHeader(seg: CompactSegments, bounds: Bounds): { kid: string } {
+  const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "typ", "kid"], "transition header");
   requireStringLit(h, "alg", ALG, "transition header alg");
   requireStringLit(h, "typ", TRANSITION_TYP, "transition header typ");
-  const kid = requireKid(h);
+  const kid = requireKid(h, bounds);
   return { kid };
 }
 
-function requireKid(h: Extract<Tagged, { t: "object" }>): string {
+function requireKid(h: Extract<Tagged, { t: "object" }>, bounds: Bounds): string {
   const kidV = h.v.get("kid")!;
   if (kidV.t !== "string") fail("header: kid string");
   const b = kidV.v;
-  if (b.length < 1 || b.length > resolve(MAXIMUM_BOUNDS, "kid_bytes" as MaximaKey)) fail("header: kid bytes");
+  if (b.length < 1 || b.length > resolve(bounds, "kid_bytes" as MaximaKey)) fail("header: kid bytes");
   const s = utf8Str(b);
   if (!/^[A-Za-z0-9._~-]+$/.test(s)) fail("header: kid charset");
   return s;
@@ -279,11 +284,11 @@ function isIpv6(literal: string): boolean {
 }
 
 // StringOrURI claim: non-empty, ≤ identifier_bytes, well-formed, valid StringOrURI.
-function requireStringOrUri(v: Tagged | undefined, key: string): string {
+function requireStringOrUri(v: Tagged | undefined, key: string, bounds: Bounds): string {
   if (!v || v.t !== "string") fail(`claim: ${key} string`);
   const s = utf8Str(v.v);
   const len = strUtf8(s).length;
-  if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail(`claim: ${key} bytes`);
+  if (len < 1 || len > resolve(bounds, "identifier_bytes" as MaximaKey)) fail(`claim: ${key} bytes`);
   if (!isStringOrUri(s)) fail(`claim: ${key} string-or-uri`);
   return s;
 }
@@ -311,30 +316,30 @@ function requireB64urlN(v: Tagged | undefined, key: string, n: number): Uint8Arr
 }
 
 // Printable-ASCII operation name 1..operation_bytes (REQ1-CLAIM-operation-shape, valid_operation?).
-function requireOperation(v: Tagged | undefined, key: string): string {
+function requireOperation(v: Tagged | undefined, key: string, bounds: Bounds): string {
   if (!v || v.t !== "string") fail(`claim: ${key} operation string`);
   const b = v.v;
-  if (b.length < 1 || b.length > resolve(MAXIMUM_BOUNDS, "operation_bytes" as MaximaKey)) fail(`claim: ${key} operation bytes`);
+  if (b.length < 1 || b.length > resolve(bounds, "operation_bytes" as MaximaKey)) fail(`claim: ${key} operation bytes`);
   const s = utf8Str(b);
   if (!/^[\x20-\x7e]+$/.test(s)) fail(`claim: ${key} operation printable ASCII`);
   return s;
 }
 
 // RFC 9110 method token 1..method_bytes, ASCII token chars, byte-for-byte (no case-fold).
-function requireMethod(v: Tagged | undefined, key: string): string {
+function requireMethod(v: Tagged | undefined, key: string, bounds: Bounds): string {
   if (!v || v.t !== "string") fail(`claim: ${key} method string`);
   const b = v.v;
-  if (b.length < 1 || b.length > resolve(MAXIMUM_BOUNDS, "method_bytes" as MaximaKey)) fail(`claim: ${key} method bytes`);
+  if (b.length < 1 || b.length > resolve(bounds, "method_bytes" as MaximaKey)) fail(`claim: ${key} method bytes`);
   const s = utf8Str(b);
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(s)) fail(`claim: ${key} method token`);
   return s;
 }
 
 // Normalized HTTPS URI claim (≤ uri_bytes; must already equal Uri.normalize — checked by re-normalizing).
-function requireNormalizedUri(v: Tagged | undefined, key: string): string {
+function requireNormalizedUri(v: Tagged | undefined, key: string, bounds: Bounds): string {
   if (!v || v.t !== "string") fail(`claim: ${key} uri string`);
   const b = v.v;
-  if (b.length < 1 || b.length > resolve(MAXIMUM_BOUNDS, "uri_bytes" as MaximaKey)) fail(`claim: ${key} uri bytes`);
+  if (b.length < 1 || b.length > resolve(bounds, "uri_bytes" as MaximaKey)) fail(`claim: ${key} uri bytes`);
   const s = utf8Str(b);
   if (!s.toLowerCase().startsWith("https://")) fail(`claim: ${key} https scheme`);
   // REQ1-URI-pre-normalized: re-normalize and require equality.
@@ -345,46 +350,46 @@ function requireNormalizedUri(v: Tagged | undefined, key: string): string {
 }
 
 // Validate the closed grant payload members + operation structure. operations[] (NOT ba_req).
-function validateGrantPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+function validateGrantPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["v", "iss", "jti", "aud", "iat", "nbf", "exp", "cnf", "operations"], "grant payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("grant: v=1");
   const opsV = p.v.get("operations")!;
   if (opsV.t !== "array") fail("grant: operations array");
-  if (opsV.v.length < 1 || opsV.v.length > resolve(MAXIMUM_BOUNDS, "operations" as MaximaKey)) fail("grant: operations count");
+  if (opsV.v.length < 1 || opsV.v.length > resolve(bounds, "operations" as MaximaKey)) fail("grant: operations count");
   const names = new Set<string>();
   for (const op of opsV.v) {
     if (op.t !== "object") fail("grant: operation object");
     const opObj: Extract<Tagged, { t: "object" }> = op;
     requireObjectExact(opObj, ["name", "selectors"], "grant operation");
-    const name = requireOperation(opObj.v.get("name"), "operation name");
+    const name = requireOperation(opObj.v.get("name"), "operation name", bounds);
     if (names.has(name)) fail("grant: operation name unique");
     names.add(name);
     const sels = opObj.v.get("selectors")!;
     if (sels.t !== "array") fail("grant: selectors array");
-    if (sels.v.length < 1 || sels.v.length > resolve(MAXIMUM_BOUNDS, "selectors" as MaximaKey)) fail("grant: selectors count");
+    if (sels.v.length < 1 || sels.v.length > resolve(bounds, "selectors" as MaximaKey)) fail("grant: selectors count");
     for (const s of sels.v) parseSelector(s); // validate each selector's closed shape
   }
 }
 
-function extractAudience(v: Tagged | undefined): string[] {
+function extractAudience(v: Tagged | undefined, bounds: Bounds): string[] {
   if (!v) fail("claim: aud");
   if (v.t === "string") {
     const s = utf8Str(v.v);
     const len = strUtf8(s).length;
-    if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud bytes");
+    if (len < 1 || len > resolve(bounds, "identifier_bytes" as MaximaKey)) fail("claim: aud bytes");
     if (!isStringOrUri(s)) fail("claim: aud string-or-uri");
     return [s];
   }
   if (v.t === "array") {
-    if (v.v.length < 1 || v.v.length > resolve(MAXIMUM_BOUNDS, "audiences" as MaximaKey)) fail("claim: aud count");
+    if (v.v.length < 1 || v.v.length > resolve(bounds, "audiences" as MaximaKey)) fail("claim: aud count");
     const seen = new Set<string>();
     const out: string[] = [];
     for (const a of v.v) {
       if (a.t !== "string") fail("claim: aud string");
       const s = utf8Str(a.v);
       const len = strUtf8(s).length;
-      if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "identifier_bytes" as MaximaKey)) fail("claim: aud member bytes");
+      if (len < 1 || len > resolve(bounds, "identifier_bytes" as MaximaKey)) fail("claim: aud member bytes");
       if (!isStringOrUri(s)) fail("claim: aud member string-or-uri");
       if (seen.has(s)) fail("claim: aud unique");
       seen.add(s);
@@ -395,7 +400,7 @@ function extractAudience(v: Tagged | undefined): string[] {
   fail("claim: aud shape");
 }
 
-function validateProofPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+function validateProofPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   if (p.t !== "object") fail("proof payload: object");
   const hasNonce = p.v.has("nonce");
   const keys = hasNonce
@@ -404,12 +409,12 @@ function validateProofPayload(p: Tagged): asserts p is Extract<Tagged, { t: "obj
   requireObjectExact(p, keys, "proof payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("proof: v=1");
-  requireStringOrUri(p.v.get("jti"), "jti");
-  requireMethod(p.v.get("htm"), "htm");
-  requireNormalizedUri(p.v.get("htu"), "htu");
+  requireStringOrUri(p.v.get("jti"), "jti", bounds);
+  requireMethod(p.v.get("htm"), "htm", bounds);
+  requireNormalizedUri(p.v.get("htu"), "htu", bounds);
   requireInt(p.v.get("iat"), "iat");
   requireUuid(p.v.get("ba_inv"), "ba_inv");
-  requireOperation(p.v.get("ba_op"), "ba_op");
+  requireOperation(p.v.get("ba_op"), "ba_op", bounds);
   requireB64urlN(p.v.get("ath"), "ath", 32);
   requireB64urlN(p.v.get("ba_req"), "ba_req", 32);
   if (hasNonce) {
@@ -418,30 +423,30 @@ function validateProofPayload(p: Tagged): asserts p is Extract<Tagged, { t: "obj
     const ns = utf8Str(n.v);
     if (!isWellFormed(ns)) fail("proof: nonce well-formed");
     const len = strUtf8(ns).length;
-    if (len < 1 || len > resolve(MAXIMUM_BOUNDS, "nonce_bytes" as MaximaKey)) fail("proof: nonce bytes");
+    if (len < 1 || len > resolve(bounds, "nonce_bytes" as MaximaKey)) fail("proof: nonce bytes");
   }
 }
 
 // Validate the closed anchor payload (ADR 0004 § Boundary anchors).
-function validateAnchorPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+function validateAnchorPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["anchor_id", "anchored_at", "chain_hash", "chain_id", "key_fingerprint", "sequence", "v"], "anchor payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("anchor: v=1");
-  requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+  requireStringOrUri(p.v.get("anchor_id"), "anchor_id", bounds);
   requireInt(p.v.get("anchored_at"), "anchored_at");
-  requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  requireStringOrUri(p.v.get("chain_id"), "chain_id", bounds);
   requireInt(p.v.get("sequence"), "sequence");
   requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32);
   requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32);
 }
 
 // Validate the closed key-transition payload (ADR 0004 § Authenticated key transitions).
-function validateTransitionPayload(p: Tagged): asserts p is Extract<Tagged, { t: "object" }> {
+function validateTransitionPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["chain_id", "effective_at", "from_key_fingerprint", "to_key_fingerprint", "to_key_id", "transition_id", "v"], "transition payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("transition: v=1");
-  requireStringOrUri(p.v.get("transition_id"), "transition_id");
-  requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  requireStringOrUri(p.v.get("transition_id"), "transition_id", bounds);
+  requireStringOrUri(p.v.get("chain_id"), "chain_id", bounds);
   requireInt(p.v.get("effective_at"), "effective_at");
   requireB64urlN(p.v.get("from_key_fingerprint"), "from_key_fingerprint", 32);
   requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32);
@@ -449,7 +454,7 @@ function validateTransitionPayload(p: Tagged): asserts p is Extract<Tagged, { t:
   const toKeyId = p.v.get("to_key_id")!;
   if (toKeyId.t !== "string") fail("transition: to_key_id string");
   const s = utf8Str(toKeyId.v);
-  if (s.length < 1 || s.length > resolve(MAXIMUM_BOUNDS, "kid_bytes" as MaximaKey)) fail("transition: to_key_id bytes");
+  if (s.length < 1 || s.length > resolve(bounds, "kid_bytes" as MaximaKey)) fail("transition: to_key_id bytes");
   if (!/^[A-Za-z0-9._~-]+$/.test(s)) fail("transition: to_key_id charset");
 }
 
@@ -512,15 +517,16 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
 // 2. decode_grant (REQ1-VERIFY-decode-not-evaluated).
 export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
   return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { kid } = parseGrantHeader(seg);
-    const p = jsonDecode(seg.payloadBytes);
-    validateGrantPayload(p);
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    const seg = parseCompact(compact, b);
+    const { kid } = parseGrantHeader(seg, b);
+    const p = jsonDecode(seg.payloadBytes, b);
+    validateGrantPayload(p, b);
     if (p.t !== "object") fail("decode_grant: payload object");
     const pobj = p;
-    const iss = requireStringOrUri(pobj.v.get("iss"), "iss");
-    const jti = requireStringOrUri(pobj.v.get("jti"), "jti");
-    const aud = extractAudience(pobj.v.get("aud"));
+    const iss = requireStringOrUri(pobj.v.get("iss"), "iss", b);
+    const jti = requireStringOrUri(pobj.v.get("jti"), "jti", b);
+    const aud = extractAudience(pobj.v.get("aud"), b);
     const iat = requireInt(pobj.v.get("iat"), "iat");
     const nbf = requireInt(pobj.v.get("nbf"), "nbf");
     const exp = requireInt(pobj.v.get("exp"), "exp");
@@ -539,11 +545,12 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
 // 3. decode_proof.
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
   return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { holderThumbprint } = parseProofHeader(seg);
-    const p = jsonDecode(seg.payloadBytes);
-    validateProofPayload(p);
-    const jti = requireStringOrUri(p.v.get("jti"), "jti");
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    const seg = parseCompact(compact, b);
+    const { holderThumbprint } = parseProofHeader(seg, b);
+    const p = jsonDecode(seg.payloadBytes, b);
+    validateProofPayload(p, b);
+    const jti = requireStringOrUri(p.v.get("jti"), "jti", b);
     return { proofId: jti, holderThumbprint, verification: "not_evaluated" as const };
   });
 }
@@ -556,17 +563,21 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
     // Cross-vendor #19: the reference requires is_integer(evaluation_time) and is_integer(clock_skew)
     // (>= 0) — runtime.ex:522-523. A range-only `< 0` check accepts fractional times.
     if (!Number.isInteger(expected.evaluationTime)) fail("verify_grant: integer evaluation time");
-    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
-    const seg = parseCompact(compact, expected.bounds ?? MAXIMUM_BOUNDS);
-    const { kid } = parseGrantHeader(seg);
+    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:186) and
+    // threads it into validate_expected_grant (clock_skew <= bounds.clock_skew) + every bound-sensitive
+    // check below. A caller tightening via expected.bounds now actually takes effect.
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
+    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(b, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
+    const seg = parseCompact(compact, b);
+    const { kid } = parseGrantHeader(seg, b);
     if (kid !== trusted.keyId) fail("verify_grant: kid exact");
-    const p = jsonDecode(seg.payloadBytes);
-    validateGrantPayload(p);
+    const p = jsonDecode(seg.payloadBytes, b);
+    validateGrantPayload(p, b);
     if (p.t !== "object") fail("verify_grant: payload object");
     const pobj = p;
-    const iss = requireStringOrUri(pobj.v.get("iss"), "iss");
+    const iss = requireStringOrUri(pobj.v.get("iss"), "iss", b);
     if (iss !== expected.issuer) fail("verify_grant: issuer exact");
-    const aud = extractAudience(pobj.v.get("aud"));
+    const aud = extractAudience(pobj.v.get("aud"), b);
     if (!aud.includes(expected.audience)) fail("verify_grant: audience match");
     const iat = requireInt(pobj.v.get("iat"), "iat");
     const nbf = requireInt(pobj.v.get("nbf"), "nbf");
@@ -582,7 +593,7 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
     const key = importPublicKey(trusted.publicKey, utf8Str(base64urlEncode(fp)));
     if (!ed25519Verify(seg.signingInput, seg.signature, key)) fail("verify_grant: signature");
     return {
-      version: VERSION, issuer: iss, grantId: requireStringOrUri(p.v.get("jti"), "jti"),
+      version: VERSION, issuer: iss, grantId: requireStringOrUri(p.v.get("jti"), "jti", b),
       issuerKeyFingerprint: fp, holderThumbprint: jkt, matchedAudience: expected.audience,
       issuedAt: iat, notBefore: nbf, expiresAt: exp, authorization: "not_evaluated" as const,
     };
@@ -602,19 +613,24 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     // (>= 0), and proof_max_age > 0 (strictly positive) — runtime.ex:522-523,550-551. A range-only
     // `< 0` check accepts fractional times and proofMaxAge=0. The signed-time boundary is exact.
     if (!Number.isInteger(expected.evaluationTime)) fail("check_envelope: integer evaluation time");
-    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
-    if (!Number.isInteger(expected.proofMaxAge) || expected.proofMaxAge <= 0 || expected.proofMaxAge > resolve(MAXIMUM_BOUNDS, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
+    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:204) and
+    // threads it into validate_expected_request (clock_skew, proof_max_age) + parse_grant + parse_proof
+    // + every bound-sensitive claim check below. A caller tightening via expected.bounds now takes
+    // effect across both the grant and the proof.
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
+    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(b, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
+    if (!Number.isInteger(expected.proofMaxAge) || expected.proofMaxAge <= 0 || expected.proofMaxAge > resolve(b, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
     // --- verify grant (issuer signature + context) ---
-    const gseg = parseCompact(grantCompact, MAXIMUM_BOUNDS);
-    const { kid: gkid } = parseGrantHeader(gseg);
+    const gseg = parseCompact(grantCompact, b);
+    const { kid: gkid } = parseGrantHeader(gseg, b);
     if (gkid !== t.keyId) fail("check_envelope: grant kid");
-    const gp = jsonDecode(gseg.payloadBytes);
-    validateGrantPayload(gp);
+    const gp = jsonDecode(gseg.payloadBytes, b);
+    validateGrantPayload(gp, b);
     if (gp.t !== "object") fail("check_envelope: grant payload");
     const gobj = gp;
-    const giss = requireStringOrUri(gobj.v.get("iss"), "iss");
+    const giss = requireStringOrUri(gobj.v.get("iss"), "iss", b);
     if (giss !== expected.issuer) fail("check_envelope: issuer");
-    const gaud = extractAudience(gobj.v.get("aud"));
+    const gaud = extractAudience(gobj.v.get("aud"), b);
     if (!gaud.includes(expected.audience)) fail("check_envelope: audience");
     const giat = requireInt(gobj.v.get("iat"), "iat");
     const gnbf = requireInt(gobj.v.get("nbf"), "nbf");
@@ -630,10 +646,10 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const gkey = importPublicKey(t.publicKey, utf8Str(base64urlEncode(gfp)));
     if (!ed25519Verify(gseg.signingInput, gseg.signature, gkey)) fail("check_envelope: grant signature");
     // --- verify proof (holder signature) ---
-    const pseg = parseCompact(proofCompact, MAXIMUM_BOUNDS);
-    const { holderThumbprint, holderKey } = parseProofHeader(pseg);
-    const pp = jsonDecode(pseg.payloadBytes);
-    validateProofPayload(pp);
+    const pseg = parseCompact(proofCompact, b);
+    const { holderThumbprint, holderKey } = parseProofHeader(pseg, b);
+    const pp = jsonDecode(pseg.payloadBytes, b);
+    validateProofPayload(pp, b);
     const hkey = importPublicKey(holderKey, utf8Str(base64urlEncode(holderThumbprint)));
     if (!ed25519Verify(pseg.signingInput, pseg.signature, hkey)) fail("check_envelope: proof signature");
     if (pp.t !== "object") fail("check_envelope: proof payload");
@@ -643,16 +659,16 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const ppAth = pp.v.get("ath")!;
     if (ppAth.t !== "string" || utf8Str(ppAth.v) !== athB64) fail("check_envelope: ath");
     // Method / URI / invocation / operation bindings.
-    const htm = requireMethod(pp.v.get("htm"), "htm");
+    const htm = requireMethod(pp.v.get("htm"), "htm", b);
     if (htm !== expected.method) fail("check_envelope: method");
-    const htu = requireNormalizedUri(pp.v.get("htu"), "htu");
+    const htu = requireNormalizedUri(pp.v.get("htu"), "htu", b);
     if (htu !== expected.targetUri) fail("check_envelope: target_uri");
     const baInv = requireUuid(pp.v.get("ba_inv"), "ba_inv");
     if (baInv !== expected.invocationId) fail("check_envelope: invocation_id");
-    const baOp = requireOperation(pp.v.get("ba_op"), "ba_op");
+    const baOp = requireOperation(pp.v.get("ba_op"), "ba_op", b);
     if (baOp !== expected.operation) fail("check_envelope: operation");
     // ba_req = request_digest(operation, cast_arguments) (base64url).
-    const baReqRaw = computeRequestDigest(baOp, expected.castArguments);
+    const baReqRaw = computeRequestDigest(baOp, expected.castArguments, b);
     const baReqB64 = utf8Str(base64urlEncode(baReqRaw));
     const ppBaReq = pp.v.get("ba_req")!;
     if (ppBaReq.t !== "string" || utf8Str(ppBaReq.v) !== baReqB64) fail("check_envelope: ba_req");
@@ -690,10 +706,10 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     }
     return {
       version: VERSION, issuer: giss,
-      grantId: requireStringOrUri(gobj.v.get("jti"), "jti"),
+      grantId: requireStringOrUri(gobj.v.get("jti"), "jti", b),
       issuerKeyFingerprint: gfp, holderThumbprint, matchedAudience: expected.audience,
       grantIssuedAt: giat, grantNotBefore: gnbf, grantExpiresAt: gexp,
-      proofId: requireStringOrUri(pp.v.get("jti"), "jti"),
+      proofId: requireStringOrUri(pp.v.get("jti"), "jti", b),
       invocationId: baInv, operation: baOp, uri: htu,
       grantHash: athRaw, requestHash: baReqRaw, proofIssuedAt: piat,
       authorization: "not_evaluated" as const,
@@ -742,19 +758,23 @@ function canonicalRowBytesFromId(chainIdBytes: Uint8Array, sequence: number, pre
   return jcsEncode({ t: "object", v: members }, b);
 }
 
-function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint8Array, commitment: Uint8Array): Uint8Array {
-  return canonicalRowBytesFromId(strUtf8(chainId), sequence, previousHash, commitment, MAXIMUM_BOUNDS);
+function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint8Array, commitment: Uint8Array, b: Bounds = MAXIMUM_BOUNDS): Uint8Array {
+  return canonicalRowBytesFromId(strUtf8(chainId), sequence, previousHash, commitment, b);
 }
 
 // 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
+    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (consumption_chain.ex
+    // check_chain) and threads it into the row-count bound + every parse_row (chain_row_bytes). A
+    // caller tightening via expected.bounds now takes effect.
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
     if (expected.chainId !== chain.chainId) fail("check_chain: chain_id");
     if (expected.firstSequence !== chain.firstSequence) fail("check_chain: first_sequence");
     if (expected.lastSequence !== chain.lastSequence) fail("check_chain: last_sequence");
     if (expected.rowCount !== chain.rowCount) fail("check_chain: row_count");
     if (chain.rowCount !== chain.rows.length || chain.rowCount < 1) fail("check_chain: row count");
-    if (chain.rowCount > resolve(MAXIMUM_BOUNDS, "chain_rows" as MaximaKey)) fail("check_chain: chain_rows bound");
+    if (chain.rowCount > resolve(b, "chain_rows" as MaximaKey)) fail("check_chain: chain_rows bound");
     if (chain.lastSequence !== chain.firstSequence + chain.rowCount - 1) fail("check_chain: range");
     // Genesis: firstSequence === 1 requires the all-zero predecessor.
     if (chain.firstSequence === 1) {
@@ -766,8 +786,8 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     let sequence = chain.firstSequence;
     for (let i = 0; i < chain.rows.length; i++) {
       const rowBytes = chain.rows[i]!;
-      if (rowBytes.length > resolve(MAXIMUM_BOUNDS, "chain_row_bytes" as MaximaKey)) fail(`check_chain: row ${i} bytes`);
-      const row = jsonDecode(rowBytes);
+      if (rowBytes.length > resolve(b, "chain_row_bytes" as MaximaKey)) fail(`check_chain: row ${i} bytes`);
+      const row = jsonDecode(rowBytes, b);
       requireObjectExact(row, ["v", "chain_id", "sequence", "previous", "commitment"], `check_chain row ${i}`);
       const vV = row.v.get("v")!;
       if (vV.t !== "int" || vV.v !== VERSION) fail(`check_chain row ${i}: v`);
@@ -785,7 +805,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
       // Canonical re-encode: the input row bytes MUST byte-equal the canonical re-encoded form
       // (mirrors consumption_chain.ex:96 parse_row `encode(entry).bytes == ^bytes`). This rejects
       // whitespace drift and member-order drift that would otherwise hash to a different chain link.
-      const reEncoded = canonicalRowBytes(chain.chainId, seqV.v, prevRaw, commitmentRaw);
+      const reEncoded = canonicalRowBytes(chain.chainId, seqV.v, prevRaw, commitmentRaw, b);
       if (!bytesEqual(reEncoded, rowBytes)) fail(`check_chain row ${i}: canonical`);
       previous = sha256(ROW_PREFIX, rowBytes);
       sequence++;
@@ -1080,8 +1100,11 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // Validate inputs BEFORE framing (mirrors anchored_export_codec.ex:33-57 encode →
     // validate_expected_export + parse_expected_transitions + validate_expected_key_path). The
     // parser would reject the bytes a too-large input would produce; the producer rejects earlier.
-    validateExportInputs(input, expected);
-    const headerBytes = buildArchiveHeader(input, expected.chain);
+    // BAP-09 #10/#11: resolve expected.bounds once and thread it through the encode-time bounds
+    // checks so a caller tightening via expected.bounds takes effect (matches verify_anchored_export).
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
+    validateExportInputs(input, expected, b);
+    const headerBytes = buildArchiveHeader(input, expected.chain, b);
     const archive = concat(
       ARCHIVE_PREFIX,
       frame(headerBytes),
@@ -1090,7 +1113,7 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
       ...input.rows.map(frame),
       frame(input.endAnchor),
     );
-    if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
+    if (archive.length > resolve(b, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
     return { archive, digest: sha256(archive) };
   });
 }
@@ -1099,10 +1122,10 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
 // validate_chunks): the transition count, chain range coherence, anchor bindings, and the chunk
 // list shape must hold before framing. The parser enforces all of this at verify time; the producer
 // must not mint bytes its own consumer would reject.
-function validateExportInputs(input: AnchoredExportInput, expected: ExpectedExport): void {
+function validateExportInputs(input: AnchoredExportInput, expected: ExpectedExport, b: Bounds): void {
   const chain = expected.chain;
   // Transition count bound (anchored_export_codec.ex:360 transition_count <= bounds.key_transitions).
-  if (!Number.isInteger(input.transitions.length) || input.transitions.length > resolve(MAXIMUM_BOUNDS, "key_transitions" as MaximaKey)) {
+  if (!Number.isInteger(input.transitions.length) || input.transitions.length > resolve(b, "key_transitions" as MaximaKey)) {
     fail("encode_anchored_export: transition_count bound");
   }
   if (expected.transitions.length !== input.transitions.length) fail("encode_anchored_export: transition count");
@@ -1124,7 +1147,7 @@ function validateExportInputs(input: AnchoredExportInput, expected: ExpectedExpo
   validateKeyPath(expected.startAnchor, expected.transitions, expected.endAnchor);
 }
 
-function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain): Uint8Array {
+function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain, b: Bounds): Uint8Array {
   if (chain.chainId !== input.chainId) fail("encode_anchored_export: chain_id");
   if (chain.firstSequence !== input.firstSequence) fail("encode_anchored_export: first_sequence");
   if (chain.lastSequence !== input.lastSequence) fail("encode_anchored_export: last_sequence");
@@ -1139,8 +1162,8 @@ function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain): U
     ["transition_count", { t: "int", v: input.transitions.length }],
     ["v", { t: "int", v: VERSION }],
   ]);
-  const headerBytes = jcsEncode({ t: "object", v: members });
-  if (headerBytes.length > resolve(MAXIMUM_BOUNDS, "archive_header_bytes" as MaximaKey)) fail("encode_anchored_export: header bytes");
+  const headerBytes = jcsEncode({ t: "object", v: members }, b);
+  if (headerBytes.length > resolve(b, "archive_header_bytes" as MaximaKey)) fail("encode_anchored_export: header bytes");
   return headerBytes;
 }
 
@@ -1161,18 +1184,21 @@ function frame(bytes: Uint8Array): Uint8Array {
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
     assert(key.publicKey.length === 32, "verify_historical_anchor: key width");
-    const seg = parseCompact(compact, MAXIMUM_BOUNDS);
-    const { kid } = parseAnchorHeader(seg);
+    // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check, as
+    // the reference does (boundary_anchor_codec.ex parses the compact + payload under bounds).
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
+    const seg = parseCompact(compact, b);
+    const { kid } = parseAnchorHeader(seg, b);
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
     if (expected.keyId !== key.keyId) fail("verify_historical_anchor: expected key id");
-    const p = jsonDecode(seg.payloadBytes);
-    validateAnchorPayload(p);
+    const p = jsonDecode(seg.payloadBytes, b);
+    validateAnchorPayload(p, b);
     if (p.t !== "object") fail("verify_historical_anchor: payload object");
-    const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+    const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id", b);
     if (anchorId !== expected.anchorId) fail("verify_historical_anchor: anchor_id");
     const anchoredAt = requireInt(p.v.get("anchored_at"), "anchored_at");
     if (anchoredAt !== expected.anchoredAt) fail("verify_historical_anchor: anchored_at");
-    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id", b);
     if (chainId !== expected.chainId) fail("verify_historical_anchor: chain_id");
     const sequence = requireInt(p.v.get("sequence"), "sequence");
     if (sequence !== expected.sequence) fail("verify_historical_anchor: sequence");
@@ -1200,17 +1226,19 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
   return trying(() => {
     assert(oldKey.publicKey.length === 32 && newKey.publicKey.length === 32, "verify_key_transition: key width");
     if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
-    const seg = parseCompact(compact, MAXIMUM_BOUNDS);
-    const { kid } = parseTransitionHeader(seg);
+    // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
+    const seg = parseCompact(compact, b);
+    const { kid } = parseTransitionHeader(seg, b);
     if (kid !== oldKey.keyId) fail("verify_key_transition: kid");
     if (expected.currentKeyId !== oldKey.keyId) fail("verify_key_transition: current key id");
     if (expected.nextKeyId !== newKey.keyId) fail("verify_key_transition: next key id");
-    const p = jsonDecode(seg.payloadBytes);
-    validateTransitionPayload(p);
+    const p = jsonDecode(seg.payloadBytes, b);
+    validateTransitionPayload(p, b);
     if (p.t !== "object") fail("verify_key_transition: payload object");
-    const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id");
+    const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id", b);
     if (transitionId !== expected.transitionId) fail("verify_key_transition: transition_id");
-    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+    const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id", b);
     if (chainId !== expected.chainId) fail("verify_key_transition: chain_id");
     const effectiveAt = requireInt(p.v.get("effective_at"), "effective_at");
     if (effectiveAt !== expected.effectiveAt) fail("verify_key_transition: effective_at");
@@ -1241,20 +1269,25 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
+    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (anchored_export_codec.ex:84-185)
+    // and threads it into validate_chunks (archive_chunks, archive_bytes), parse_archive (frame
+    // reads), and every row check. The inner anchors/transitions carry their own bounds (used by
+    // their own compact parsers). A caller tightening via expected.bounds now takes effect.
+    const b = expected.bounds ?? MAXIMUM_BOUNDS;
     // Validate the chunk list BEFORE concatenation (mirrors anchored_export_codec.ex:101-102,333-342
     // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
     // happens after the shape is validated.
-    validateChunks(archived.chunks);
+    validateChunks(archived.chunks, b);
     const archive = concat(...archived.chunks);
     if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
-    if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("verify_anchored_export: byte bound");
+    if (archive.length > resolve(b, "archive_bytes" as MaximaKey)) fail("verify_anchored_export: byte bound");
     // Digest: SHA-256 of the complete archive (constant-time compare).
     const digest = sha256(archive);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
     // Object version: exact equality (out-of-band context, not embedded).
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     // Parse the archive frames.
-    const parsed = parseArchive(archive);
+    const parsed = parseArchive(archive, b);
     // Header canonical equality.
     const headerMembers = new Map<string, Tagged>([
       ["chain_id", { t: "string", v: strUtf8(expected.chain.chainId) }],
@@ -1266,7 +1299,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       ["transition_count", { t: "int", v: expected.transitions.length }],
       ["v", { t: "int", v: VERSION }],
     ]);
-    const expectedHeaderBytes = jcsEncode({ t: "object", v: headerMembers });
+    const expectedHeaderBytes = jcsEncode({ t: "object", v: headerMembers }, b);
     if (!bytesEqual(parsed.headerBytes, expectedHeaderBytes)) fail("verify_anchored_export: header");
     // Verify start + end anchors + each transition against the ordered historical key chain.
     // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]); a 1-key,
@@ -1304,7 +1337,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     if (parsed.rows.length !== expected.chain.rowCount) fail("verify_anchored_export: row count");
     for (let i = 0; i < parsed.rows.length; i++) {
       const rowBytes = parsed.rows[i]!;
-      const row = jsonDecode(rowBytes);
+      const row = jsonDecode(rowBytes, b);
       requireObjectExact(row, ["v", "chain_id", "sequence", "previous", "commitment"], `verify_anchored_export row ${i}`);
       const vV = row.v.get("v")!;
       if (vV.t !== "int" || vV.v !== VERSION) fail(`verify_anchored_export row ${i}: v`);
@@ -1316,7 +1349,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       const prevRaw = requireB64urlN(row.v.get("previous"), "previous", 32);
       if (!bytesEqual(prevRaw, previous)) fail(`verify_anchored_export row ${i}: previous link`);
       const commitmentRaw = requireB64urlN(row.v.get("commitment"), "commitment", 32);
-      const reEncoded = canonicalRowBytes(expected.chain.chainId, seqV.v, prevRaw, commitmentRaw);
+      const reEncoded = canonicalRowBytes(expected.chain.chainId, seqV.v, prevRaw, commitmentRaw, b);
       if (!bytesEqual(reEncoded, rowBytes)) fail(`verify_anchored_export row ${i}: canonical`);
       previous = sha256(ROW_PREFIX, rowBytes);
       sequence++;
@@ -1334,18 +1367,20 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
 // Anchor-compact verification (shared by verify_historical_anchor + the anchored-export path).
 function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor, ctx: string): void {
   assert(key.publicKey.length === 32, `${ctx}: key width`);
-  const seg = parseCompact(compact, MAXIMUM_BOUNDS);
-  const { kid } = parseAnchorHeader(seg);
+  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
+  const b = expected.bounds ?? MAXIMUM_BOUNDS;
+  const seg = parseCompact(compact, b);
+  const { kid } = parseAnchorHeader(seg, b);
   if (kid !== key.keyId) fail(`${ctx}: kid`);
   if (expected.keyId !== key.keyId) fail(`${ctx}: expected key id`);
-  const p = jsonDecode(seg.payloadBytes);
-  validateAnchorPayload(p);
+  const p = jsonDecode(seg.payloadBytes, b);
+  validateAnchorPayload(p, b);
   if (p.t !== "object") fail(`${ctx}: payload object`);
-  const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id");
+  const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id", b);
   if (anchorId !== expected.anchorId) fail(`${ctx}: anchor_id`);
   const anchoredAt = requireInt(p.v.get("anchored_at"), "anchored_at");
   if (anchoredAt !== expected.anchoredAt) fail(`${ctx}: anchored_at`);
-  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id", b);
   if (chainId !== expected.chainId) fail(`${ctx}: chain_id`);
   const sequence = requireInt(p.v.get("sequence"), "sequence");
   if (sequence !== expected.sequence) fail(`${ctx}: sequence`);
@@ -1364,17 +1399,19 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
 function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPublicKey, nextKey: HistoricalPublicKey, expected: ExpectedKeyTransition, ctx: string): void {
   assert(currentKey.publicKey.length === 32 && nextKey.publicKey.length === 32, `${ctx}: key width`);
   if (bytesEqual(currentKey.publicKey, nextKey.publicKey)) fail(`${ctx}: distinct keys`);
-  const seg = parseCompact(compact, MAXIMUM_BOUNDS);
-  const { kid } = parseTransitionHeader(seg);
+  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
+  const b = expected.bounds ?? MAXIMUM_BOUNDS;
+  const seg = parseCompact(compact, b);
+  const { kid } = parseTransitionHeader(seg, b);
   if (kid !== currentKey.keyId) fail(`${ctx}: kid`);
   if (expected.currentKeyId !== currentKey.keyId) fail(`${ctx}: current key id`);
   if (expected.nextKeyId !== nextKey.keyId) fail(`${ctx}: next key id`);
-  const p = jsonDecode(seg.payloadBytes);
-  validateTransitionPayload(p);
+  const p = jsonDecode(seg.payloadBytes, b);
+  validateTransitionPayload(p, b);
   if (p.t !== "object") fail(`${ctx}: payload object`);
-  const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id");
+  const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id", b);
   if (transitionId !== expected.transitionId) fail(`${ctx}: transition_id`);
-  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id");
+  const chainId = requireStringOrUri(p.v.get("chain_id"), "chain_id", b);
   if (chainId !== expected.chainId) fail(`${ctx}: chain_id`);
   const effectiveAt = requireInt(p.v.get("effective_at"), "effective_at");
   if (effectiveAt !== expected.effectiveAt) fail(`${ctx}: effective_at`);
@@ -1403,20 +1440,20 @@ interface ParsedArchive {
   readonly end: Uint8Array;
 }
 
-function parseArchive(bytes: Uint8Array): ParsedArchive {
+function parseArchive(bytes: Uint8Array, bounds: Bounds): ParsedArchive {
   if (!bytesEqual(bytes.subarray(0, ARCHIVE_PREFIX.length), ARCHIVE_PREFIX)) fail("archive: prefix");
   let cursor = ARCHIVE_PREFIX.length;
-  const headerFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "archive_header_bytes" as MaximaKey), "archive header");
+  const headerFrame = readFrame(bytes, cursor, resolve(bounds, "archive_header_bytes" as MaximaKey), "archive header");
   cursor = headerFrame.next;
   // The header itself is canonical JSON; transition_count + row_count drive the frame iteration.
-  const header = jsonDecode(headerFrame.bytes);
+  const header = jsonDecode(headerFrame.bytes, bounds);
   requireObjectExact(header, ["v", "chain_id", "first_sequence", "last_sequence", "row_count", "transition_count", "previous_hash", "last_hash"], "archive header");
   const vV = header.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("archive: header v");
   const tcV = header.v.get("transition_count")!;
-  if (tcV.t !== "int" || tcV.v < 0 || tcV.v > resolve(MAXIMUM_BOUNDS, "key_transitions" as MaximaKey)) fail("archive: transition_count");
+  if (tcV.t !== "int" || tcV.v < 0 || tcV.v > resolve(bounds, "key_transitions" as MaximaKey)) fail("archive: transition_count");
   const rcV = header.v.get("row_count")!;
-  if (rcV.t !== "int" || rcV.v < 1 || rcV.v > resolve(MAXIMUM_BOUNDS, "chain_rows" as MaximaKey)) fail("archive: row_count");
+  if (rcV.t !== "int" || rcV.v < 1 || rcV.v > resolve(bounds, "chain_rows" as MaximaKey)) fail("archive: row_count");
   // Sequence-range coherence (mirrors the runner).
   const fsV = header.v.get("first_sequence")!;
   const lsV = header.v.get("last_sequence")!;
@@ -1424,21 +1461,21 @@ function parseArchive(bytes: Uint8Array): ParsedArchive {
   if (!(fsV.v > 0 && lsV.v >= fsV.v && rcV.v === lsV.v - fsV.v + 1)) fail("archive: row range");
   requireB64urlN(header.v.get("previous_hash"), "previous_hash", 32);
   requireB64urlN(header.v.get("last_hash"), "last_hash", 32);
-  const startFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), "start anchor");
+  const startFrame = readFrame(bytes, cursor, resolve(bounds, "anchor_bytes" as MaximaKey), "start anchor");
   cursor = startFrame.next;
   const transitions: Uint8Array[] = [];
   for (let i = 0; i < tcV.v; i++) {
-    const f = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), `transition ${i}`);
+    const f = readFrame(bytes, cursor, resolve(bounds, "anchor_bytes" as MaximaKey), `transition ${i}`);
     transitions.push(f.bytes);
     cursor = f.next;
   }
   const rows: Uint8Array[] = [];
   for (let i = 0; i < rcV.v; i++) {
-    const f = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "chain_row_bytes" as MaximaKey), `row ${i}`);
+    const f = readFrame(bytes, cursor, resolve(bounds, "chain_row_bytes" as MaximaKey), `row ${i}`);
     rows.push(f.bytes);
     cursor = f.next;
   }
-  const endFrame = readFrame(bytes, cursor, resolve(MAXIMUM_BOUNDS, "anchor_bytes" as MaximaKey), "end anchor");
+  const endFrame = readFrame(bytes, cursor, resolve(bounds, "anchor_bytes" as MaximaKey), "end anchor");
   cursor = endFrame.next;
   if (cursor !== bytes.length) fail("archive: exact EOF");
   return { headerBytes: headerFrame.bytes, start: startFrame.bytes, transitions, rows, end: endFrame.bytes };
@@ -1493,15 +1530,15 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
 
 // Validate the chunk list BEFORE concatenation (anchored_export_codec.ex:333-342 validate_chunks):
 // at least one chunk, each chunk nonempty, count < archive_chunks, running total ≤ archive_bytes.
-function validateChunks(chunks: Uint8Array[]): void {
+function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
   if (chunks.length === 0) fail("archive: no chunks");
-  if (chunks.length >= resolve(MAXIMUM_BOUNDS, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
+  if (chunks.length >= resolve(bounds, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
   let total = 0;
   for (let i = 0; i < chunks.length; i++) {
     const c = chunks[i]!;
     if (c.length === 0) fail(`archive: empty chunk ${i}`);
     total += c.length;
-    if (total > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("archive: chunk bytes");
+    if (total > resolve(bounds, "archive_bytes" as MaximaKey)) fail("archive: chunk bytes");
   }
 }
 

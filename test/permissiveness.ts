@@ -49,7 +49,10 @@ import {
   type BoundaryAnchorProducer, type ConsumptionEntry, type ChainInput, type ExpectedChain,
   type AnchoredExportInput, type ExpectedExport, type ExpectedAnchor, type ExpectedKeyTransition,
   type HistoricalKeyChain, type HistoricalPublicKey, type KeyTransitionProducer,
+  decodeGrant, verifyGrant, grantSigningInput, proofSigningInput,
+  type GrantProducer, type ProofProducer, type ExpectedGrant, type TrustedIssuer,
 } from "../src/v1.js";
+import { boundsNew, type Bounds } from "../src/bounds.js";
 import { sha256, _resetCensus } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
@@ -666,4 +669,144 @@ test("permissiveness: verifyAnchoredExport rejects fingerprint cycle A→B→A (
   // 3-position key chain where position 2 reuses key A (the cycle: A→B→A).
   const cyclic = buildArchive([a, b, a], { effectiveAts: [1500, 2000], endAnchoredAt: 3000 });
   assert.equal(verifyAnchoredExport({ chunks: [cyclic.archive], version: "v1" }, cyclic.keyChain, cyclic.expected).ok, false, "fingerprint cycle A→B→A must reject");
+});
+
+// === BAP-09 #10/#11 cross-vendor remediation — caller-supplied bounds threaded through verify/decode ===
+// The reference resolves Bounds.coerce(expected.bounds) once per entry point and threads the result
+// into EVERY bound-sensitive check (runtime.ex:186,204; consumption_chain.ex check_chain;
+// anchored_export_codec.ex:84-185): valid_key_id?(kid, bounds.kid_bytes), Json.decode(bytes, bounds),
+// valid_identifier?(iss/grant_id, bounds), decode_audiences(aud, bounds), operations(ops, bounds),
+// validate_chunks / parse_archive frame reads, etc. The SDK previously passed bounds ONLY to
+// parseCompact/parse_compact and hardcoded MAXIMUM_BOUNDS in every subsequent validator, so a caller
+// tightening had no effect. Each test below proves a tightening now rejects at the named gate. Defect:
+// revert the threading (any helper back to MAXIMUM_BOUNDS, or the bounds param removed) → the named
+// deny goes GREEN (Err→Ok regression), proving the test is red-capable.
+//
+// The falsifiable case: a grant whose kid is 13 bytes ("issuer-123456") is valid at MAX (kid_bytes
+// 128), but MUST be rejected under boundsNew({kid_bytes: 5}) via valid_key_id? (the reference's
+// decode_grant(grant, %{kid_bytes: 5}) rejects it). Each test drives one entry point.
+
+// The falsifiable case: a grant whose kid is 13 bytes ("issuer-123456") is valid at MAX (kid_bytes
+// 128), but MUST be rejected under boundsNew({kid_bytes: 5}) via valid_key_id? (the reference's
+// decode_grant(grant, %{kid_bytes: 5}) rejects it). Each test drives one entry point.
+
+// A typed JSON-null cast-arguments value (the Tagged null variant carries no `v`).
+const NULL_ARGS: Tagged = { t: "null" };
+
+// Build a real Ed25519-signed grant with a chosen kid (13 bytes by default). Returns the compact +
+// the issuer key material needed for verifyGrant / checkEnvelope.
+function signedGrant(kid = "issuer-123456"): {
+  compact: Uint8Array; issuer: TrustedIssuer; issuerPub: Uint8Array;
+  holderPub: Uint8Array; holderFp: Uint8Array;
+} {
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintOf(holder.publicKey);
+  const grant: GrantProducer = {
+    keyId: kid, issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+    operations: [{ name: "read", selectors: ["all"] }],
+  };
+  const si = grantSigningInput(grant);
+  if (!si.ok) throw new Error("grant signing input failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), issuer.privateKey));
+  return {
+    compact: assembleCompact(si.value, sig),
+    issuer: { keyId: kid, publicKey: issuer.publicKey },
+    issuerPub: issuer.publicKey, holderPub: holder.publicKey, holderFp,
+  };
+}
+
+// Build a valid proof binding to the grant (holder signs). Drives the checkEnvelope grant+proof path.
+function signedProof(grantCompact: Uint8Array, holderPub: Uint8Array, holderPriv: nodeCrypto.KeyObject): Uint8Array {
+  const proof: ProofProducer = {
+    holderPublicKey: holderPub,
+    proofId: "urn:example:proof:1", method: "POST", targetUri: "https://resource.example.test/invoke",
+    issuedAt: 1400, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    grantCompact, castArguments: NULL_ARGS,
+  };
+  const si = proofSigningInput(proof);
+  if (!si.ok) throw new Error("proof signing input failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), holderPriv));
+  return assembleCompact(si.value, sig);
+}
+
+// #10/#11: decodeGrant MUST thread caller-supplied bounds into requireKid (valid_key_id?). A grant
+// with a 13-byte kid is accepted at MAX, rejected under kid_bytes=5. Defect: revert requireKid to
+// MAXIMUM_BOUNDS → the tightened call returns Ok.
+test("permissiveness: decodeGrant honors caller bounds (kid tightening rejects) (#10/#11)", () => {
+  const { compact } = signedGrant();
+  // Control: no bounds (MAX) → the 13-byte kid is accepted.
+  assert.equal(decodeGrant(compact).ok, true, "13-byte kid must be accepted at MAX");
+  // Tightened: kid_bytes=5 → the 13-byte kid must be rejected (the reference's valid_key_id? gate).
+  assert.equal(decodeGrant(compact, boundsNew({ kid_bytes: 5 })).ok, false, "kid_bytes=5 must reject a 13-byte kid");
+});
+
+// #10/#11: verifyGrant MUST thread ExpectedGrant.bounds into requireKid (valid_key_id?). The grant is
+// validly signed, so the only load-bearing gate under the tightening is the kid bound. Defect: revert
+// verifyGrant's bounds threading → the tightened call returns Ok (signature still verifies).
+test("permissiveness: verifyGrant honors caller bounds (kid tightening rejects) (#10/#11)", () => {
+  _resetCensus();
+  const g = signedGrant();
+  const expectedMax: ExpectedGrant = {
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    evaluationTime: 1500, clockSkew: 60,
+  };
+  // Control: no bounds (MAX) → verifies.
+  assert.equal(verifyGrant(g.compact, g.issuer, expectedMax).ok, true, "13-byte kid must verify at MAX");
+  // Tightened: kid_bytes=5 → rejected via the kid gate (signature would otherwise verify).
+  const expectedTight: ExpectedGrant = { ...expectedMax, bounds: boundsNew({ kid_bytes: 5 }) };
+  assert.equal(verifyGrant(g.compact, g.issuer, expectedTight).ok, false, "kid_bytes=5 must reject a 13-byte kid");
+});
+
+// #10/#11: checkEnvelope MUST thread ExpectedRequest.bounds into the grant header parse. The grant +
+// proof are both validly signed; the only load-bearing gate under the tightening is the grant kid
+// bound. Defect: revert checkEnvelope's bounds threading → the tightened call returns Ok.
+test("permissiveness: checkEnvelope honors caller bounds (kid tightening rejects) (#10/#11)", () => {
+  _resetCensus();
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintOf(holder.publicKey);
+  // Grant with a 13-byte kid, signed by the issuer.
+  const grant: GrantProducer = {
+    keyId: "issuer-123456", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+    operations: [{ name: "read", selectors: ["all"] }],
+  };
+  const gsi = grantSigningInput(grant);
+  if (!gsi.ok) throw new Error("grant signing input failed");
+  const gmsg = strUtf8(`${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`);
+  const grantCompact = assembleCompact(gsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(gmsg), issuer.privateKey)));
+  const proofCompact = signedProof(grantCompact, holder.publicKey, holder.privateKey);
+  const base: ExpectedRequest = {
+    trustedIssuer: { keyId: "issuer-123456", publicKey: issuer.publicKey },
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    method: "POST", targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    castArguments: NULL_ARGS,
+    evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300, nonce: { kind: "not_required" },
+  };
+  // Control: no bounds (MAX) → envelope verifies.
+  assert.equal(checkEnvelope(grantCompact, proofCompact, base).ok, true, "13-byte kid must verify at MAX");
+  // Tightened: kid_bytes=5 → rejected via the grant kid gate.
+  const tight: ExpectedRequest = { ...base, bounds: boundsNew({ kid_bytes: 5 }) };
+  assert.equal(checkEnvelope(grantCompact, proofCompact, tight).ok, false, "kid_bytes=5 must reject a 13-byte kid");
+});
+
+// #10/#11 control: bounds absent on every Expected* MUST default to MAX (the conformance runner
+// constructs Expected* without bounds; a missing default would break 259/259). The 13-byte kid grant
+// verifies at MAX via every entry point that takes an Expected*.
+test("permissiveness: Expected*.bounds absent defaults to MAX (#11)", () => {
+  _resetCensus();
+  const g = signedGrant();
+  const eg: ExpectedGrant = {
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    evaluationTime: 1500, clockSkew: 60,
+  };
+  assert.equal(verifyGrant(g.compact, g.issuer, eg).ok, true);
+  assert.equal(decodeGrant(g.compact).ok, true);
 });
