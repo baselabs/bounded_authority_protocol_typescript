@@ -15,20 +15,26 @@ const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);
 // request_digest known-answer (corpus: request-digest-valid).
 test("request_digest known-answer: read {limit:10,record:{id:rec-1}}", () => {
   const castArgs = jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}'));
-  const d = requestDigestB64url("read", castArgs);
-  assert.equal(d, "uv20PiC8tRQoOy9-eRlBFPQngtiDXkw_SCbbgzxjC2g");
+  const r = requestDigestB64url("read", castArgs);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.value, "uv20PiC8tRQoOy9-eRlBFPQngtiDXkw_SCbbgzxjC2g");
 });
 test("request_digest exact-bound depth-15 nested array", () => {
   // 15-deep nested array of 0
   const castArgs = jsonDecode(strUtf8('[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]'));
-  const d = requestDigestB64url("read", castArgs);
-  assert.equal(d, "h9bznN0cMUdoyW3mrhnPmbP3rKVBaVF5HK97Mt_tqPk");
+  const r = requestDigestB64url("read", castArgs);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.value, "h9bznN0cMUdoyW3mrhnPmbP3rKVBaVF5HK97Mt_tqPk");
 });
 test("request_digest exact-bound 128-char operation", () => {
   const castArgs = jsonDecode(strUtf8('{}'));
   const op = "a".repeat(128);
-  const d = requestDigestB64url(op, castArgs);
-  assert.equal(d, "8FNOgHe05K3vT5ZF5gfZ4_v-1zmXrxLRebsusFJI0hc");
+  const r = requestDigestB64url(op, castArgs);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.value, "8FNOgHe05K3vT5ZF5gfZ4_v-1zmXrxLRebsusFJI0hc");
 });
 
 // Selector semantic identity: int vs float distinct.
@@ -88,21 +94,21 @@ test("assembleCompact builds 3-segment compact", () => {
     payloadSegment: strUtf8("eyJ2IjoyfQ"),
   };
   const sig = new Uint8Array(64); // zeros
-  const compact = assembleCompact(si, sig);
+  const r = assembleCompact(si, sig);
+  assert.equal(r.ok, true, "valid assemble must succeed");
+  if (!r.ok) return;
   const expected = "eyJ2IjoxfQ.eyJ2IjoyfQ." + utf8(base64urlEncode(new Uint8Array(64)));
-  assert.equal(utf8(compact), expected);
-  const seg = parseCompact(compact);
+  assert.equal(utf8(r.value), expected);
+  const seg = parseCompact(r.value);
   assert.equal(seg.signature.length, 64);
 });
 test("assembleCompact rejects bad kind", () => {
-  assert.throws(() =>
-    assembleCompact({ kind: "bogus" as never, protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(64)),
-  );
+  const r = assembleCompact({ kind: "bogus" as never, protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(64));
+  assert.equal(r.ok, false, "bad kind must return Err");
 });
 test("assembleCompact rejects short signature", () => {
-  assert.throws(() =>
-    assembleCompact({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(32)),
-  );
+  const r = assembleCompact({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(32));
+  assert.equal(r.ok, false, "short signature must return Err");
 });
 
 void ok; void base64urlDecode; void requestDigest;

@@ -51,6 +51,7 @@ import {
   type HistoricalKeyChain, type HistoricalPublicKey, type KeyTransitionProducer,
   decodeGrant, verifyGrant, grantSigningInput, proofSigningInput,
   type GrantProducer, type ProofProducer, type ExpectedGrant, type TrustedIssuer,
+  type SigningInput,
 } from "../src/v1.js";
 import { boundsNew, type Bounds } from "../src/bounds.js";
 import { sha256, _resetCensus } from "../src/ed25519.js";
@@ -294,6 +295,13 @@ function toHex(b: Uint8Array): string {
 // SDK's own producers, assemble archives via encodeAnchoredExport, and then mutate one variable per
 // finding. The producer/encode tests (#16, #17) need no signatures.
 
+// Unwrap a Result<Uint8Array> from assembleCompact in test helpers (failure is a test-setup bug).
+function mustAssemble(si: SigningInput, sig: Uint8Array): Uint8Array {
+  const c = assembleCompact(si, sig);
+  if (!c.ok) throw new Error("assembleCompact failed in test helper");
+  return c.value;
+}
+
 // Build a fresh Ed25519 keypair; return raw 32-byte public key + the signing KeyObject.
 function freshKey(): { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject } {
   const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("ed25519");
@@ -309,7 +317,7 @@ function signedAnchorCompact(
   if (!si.ok) throw new Error("anchor signing input failed");
   const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
   const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), privateKey));
-  return assembleCompact(si.value, sig);
+  return mustAssemble(si.value, sig);
 }
 
 const Z32 = new Uint8Array(32); // the all-zero 32-byte hash (genesis chain_hash / predecessor)
@@ -359,7 +367,7 @@ function buildArchive(
     if (!si.ok) throw new Error("transition signing input failed");
     const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
     const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), cur.privateKey));
-    transitions.push(assembleCompact(si.value, sig));
+    transitions.push(mustAssemble(si.value, sig));
     expectedTransitions.push({
       transitionId: `urn:example:transition:${i}`, chainId, effectiveAt,
       currentKeyId: `k${i}`, currentKeyFingerprint: fromFp,
@@ -716,7 +724,7 @@ function signedGrant(kid = "issuer-123456"): {
   const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
   const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), issuer.privateKey));
   return {
-    compact: assembleCompact(si.value, sig),
+    compact: mustAssemble(si.value, sig),
     issuer: { keyId: kid, publicKey: issuer.publicKey },
     issuerPub: issuer.publicKey, holderPub: holder.publicKey, holderFp,
   };
@@ -734,7 +742,7 @@ function signedProof(grantCompact: Uint8Array, holderPub: Uint8Array, holderPriv
   if (!si.ok) throw new Error("proof signing input failed");
   const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
   const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), holderPriv));
-  return assembleCompact(si.value, sig);
+  return mustAssemble(si.value, sig);
 }
 
 // #10/#11: decodeGrant MUST thread caller-supplied bounds into requireKid (valid_key_id?). A grant
@@ -783,7 +791,7 @@ test("permissiveness: checkEnvelope honors caller bounds (kid tightening rejects
   const gsi = grantSigningInput(grant);
   if (!gsi.ok) throw new Error("grant signing input failed");
   const gmsg = strUtf8(`${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`);
-  const grantCompact = assembleCompact(gsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(gmsg), issuer.privateKey)));
+  const grantCompact = mustAssemble(gsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(gmsg), issuer.privateKey)));
   const proofCompact = signedProof(grantCompact, holder.publicKey, holder.privateKey);
   const base: ExpectedRequest = {
     trustedIssuer: { keyId: "issuer-123456", publicKey: issuer.publicKey },
@@ -817,7 +825,7 @@ test("permissiveness: decodeGrant threads caller bounds into selector decode (#1
   const si = grantSigningInput(grant);
   if (!si.ok) throw new Error("grant signing input failed");
   const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
-  const compact = assembleCompact(si.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), issuer.privateKey)));
+  const compact = mustAssemble(si.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), issuer.privateKey)));
   // Control: at MAX, a one_of with 2 values is accepted.
   assert.equal(decodeGrant(compact).ok, true, "one_of with 2 values must be accepted at MAX");
   // Tightened: one_of_values=1 → the 2-value selector must be rejected (parseSelector threads bounds).

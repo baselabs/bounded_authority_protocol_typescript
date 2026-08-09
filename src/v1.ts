@@ -719,9 +719,10 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
   });
 }
 
-// 6. request_digest (the façade; returns the raw 32-byte digest).
-export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Uint8Array {
-  return computeRequestDigest(operation, castArguments, bounds ?? MAXIMUM_BOUNDS);
+// 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — cross-vendor #21: mirror
+// the Elixir {:ok, binary} | {:error, :invalid} and the other 15 façade functions).
+export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Result<Uint8Array> {
+  return trying(() => computeRequestDigest(operation, castArguments, bounds ?? MAXIMUM_BOUNDS));
 }
 
 // 7. encode_consumption_entry (ADR 0004 § Consumption rows). Returns canonical row bytes + hash.

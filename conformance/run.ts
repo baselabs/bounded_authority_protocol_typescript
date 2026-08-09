@@ -412,8 +412,8 @@ function dispatchAssembleCompact(input: Record<string, unknown>): Verdict {
     },
     b64Field(input, "signature", "assemble_compact"),
   ));
-  if (r === INVALID) return INVALID;
-  return { compact: utf8(r) };
+  if (r === INVALID || !r.ok) return INVALID;
+  return { compact: utf8(r.value) };
 }
 
 function dispatchDecodeGrant(input: Record<string, unknown>): Verdict {
@@ -461,8 +461,8 @@ function dispatchRequestDigest(input: Record<string, unknown>): Verdict {
   if (input.cast_arguments === undefined) fail("request_digest: cast_arguments");
   const castArgs = jsToTagged(input.cast_arguments);
   const r = runThunk(() => v1.requestDigest(operation, castArgs));
-  if (r === INVALID) return INVALID;
-  return { digest: b64e(r) };
+  if (r === INVALID || !r.ok) return INVALID;
+  return { digest: b64e(r.value) };
 }
 
 function dispatchVerifyGrant(input: Record<string, unknown>): Verdict {

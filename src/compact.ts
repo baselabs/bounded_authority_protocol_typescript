@@ -1,4 +1,4 @@
-import { fail, assert } from "./error.js";
+import { fail, assert, ok, err, trying, type Result } from "./error.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
@@ -69,11 +69,16 @@ export interface SigningInput {
   readonly payloadSegment: Uint8Array; // base64url text
 }
 
-export function assembleCompact(input: SigningInput, signature: Uint8Array): Uint8Array {
-  const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
-  if (!KINDS.includes(input.kind)) fail("assemble_compact: kind closed set");
-  assert(signature.length === 64, "assemble_compact: signature width 64");
-  // compact = protected "." payload "." base64url(signature).
-  const sigB64 = base64urlEncode(signature);
-  return concat(input.protectedSegment, DOTB, input.payloadSegment, DOTB, sigB64);
+// Cross-vendor #21: assemble_compact returns Ok<Uint8Array> | Err, mirroring the Elixir
+// {:ok, binary} | {:error, :invalid} and the other 15 façade functions (ADR 0014 D3). Failures
+// (bad kind, signature width) return Err via the trying wrapper rather than throwing InvalidError.
+export function assembleCompact(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
+  return trying(() => {
+    const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
+    if (!KINDS.includes(input.kind)) fail("assemble_compact: kind closed set");
+    assert(signature.length === 64, "assemble_compact: signature width 64");
+    // compact = protected "." payload "." base64url(signature).
+    const sigB64 = base64urlEncode(signature);
+    return concat(input.protectedSegment, DOTB, input.payloadSegment, DOTB, sigB64);
+  });
 }

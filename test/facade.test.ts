@@ -164,11 +164,13 @@ test("checkEnvelope rejects a wrong request method", () => {
   assert.equal(r.ok, false);
 });
 
-// === 6. request_digest (façade returns raw 32 bytes) ===
+// === 6. request_digest (façade returns Ok<raw 32 bytes> | Err) ===
 test("requestDigest returns the raw 32-byte digest", () => {
-  const d = requestDigest("read", jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')));
-  assert.equal(d.length, 32);
-  assert.equal(b64e(d), "uv20PiC8tRQoOy9-eRlBFPQngtiDXkw_SCbbgzxjC2g");
+  const r = requestDigest("read", jsonDecode(strUtf8('{"limit":10,"record":{"id":"rec-1"}}')));
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.value.length, 32);
+  assert.equal(b64e(r.value), "uv20PiC8tRQoOy9-eRlBFPQngtiDXkw_SCbbgzxjC2g");
 });
 
 // === 7. encode_consumption_entry ===
@@ -300,8 +302,10 @@ test("assembleCompact builds a 3-segment compact from a signing input", () => {
   assert.equal(si.ok, true);
   if (!si.ok) return;
   const sig = b64d("NaCpUf3ebKldiRpjHtKcJuvCjSVLSsmgZVWXa3Sz6Zvas3TeTEm3LqVDsUL8yc1VuakYOvFmsYxqQw8PV23uDA");
-  const compact = assembleCompact(si.value, sig);
-  assert.equal(utf8(compact), GRANT_COMPACT);
+  const r = assembleCompact(si.value, sig);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(utf8(r.value), GRANT_COMPACT);
 });
 
 // === 12. boundary_anchor_signing_input (producer known-answer) ===

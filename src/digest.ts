@@ -1,4 +1,4 @@
-import { fail } from "./error.js";
+import { fail, trying, type Result } from "./error.js";
 import { sha256 } from "./ed25519.js";
 import { jcsEncode } from "./jcs.js";
 import { base64urlEncode } from "./base64url.js";
@@ -95,10 +95,11 @@ function countTaggedNodes(v: Tagged): number {
   }
 }
 
-export function requestDigestB64url(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): string {
-  // base64url-encoded form (for comparison against proof.ba_req which is base64url).
-  // Return the raw bytes + encode at call site as needed. Provide both.
-  void bounds;
-  const raw = requestDigest(operation, castArguments);
-  return new TextDecoder().decode(base64urlEncode(raw));
+// base64url-encoded form (for comparison against proof.ba_req which is base64url). Returns
+// Ok<string> | Err (cross-vendor #21 + the bounds-ignored note: thread bounds into the digest).
+export function requestDigestB64url(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Result<string> {
+  return trying(() => {
+    const raw = requestDigest(operation, castArguments, bounds);
+    return new TextDecoder().decode(base64urlEncode(raw));
+  });
 }
