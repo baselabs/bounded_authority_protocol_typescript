@@ -1,6 +1,6 @@
 import { fail, assert, trying, type Result } from "./error.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
-import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
+import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
 // JWS compact serialization (RFC 7515) — the 3-segment wire shape: base64url(protected) || "." ||
 // base64url(payload) || "." || base64url(signature). The signing input (REQ1-SIGNING-exact-input)
@@ -20,7 +20,10 @@ const DOT = 0x2e;
 // Parse + bound a compact input into 3 segments. Validates the segment count, bounds, canonical
 // base64url of each segment, and decodes protected + payload (signature kept raw after decode).
 export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): CompactSegments {
-  if (input.length > resolve(bounds, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
+  // Cross-vendor F2: re-validate caller-supplied bounds (a hand-crafted Bounds can widen limits past
+  // MAXIMA, bypassing boundsNew). Mirrors the reference's Bounds.coerce on every entry point.
+  const b = coerceBounds(bounds);
+  if (input.length > resolve(b, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
   if (input.length === 0) fail("compact: empty");
   // Split into exactly 3 segments on '.'.
   const dots: number[] = [];
@@ -32,10 +35,10 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
   const protectedText = input.subarray(0, d0);
   const payloadText = input.subarray(d0 + 1, d1);
   const signatureText = input.subarray(d1 + 1);
-  if (protectedText.length > resolve(bounds, "encoded_segment_bytes" as MaximaKey)) fail("compact: protected segment bound");
-  if (payloadText.length > resolve(bounds, "encoded_segment_bytes" as MaximaKey)) fail("compact: payload segment bound");
-  const protectedBytes = base64urlDecode(protectedText, resolve(bounds, "decoded_segment_bytes" as MaximaKey));
-  const payloadBytes = base64urlDecode(payloadText, resolve(bounds, "decoded_segment_bytes" as MaximaKey));
+  if (protectedText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("compact: protected segment bound");
+  if (payloadText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("compact: payload segment bound");
+  const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
+  const payloadBytes = base64urlDecode(payloadText, resolve(b, "decoded_segment_bytes" as MaximaKey));
   const signature = base64urlDecode(signatureText);
   return {
     protectedSegment: protectedText,

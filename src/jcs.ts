@@ -1,5 +1,5 @@
 import { fail } from "./error.js";
-import { resolve, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
+import { resolve, coerceBounds, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
 import { strUtf8, utf8Str, type Tagged } from "./json.js";
 
 // RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (protocol-v1.md:91-95,
@@ -16,11 +16,14 @@ import { strUtf8, utf8Str, type Tagged } from "./json.js";
 // the serialization is byte-identical for equal numeric value, matching the Elixir JCS).
 
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
+  // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override
+  // can widen limits past MAXIMA). Mirrors the reference's Bounds.coerce.
+  const b = coerceBounds(bounds);
   const parts: Uint8Array[] = [];
-  emit(value, parts, bounds, 0, 0);
+  emit(value, parts, b, 0, 0);
   let total = 0;
   for (const p of parts) total += p.length;
-  if (total > resolve(bounds, "jcs_bytes" as MaximaKey)) fail("jcs: jcs_bytes bound");
+  if (total > resolve(b, "jcs_bytes" as MaximaKey)) fail("jcs: jcs_bytes bound");
   const out = new Uint8Array(total);
   let off = 0;
   for (const p of parts) { out.set(p, off); off += p.length; }
@@ -44,7 +47,10 @@ function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number,
       parts.push(value.v ? STR_TRUE : STR_FALSE);
       return nextNode(nodes, bounds);
     case "int":
-      if (level > depth || Math.abs(value.v) > resolve(bounds, "integer_magnitude" as MaximaKey)) fail("jcs: integer bound");
+      // Cross-vendor F3: the reference guard is `when is_integer(value)` (jcs.ex:38); a non-integer
+      // int-tag value (1.5, or bool) must fail closed, not canonicalize. Number.isInteger rejects
+      // floats and booleans.
+      if (!Number.isInteger(value.v) || level > depth || Math.abs(value.v) > resolve(bounds, "integer_magnitude" as MaximaKey)) fail("jcs: integer bound");
       parts.push(strUtf8(formatInt(value.v)));
       return nextNode(nodes, bounds);
     case "float":
@@ -54,7 +60,11 @@ function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number,
     case "string":
       // The decoder already validated UTF-8 + string_bytes; re-check here so a programmatically-built
       // over-bound value (not from the decoder) is rejected at encode, matching jcs.ex:57-59.
-      if (level > depth || value.v.length > resolve(bounds, "string_bytes" as MaximaKey)) fail("jcs: string bound");
+      // Cross-vendor (JCS UTF-8): the reference guard is `String.valid?(value)` (jcs.ex:58) which
+      // rejects invalid UTF-8. A programmatically-built JString with invalid bytes would otherwise
+      // reach escapeString → utf8Str (fatal TextDecoder) and throw TypeError past the closed-Result
+      // contract. Validate UTF-8 here and fail closed (Err) instead.
+      if (level > depth || value.v.length > resolve(bounds, "string_bytes" as MaximaKey) || !isValidUtf8(value.v)) fail("jcs: string bound");
       parts.push(escapeString(value.v, bounds));
       return nextNode(nodes, bounds);
     case "array": {
@@ -134,6 +144,36 @@ const SHORT_ESCAPES: Record<number, string> = {
   0x5c: "\\\\",
 };
 
+// UTF-8 validity check that does NOT throw (cross-vendor JCS UTF-8): the reference's String.valid?
+// (jcs.ex:58) rejects invalid UTF-8 at encode. The fatal TextDecoder in utf8Str throws TypeError on
+// invalid bytes, escaping the closed-Result contract; this gate lets jcsEncode fail closed instead.
+// Walks the byte stream validating leading/multi-byte sequences (RFC 3629).
+function isValidUtf8(bytes: Uint8Array): boolean {
+  let i = 0;
+  while (i < bytes.length) {
+    const b0 = bytes[i]!;
+    if (b0 < 0x80) { i++; continue; }
+    let need: number;
+    let min: number;
+    if ((b0 & 0xe0) === 0xc0) { need = 1; min = 0x80; }
+    else if ((b0 & 0xf0) === 0xe0) { need = 2; min = 0x800; }
+    else if ((b0 & 0xf8) === 0xf0) { need = 3; min = 0x10000; }
+    else return false; // invalid leading byte (continuation, or 0xf8+)
+    if (i + need >= bytes.length) return false; // truncated
+    let cp = b0 & (0x1f >> need);
+    for (let j = 1; j <= need; j++) {
+      const bj = bytes[i + j]!;
+      if ((bj & 0xc0) !== 0x80) return false; // not a continuation byte
+      cp = (cp << 6) | (bj & 0x3f);
+    }
+    if (cp < min) return false; // over-long encoding
+    if (cp >= 0xd800 && cp <= 0xdfff) return false; // lone surrogate
+    if (cp > 0x10ffff) return false; // out of range
+    i += 1 + need;
+  }
+  return true;
+}
+
 function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
   const out: number[] = [0x22 /* " */];
   // Decode UTF-8 to code points so \uXXXX escaping (for < 0x20 and lone surrogates) is correct.
@@ -156,11 +196,12 @@ function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
       const short = SHORT_ESCAPES[cp]!;
       for (let j = 0; j < short.length; j++) out.push(short.charCodeAt(j));
     } else if (cp === 0x7f) {
-      // DEL: RFC 8785 §3.2.2.3 mandates \u007f, BUT the Elixir reference (the contract per AGENTS
-      // rule 7 — canonical bytes are the contract) emits RAW 0x7f here (jcs.ex:147 has no DEL case,
-      // so the general codepoint branch passes it through raw). Matching the reference bytes is
-      // required for identical signed inputs and request digests; the SDK MUST NOT diverge to the
-      // RFC's escaped form. Verified: Jcs.encode("x<DEL>y") -> [34,120,127,121,34].
+      // DEL (0x7f): RFC 8785 serializes strings per ECMAScript JSON.stringify, which escapes only
+      // U+0000–U+001F plus quote (0x22) and backslash (0x5c) — so raw DEL is RFC-COMPLIANT, NOT an
+      // RFC deviation. The Elixir reference (the contract per AGENTS rule 7) emits RAW 0x7f here
+      // (jcs.ex:147 has no DEL case, so the general codepoint branch passes it through raw), and the
+      // SDK matches those bytes for identical signed inputs and request digests. Verified:
+      // Jcs.encode("x<DEL>y") -> [34,120,127,121,34].
       out.push(0x7f);
     } else {
       appendUtf8Bytes(cp, out);

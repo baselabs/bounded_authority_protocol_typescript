@@ -55,9 +55,9 @@ export interface ChainFacts {
 }
 
 // AnchorFacts (protocol-v1.md § Historical anchor verify): trust:not_evaluated.
-// Field set mirrors the Elixir reference AnchorFacts (anchor_facts.ex) exactly. Note the reference
-// carries NO key_id (only the key_fingerprint); keyId is retained for SDK callers that built against
-// the pre-alignment shape and is redundant with keyFingerprint.
+// Field set mirrors the Elixir reference AnchorFacts (anchor_facts.ex) exactly. The reference
+// carries NO key_id (only the key_fingerprint); the SDK matches — keyFingerprint is the only key
+// identifier on this fact.
 export interface AnchorFacts {
   readonly version: 1;
   readonly anchorId: string;
@@ -72,8 +72,8 @@ export interface AnchorFacts {
 
 // KeyTransitionFacts (ADR 0004:44-55): trust:not_evaluated.
 // Field set mirrors the Elixir reference KeyTransitionFacts (key_transition_facts.ex) exactly. The
-// reference carries fingerprints only (no key ids); fromKeyId/toKeyId retained for SDK callers that
-// built against the pre-alignment shape.
+// reference carries fingerprints only (no key ids); the SDK matches — currentKeyFingerprint and
+// nextKeyFingerprint are the only key identifiers on this fact.
 export interface KeyTransitionFacts {
   readonly version: 1;
   readonly transitionId: string;

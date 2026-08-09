@@ -53,7 +53,7 @@ import {
   type GrantProducer, type ProofProducer, type ExpectedGrant, type TrustedIssuer,
   type SigningInput,
 } from "../src/v1.js";
-import { boundsNew, type Bounds } from "../src/bounds.js";
+import { boundsNew, MAXIMA, type Bounds } from "../src/bounds.js";
 import { sha256, _resetCensus } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
@@ -664,8 +664,12 @@ test("permissiveness: verifyAnchoredExport rejects bad chunk lists (#18)", () =>
   // Empty chunk in the list.
   const withEmpty = { chunks: [built.archive, new Uint8Array(0)], version: "v1" };
   assert.equal(verifyAnchoredExport(withEmpty, built.keyChain, built.expected).ok, false, "empty chunk must reject");
-  // Too many chunks (>= archive_chunks bound 65796).
-  const tooMany = { chunks: Array.from({ length: 65796 }, () => new Uint8Array(1)), version: "v1" };
+  // Too many chunks: archive_chunks bound is 65796 and the reference accepts UP TO 65796 inclusive
+  // (validate_chunks guard `count < archive_chunks` on the recursive clause, start 0). The count guard
+  // itself fires only at 65797 (> archive_chunks). At exactly 65796 one-byte chunks the count guard
+  // PASSES (65796 > 65796 is false), so a rejection there is the digest check, not the count guard —
+  // vacuous w.r.t. the closure it claims to prove. Feed 65797 so the count guard is the falsifier.
+  const tooMany = { chunks: Array.from({ length: 65797 }, () => new Uint8Array(1)), version: "v1" };
   assert.equal(verifyAnchoredExport(tooMany, built.keyChain, built.expected).ok, false, "chunk count over bound must reject");
   // Control: a single-chunk split of the valid archive still verifies.
   assert.equal(verifyAnchoredExport({ chunks: [built.archive], version: "v1" }, built.keyChain, built.expected).ok, true);
@@ -867,4 +871,134 @@ test("permissiveness: Expected*.bounds absent defaults to MAX (#11)", () => {
   };
   assert.equal(verifyGrant(g.compact, g.issuer, eg).ok, true);
   assert.equal(decodeGrant(g.compact).ok, true);
+});
+
+// Cross-vendor F2: a hand-crafted Bounds (structural interface) with a WIDENING override bypasses
+// boundsNew; resolve() trusts it. Every entry point must re-validate (mirrors reference Bounds.coerce).
+// Defect: revert coerceBounds in v1.ts/jcs.ts/compact.ts/digest.ts → a forged widening is honored.
+test("permissiveness: forged widening Bounds rejected at every entry point (F2)", () => {
+  _resetCensus();
+  const forged: Bounds = { maximum: MAXIMA, overrides: new Map([["compact_bytes", 1000000]]) };
+  // resolve() WOULD honor the override (1_000_000 > MAXIMA.compact_bytes 65_536); verifyGrant must
+  // re-validate via coerceBounds and reject the forged bounds rather than trust the widening.
+  const g = signedGrant();
+  const eg: ExpectedGrant = {
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    evaluationTime: 1500, clockSkew: 60, bounds: forged,
+  };
+  assert.equal(verifyGrant(g.compact, g.issuer, eg).ok, false, "forged widening bounds must reject");
+});
+
+// Cross-vendor F3: a non-integer int-tag value (1.5) or a boolean must fail closed at jcsEncode
+// (reference guard `when is_integer(value)`, jcs.ex:38), not canonicalize to "1.5"/"true".
+// Defect: remove the Number.isInteger check in jcs.ts int case → {t:"int",v:1.5} emits "1.5".
+test("permissiveness: jcsEncode rejects non-integer int-tag value (F3)", () => {
+  // Control: a valid integer int-tag encodes.
+  assert.equal(jcsEncode({ t: "int", v: 2 }).length > 0, true, "control: integer int-tag encodes");
+  // A non-integer int-tag must reject (fail closed), not emit "1.5". Wrap in try — jcsEncode throws
+  // InvalidError on fail().
+  let threw = false;
+  try { jcsEncode({ t: "int", v: 1.5 } as unknown as Tagged); } catch { threw = true; }
+  assert.equal(threw, true, "{t:'int', v:1.5} must fail closed (non-integer int-tag)");
+  let threwBool = false;
+  try { jcsEncode({ t: "int", v: true } as unknown as Tagged); } catch { threwBool = true; }
+  assert.equal(threwBool, true, "{t:'int', v:true} must fail closed (bool is not an integer)");
+});
+
+// Cross-vendor (JCS UTF-8): a programmatically-built JString with invalid UTF-8 bytes must fail
+// closed at jcsEncode (reference String.valid?, jcs.ex:58), not throw a TypeError past the contract.
+// Defect: remove the isValidUtf8 gate in jcs.ts string case → invalid bytes reach utf8Str → TypeError.
+test("permissiveness: jcsEncode rejects invalid-UTF-8 string (closed-result, not TypeError)", () => {
+  let threwInvalid = false;
+  let threwTypeError = false;
+  try { jcsEncode({ t: "string", v: new Uint8Array([0x80, 0x81]) }); }
+  catch (e) { threwInvalid = e instanceof InvalidError; threwTypeError = e instanceof TypeError; }
+  assert.equal(threwInvalid, true, "invalid-UTF-8 string must fail as InvalidError");
+  assert.equal(threwTypeError, false, "must NOT escape as TypeError (closed-result contract)");
+});
+
+// Cross-vendor (key-locator empty segments): the reference (v1.ex:24) accepts empty payload/signature
+// segments — it decodes ONLY the protected segment. The SDK must match (accept), not over-reject.
+// Defect: re-add the `d1 === d0 + 1 || d1 === compact.length - 1` empty-segment rejection → RED.
+test("permissiveness: untrustedKeyLocator accepts empty payload/signature segments (reference parity)", () => {
+  _resetCensus();
+  const g = signedGrant();
+  // Build "<protected>.." — valid protected header, empty payload + signature.
+  const compactStr = new TextDecoder().decode(g.compact);
+  const protectedSeg = compactStr.split(".")[0]!;
+  const emptyPs = new TextEncoder().encode(protectedSeg + "..");
+  const r = untrustedKeyLocator(emptyPs);
+  assert.equal(r.ok, true, "empty payload+signature segments must be accepted (reference decodes protected only)");
+  if (r.ok) assert.equal(r.value.keyId, g.issuer.keyId);
+});
+
+// Cross-vendor (nested bounds pinning): the reference pins every nested bounds == top-level
+// (anchored_export_codec.ex:352-354). A nested anchor carrying a DIFFERENT bounds must reject.
+// Defect: remove requireBoundsEqual in verifyAnchoredExport → a tightened top + nested default-MAX
+// (or a divergent nested override) is silently accepted.
+test("permissiveness: verifyAnchoredExport rejects nested bounds mismatch (reference pin)", () => {
+  _resetCensus();
+  const built = buildValidArchive([freshKey()]);
+  // Tighten the top-level bounds; the nested anchors carry no bounds (default MAX) → pin must reject.
+  const tightened: ExpectedExport = {
+    ...built.expected,
+    bounds: boundsNew({ identifier_bytes: 4 }),
+  };
+  assert.equal(verifyAnchoredExport({ chunks: [built.archive], version: "v1" }, built.keyChain, tightened).ok, false,
+    "nested bounds absent under a tightened top must reject (reference pin)");
+});
+
+// Cross-vendor (fail-closed shallow): a malformed trusted issuer ({}, missing publicKey/keyId) must
+// fail closed as Err, not throw a native TypeError past the Result contract (the reference pattern-
+// matches %TrustedIssuer{} and returns {:error,:invalid}). Defect: revert the shape check → TypeError.
+test("permissiveness: malformed trusted issuer fails closed (verifyGrant + checkEnvelope)", () => {
+  _resetCensus();
+  const g = signedGrant();
+  const eg: ExpectedGrant = {
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    evaluationTime: 1500, clockSkew: 60,
+  };
+  // {} — missing publicKey/keyId: must return Err, not throw.
+  const r = verifyGrant(g.compact, {} as unknown as TrustedIssuer, eg);
+  assert.equal(r.ok, false, "malformed trusted issuer {} must fail closed (verifyGrant)");
+  const er: ExpectedRequest = {
+    trustedIssuer: {} as unknown as TrustedIssuer,
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    method: "POST", targetUri: "https://resource.example.test/invoke", invocationId: "i",
+    operation: "read", castArguments: NULL_ARGS, evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300,
+    nonce: { kind: "not_required" },
+  };
+  const ce = checkEnvelope(g.compact, g.compact, er);
+  assert.equal(ce.ok, false, "malformed trusted issuer {} must fail closed (checkEnvelope)");
+});
+
+// Cross-vendor F4: the genesis chain (firstSequence==1) must not return an unchecked chain.previousHash
+// as a verified fact. The reference returns expected.previous_hash; the SDK now validates
+// chain.previousHash == expected.previousHash in BOTH cases (genesis + non-genesis).
+// Defect: revert the equality check + return chain.previousHash → a forged genesis input flows through.
+test("permissiveness: checkChain rejects genesis chain.previousHash != expected.previousHash (F4)", () => {
+  _resetCensus();
+  const ZERO = new Uint8Array(32); // all-zero genesis predecessor (DEFAULT_HASH in v1.ts)
+  // Build a minimal valid genesis chain input.
+  const chainId = "ba://chain-f4";
+  const commitment = sha256(strUtf8("commitment-f4"));
+  const row0Result = encodeConsumptionEntry({ chainId, sequence: 1, previousHash: ZERO, commitment });
+  if (!row0Result.ok) throw new Error("row encode failed");
+  const row0 = row0Result.value.bytes;
+  const lastHash = sha256(ROW_PREFIX, row0);
+  const chain: ChainInput = {
+    rows: [row0], chainId, firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: ZERO, lastHash,
+  };
+  const expected: ExpectedChain = {
+    chainId, firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: ZERO, lastHash,
+  };
+  // Control: matching previousHash verifies.
+  assert.equal(checkChain(chain, expected).ok, true, "control: genesis chain with matching previousHash verifies");
+  // Forged: chain.previousHash != expected.previousHash (both zero is the genesis requirement, but the
+  // input must still equal expected — forge the input to a different value).
+  const forgedChain: ChainInput = { ...chain, previousHash: sha256(strUtf8("forged")) };
+  assert.equal(checkChain(forgedChain, expected).ok, false,
+    "genesis chain.previousHash != expected.previousHash must reject (F4)");
 });

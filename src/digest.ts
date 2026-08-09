@@ -3,7 +3,7 @@ import { sha256 } from "./ed25519.js";
 import { jcsEncode } from "./jcs.js";
 import { base64urlEncode } from "./base64url.js";
 import { strUtf8, type Tagged } from "./json.js";
-import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
+import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
 // The request digest (protocol-v1.md § Signing and digest inputs, L238-264):
 //   base64url(SHA-256("BAP1-REQUEST\0" || JCS([operation, typed(cast_arguments)])))
@@ -36,14 +36,17 @@ export function typedProject(value: Tagged): Tagged {
 
 // request_digest(operation, cast_arguments, bounds?). operation is validated printable ASCII 1..128.
 export function requestDigest(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
+  // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is a structural interface; a caller
+  // can hand-craft widening overrides that bypass boundsNew). Mirrors the reference's Bounds.coerce.
+  const b = coerceBounds(bounds);
   // operation: 1..operation_bytes, printable ASCII.
   const opBytes = strUtf8(operation);
-  if (opBytes.length < 1 || opBytes.length > resolve(bounds, "operation_bytes" as MaximaKey)) {
+  if (opBytes.length < 1 || opBytes.length > resolve(b, "operation_bytes" as MaximaKey)) {
     fail("request_digest: operation bound");
   }
   for (let i = 0; i < opBytes.length; i++) {
-    const b = opBytes[i]!;
-    if (b < 0x20 || b > 0x7e) fail("request_digest: operation printable ASCII");
+    const byte = opBytes[i]!;
+    if (byte < 0x20 || byte > 0x7e) fail("request_digest: operation printable ASCII");
   }
   // The projection: [operation_string, typed(cast_arguments)].
   const projected = typedProject(castArguments);
@@ -51,11 +54,11 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds: 
   // Per-node bounds on the TYPED projection (not the raw args): `typed` deepens/triples the tree, so
   // the depth boundary is ~15 (not 32) and total_nodes is reachable inline. Mirrors the official
   // Jcs.encode per-node gate (corpus_independent.mjs:1913 withinJsonBounds + countJsonNodes).
-  if (!withinTaggedBounds(array, 0, bounds)) fail("request_digest: cast_arguments bounds");
-  if (countTaggedNodes(array) > resolve(bounds, "total_nodes" as MaximaKey)) fail("request_digest: total_nodes");
+  if (!withinTaggedBounds(array, 0, b)) fail("request_digest: cast_arguments bounds");
+  if (countTaggedNodes(array) > resolve(b, "total_nodes" as MaximaKey)) fail("request_digest: total_nodes");
   // JCS over the projection, enforcing jcs_bytes bound.
-  const jcs = jcsEncode(array, bounds);
-  if (jcs.length > resolve(bounds, "jcs_bytes" as MaximaKey)) fail("request_digest: jcs_bytes bound");
+  const jcs = jcsEncode(array, b);
+  if (jcs.length > resolve(b, "jcs_bytes" as MaximaKey)) fail("request_digest: jcs_bytes bound");
   const digest = sha256(REQUEST_PREFIX, jcs);
   return digest; // raw 32 bytes
 }

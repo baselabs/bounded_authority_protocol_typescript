@@ -91,6 +91,25 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
   return { maximum: MAXIMA, overrides };
 }
 
+// Re-validate a Bounds object (mirrors the reference's Bounds.coerce/1, anchored_export_codec.ex:33
+// + runtime.ex:123 etc.). Bounds is an exported structural interface, so a caller can hand-craft a
+// {maximum, overrides} object that bypasses boundsNew — including a WIDENING override (compact_bytes
+// > MAXIMA). resolve() trusts the override directly; without this gate the verify/decode paths would
+// honor the forged widening (cross-vendor F2). coerceBounds re-runs the boundsNew validation over the
+// override map so every entry point that resolves caller-supplied bounds fails closed on a forgery.
+export function coerceBounds(b: Bounds): Bounds {
+  for (const [key, value] of b.overrides) {
+    if (!Number.isInteger(value)) fail(`bounds.coerce: non-integer limit ${key}`);
+    if (FIXED_WIDTH_KEYS.has(key)) {
+      if (value !== MAXIMA[key]) fail(`bounds.coerce: fixed-width key ${key} must equal maximum`);
+    } else {
+      if (value <= 0) fail(`bounds.coerce: non-positive limit ${key}`);
+      if (value > MAXIMA[key]) fail(`bounds.coerce: widening limit ${key}`);
+    }
+  }
+  return b;
+}
+
 // Resolve a bound: the override if present, else the maximum.
 export function resolve(b: Bounds, key: MaximaKey): number {
   return b.overrides.get(key) ?? MAXIMA[key];
