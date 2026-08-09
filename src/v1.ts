@@ -26,6 +26,7 @@ const PROOF_TYP = "dpop+jwt";
 const ANCHOR_TYP = "ba+chain-anchor";
 const TRANSITION_TYP = "ba+key-transition";
 const VERSION = 1;
+const DOT = 0x2e;
 
 // BAP1-CHAIN\0 prefix for consumption-row hashing (ADR 0004 § Consumption rows).
 export const ROW_PREFIX = new Uint8Array([
@@ -478,8 +479,32 @@ function concat(...parts: Uint8Array[]): Uint8Array {
 // 1. untrusted_key_locator (protocol-v1.md § Untrusted key locator).
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
-    const seg = parseCompact(compact, bounds ?? MAXIMUM_BOUNDS);
-    const { kid } = parseGrantHeader(seg);
+    // Cross-vendor #13: the reference (v1.ex:21-34) decodes ONLY the protected segment — payload and
+    // signature are NOT decoded, interpreted, or independently size-checked. parseCompact decodes all
+    // three, so a compact with a valid protected grant header but non-canonical payload/signature
+    // bytes wrongly rejected. Mirror the reference: split into exactly 3 segments, decode protected
+    // only, validate the grant header + kid. (An invalid payload/signature does not affect the kid.)
+    const b = bounds ?? MAXIMUM_BOUNDS;
+    if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("key_locator: compact bound");
+    // Exactly 3 segments on '.' (a 2- or 4-segment input fails the closed shape).
+    const dots: number[] = [];
+    for (let i = 0; i < compact.length; i++) if (compact[i] === DOT) dots.push(i);
+    if (dots.length !== 2) fail("key_locator: three segments");
+    const d0 = dots[0]!;
+    const d1 = dots[1]!;
+    if (d0 === 0 || d1 === d0 + 1 || d1 === compact.length - 1) fail("key_locator: empty segment");
+    const protectedText = compact.subarray(0, d0);
+    if (protectedText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("key_locator: protected bound");
+    const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
+    const h = jsonDecode(protectedBytes);
+    requireObjectExact(h, ["alg", "typ", "kid"], "grant header");
+    requireStringLit(h, "alg", ALG, "grant header alg");
+    requireStringLit(h, "typ", GRANT_TYP, "grant header typ");
+    const kidV = h.v.get("kid")!;
+    if (kidV.t !== "string") fail("header: kid string");
+    if (kidV.v.length < 1 || kidV.v.length > resolve(b, "kid_bytes" as MaximaKey)) fail("header: kid bytes");
+    const kid = utf8Str(kidV.v);
+    if (!/^[A-Za-z0-9._~-]+$/.test(kid)) fail("header: kid charset");
     return { keyId: kid, trust: "not_evaluated" as const };
   });
 }
@@ -526,8 +551,12 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
 // 4. verify_grant (REQ1-VERIFY-grant-exact, grant-times, no-iat-nbf-order).
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
+    if (trusted === null || trusted === undefined) fail("verify_grant: trusted issuer required");
     assert(trusted.publicKey.length === 32, "verify_grant: issuer key width");
-    if (expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
+    // Cross-vendor #19: the reference requires is_integer(evaluation_time) and is_integer(clock_skew)
+    // (>= 0) — runtime.ex:522-523. A range-only `< 0` check accepts fractional times.
+    if (!Number.isInteger(expected.evaluationTime)) fail("verify_grant: integer evaluation time");
+    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
     const seg = parseCompact(compact, expected.bounds ?? MAXIMUM_BOUNDS);
     const { kid } = parseGrantHeader(seg);
     if (kid !== trusted.keyId) fail("verify_grant: kid exact");
@@ -564,9 +593,17 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
   return trying(() => {
     const t = expected.trustedIssuer;
+    // Cross-vendor #22: a null/wrong-typed trustedIssuer (or any structured-input field) must fail
+    // closed as InvalidError, not propagate a native TypeError from the deref below. Validate the
+    // context shape before touching it. The reference returns {:error,:invalid} for all malformed input.
+    if (t === null || t === undefined) fail("check_envelope: trusted issuer required");
     assert(t.publicKey.length === 32, "check_envelope: issuer key width");
-    if (expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
-    if (expected.proofMaxAge < 0 || expected.proofMaxAge > resolve(MAXIMUM_BOUNDS, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
+    // Cross-vendor #19: the reference requires is_integer(evaluation_time), is_integer(clock_skew)
+    // (>= 0), and proof_max_age > 0 (strictly positive) — runtime.ex:522-523,550-551. A range-only
+    // `< 0` check accepts fractional times and proofMaxAge=0. The signed-time boundary is exact.
+    if (!Number.isInteger(expected.evaluationTime)) fail("check_envelope: integer evaluation time");
+    if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(MAXIMUM_BOUNDS, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
+    if (!Number.isInteger(expected.proofMaxAge) || expected.proofMaxAge <= 0 || expected.proofMaxAge > resolve(MAXIMUM_BOUNDS, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
     // --- verify grant (issuer signature + context) ---
     const gseg = parseCompact(grantCompact, MAXIMUM_BOUNDS);
     const { kid: gkid } = parseGrantHeader(gseg);
@@ -582,6 +619,10 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const giat = requireInt(gobj.v.get("iat"), "iat");
     const gnbf = requireInt(gobj.v.get("nbf"), "nbf");
     const gexp = requireInt(gobj.v.get("exp"), "exp");
+    // Cross-vendor #4: checkEnvelope must enforce grant-time coherence (iat<exp, nbf<exp), mirroring
+    // the reference's coherent_times? (runtime.ex:872-875) which fires at parse time. decodeGrant and
+    // verifyGrant already check this; checkEnvelope had its own inline path that omitted it.
+    if (!(giat < gexp) || !(gnbf < gexp)) fail("check_envelope: grant times coherent");
     if (!(giat <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant iat");
     if (!(gnbf <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant nbf");
     if (!(gexp > expected.evaluationTime - expected.clockSkew)) fail("check_envelope: grant exp");

@@ -40,6 +40,7 @@ import { InvalidError } from "../src/error.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
 import { jcsEncode } from "../src/jcs.js";
 import { uriNormalize } from "../src/uri.js";
+import { untrustedKeyLocator, checkEnvelope, type ExpectedRequest } from "../src/v1.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
 
@@ -208,6 +209,55 @@ test("permissiveness: jcs enforces per-node bounds at encode (cross-vendor #9)",
   assert.throws(() => jcsEncode({ t: "string", v: new Uint8Array(8193) }), InvalidError);
   // Control: exactly 8192 bytes encodes.
   assert.ok(jcsEncode({ t: "string", v: new Uint8Array(8192) }) instanceof Uint8Array);
+});
+
+// === FIX-C cross-vendor remediation — v1 façade closed-boundary (defect-injected) ===
+
+// Cross-vendor #13: untrustedKeyLocator MUST decode ONLY the protected segment — the reference
+// (v1.ex:21-34) splits on '.' and never decodes payload/signature. A compact with a valid grant
+// header but garbage payload+signature must return the kid (Ok), not reject. Defect: revert to
+// parseCompact (decodes all 3) → the garbage-payload case returns Err.
+test("permissiveness: untrusted key locator decodes only protected segment (cross-vendor #13)", () => {
+  const protectedB64 = "eyJhbGciOiJFZERTQSIsImtpZCI6ImsxIiwidHlwIjoiYmErY2FwIn0";
+  // Garbage payload + signature (non-base64url bytes).
+  const r = untrustedKeyLocator(strUtf8(`${protectedB64}.!!.!!!`));
+  assert.equal(r.ok, true);
+  if (r.ok) assert.equal(r.value.keyId, "k1");
+  // Valid-base64 non-JSON payload + signature — reference also returns Ok.
+  assert.equal(untrustedKeyLocator(strUtf8(`${protectedB64}.YWFh.YmJi`)).ok, true);
+  // 2- and 4-segment inputs reject (reference requires exactly 3).
+  assert.equal(untrustedKeyLocator(strUtf8(`${protectedB64}.!!`)).ok, false);
+  assert.equal(untrustedKeyLocator(strUtf8(`${protectedB64}.!!.!!.!!`)).ok, false);
+});
+
+// Cross-vendor #22: a null trustedIssuer must fail closed (return Err), not throw TypeError on the
+// .publicKey deref. The `trying` wrapper only catches InvalidError, so without the guard a TypeError
+// propagates out of the public API. Defect: revert the `if (t === null) fail(...)` guard → TypeError.
+test("permissiveness: checkEnvelope null trustedIssuer fails closed (cross-vendor #22)", () => {
+  const junk = strUtf8("aaa.bbb.ccc");
+  // Must return Err (fail-closed); without the guard this throws TypeError.
+  const r = checkEnvelope(junk, junk, { trustedIssuer: null } as never);
+  assert.equal(r.ok, false);
+});
+
+// Cross-vendor #19: the reference requires is_integer(evaluation_time), is_integer(clock_skew), and
+// proof_max_age > 0 (strictly positive). These guards fire BEFORE grant parsing, so a junk compact
+// suffices. Defect: revert the Number.isInteger/`<= 0` guards → fractional/zero values pass.
+test("permissiveness: checkEnvelope rejects fractional/zero temporal context (cross-vendor #19)", () => {
+  const junk = strUtf8("aaa.bbb.ccc");
+  const issuer = { keyId: strUtf8("k"), publicKey: new Uint8Array(32) };
+  const base = {
+    trustedIssuer: issuer, issuer: "x", audience: "x", method: "GET", targetUri: "https://x.example/",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    castArguments: { t: "null" as const, v: null }, nonce: "not_required" as const,
+  };
+  const call = (overrides: Partial<ExpectedRequest>) => checkEnvelope(junk, junk, { ...base, ...overrides } as ExpectedRequest);
+  // All must return Err (the guard rejects); the integer control also returns Err only because the
+  // junk compact fails at grant parse — the load-bearing assertion is no throw + Err on each.
+  assert.equal(call({ evaluationTime: 150.5, clockSkew: 0, proofMaxAge: 300 }).ok, false);
+  assert.equal(call({ evaluationTime: 150, clockSkew: 10.5, proofMaxAge: 300 }).ok, false);
+  assert.equal(call({ evaluationTime: 150, clockSkew: 0, proofMaxAge: 0 }).ok, false);
+  assert.equal(call({ evaluationTime: 150, clockSkew: 0, proofMaxAge: 300 }).ok, false);
 });
 
 function toHex(b: Uint8Array): string {
