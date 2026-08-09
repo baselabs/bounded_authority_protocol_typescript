@@ -817,7 +817,10 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     return {
       version: 1 as const, chainId: chain.chainId, firstSequence: chain.firstSequence,
       lastSequence: chain.lastSequence, rowCount: chain.rowCount,
-      previousHash: chain.previousHash, lastHash: previous,
+      // Cross-vendor re-review F3: copy the caller-owned previousHash into a fresh Uint8Array so a
+      // later mutation of the input buffer does not change the returned fact (the reference's
+      // Elixir binaries are immutable; TS arrays are not). lastHash is already freshly computed.
+      previousHash: new Uint8Array(chain.previousHash), lastHash: previous,
       verification: "boundary_consistent" as const, trust: "not_evaluated" as const,
     };
   });
@@ -1309,16 +1312,18 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]); a 1-key,
     // 0-transition archive is the no-rollover case the reference accepts (validate_historical_key_shapes
     // requires keys == transitions+1, with no minimum). The exact-count check below is the gate.
-    verifyAnchorCompact(parsed.start, keyChain.keys[0]!, expected.startAnchor, "verify_anchored_export start");
-    verifyAnchorCompact(parsed.end, keyChain.keys[keyChain.keys.length - 1]!, expected.endAnchor, "verify_anchored_export end");
+    // Cross-vendor re-review F2: validate the key-chain length BEFORE dereferencing keys[0]/keys[N-1]
+    // so a zero-key chain fails closed (Err) instead of raising TypeError on undefined.
     if (parsed.transitions.length !== expected.transitions.length) fail("verify_anchored_export: transition count");
     if (keyChain.keys.length !== parsed.transitions.length + 1) fail("verify_anchored_export: key chain length");
+    verifyAnchorCompact(parsed.start, keyChain.keys[0]!, expected.startAnchor, "verify_anchored_export start", b);
+    verifyAnchorCompact(parsed.end, keyChain.keys[keyChain.keys.length - 1]!, expected.endAnchor, "verify_anchored_export end", b);
     // Key-path invariants (anchored_export_codec.ex:506-572 validate_expected_key_path): the expected
     // transition list must form a strictly-increasing effective_at sequence with no fingerprint cycle,
     // and the end anchor must close the path with a chronologically-non-decreasing anchored_at.
     validateKeyPath(expected.startAnchor, expected.transitions, expected.endAnchor);
     for (let i = 0; i < parsed.transitions.length; i++) {
-      verifyTransitionCompact(parsed.transitions[i]!, keyChain.keys[i]!, keyChain.keys[i + 1]!, expected.transitions[i]!, `verify_anchored_export transition ${i}`);
+      verifyTransitionCompact(parsed.transitions[i]!, keyChain.keys[i]!, keyChain.keys[i + 1]!, expected.transitions[i]!, `verify_anchored_export transition ${i}`, b);
     }
     // Chronology over the ACTUAL anchored times (anchored_export_codec.ex:138-154 verify_transitions
     // + chronological_end?): each transition's effective_at must be strictly greater than the
@@ -1376,10 +1381,12 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
 }
 
 // Anchor-compact verification (shared by verify_historical_anchor + the anchored-export path).
-function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor, ctx: string): void {
+function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor, ctx: string, bounds?: Bounds): void {
   assert(key.publicKey.length === 32, `${ctx}: key width`);
-  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
-  const b = expected.bounds ?? MAXIMUM_BOUNDS;
+  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check. When
+  // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
+  // the nested anchor's bounds so the top-level tightening takes effect.
+  const b = bounds ?? expected.bounds ?? MAXIMUM_BOUNDS;
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
   if (kid !== key.keyId) fail(`${ctx}: kid`);
@@ -1407,11 +1414,13 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
   if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail(`${ctx}: signature`);
 }
 
-function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPublicKey, nextKey: HistoricalPublicKey, expected: ExpectedKeyTransition, ctx: string): void {
+function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPublicKey, nextKey: HistoricalPublicKey, expected: ExpectedKeyTransition, ctx: string, bounds?: Bounds): void {
   assert(currentKey.publicKey.length === 32 && nextKey.publicKey.length === 32, `${ctx}: key width`);
   if (bytesEqual(currentKey.publicKey, nextKey.publicKey)) fail(`${ctx}: distinct keys`);
-  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
-  const b = expected.bounds ?? MAXIMUM_BOUNDS;
+  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check. When
+  // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
+  // the nested transition's bounds so the top-level tightening takes effect.
+  const b = bounds ?? expected.bounds ?? MAXIMUM_BOUNDS;
   const seg = parseCompact(compact, b);
   const { kid } = parseTransitionHeader(seg, b);
   if (kid !== currentKey.keyId) fail(`${ctx}: kid`);

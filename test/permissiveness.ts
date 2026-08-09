@@ -641,6 +641,20 @@ test("permissiveness: verifyAnchoredExport accepts a valid 1-key / 0-transition 
   if (r.ok) assert.equal(r.value.transitionCount, 0);
 });
 
+// Cross-vendor re-review F2: a zero-key key chain MUST fail closed (Err), not raise TypeError on
+// keyChain.keys[0]. The length check (keys == transitions+1) must fire BEFORE the keys[0] deref.
+test("permissiveness: verifyAnchoredExport rejects zero-key chain fail-closed (cv re-review F2)", () => {
+  _resetCensus();
+  const built = buildValidArchive([freshKey()]);
+  const emptyChain: HistoricalKeyChain = { keys: [] };
+  const r = verifyAnchoredExport(
+    { chunks: [built.archive], version: "v1" },
+    emptyChain,
+    built.expected,
+  );
+  assert.equal(r.ok, false, "zero-key chain must reject (keys != transitions+1), fail closed");
+});
+
 // Cross-vendor #18: verify_anchored_export MUST validate the chunk list BEFORE concatenation
 // (anchored_export_codec.ex:333-342 validate_chunks): reject empty chunks, reject chunk count >=
 // archive_chunks, reject total > archive_bytes. Defect: revert validateChunks → these pass to parse.
