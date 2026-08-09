@@ -16,7 +16,7 @@ selects trusted keys, reserves replay, grants execution, or overrides a host pol
 ## Status
 
 `0.1.0` — SemVer 0.x (pre-1.0). The public v1 façade is frozen; breaking changes bump the major
-version once 1.0 lands. The SDK targets Node `>= 20` and has **zero runtime dependencies** (Ed25519
+version once 1.0 lands. The SDK targets Node `>= 22` and has **zero runtime dependencies** (Ed25519
 via `node:crypto`; SHA-256, base64url, and JSON canonicalization hand-rolled from the RFCs).
 
 ## Conformance
