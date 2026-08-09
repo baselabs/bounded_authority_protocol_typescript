@@ -555,7 +555,6 @@ test("permissiveness: checkChain rejects noncanonical row bytes + sequence zero 
 // transition count <= key_transitions bound (256). The SDK previously accepted 257 transitions,
 // producing bytes its own parser would reject. Defect: revert the bound check → encode returns Ok.
 test("permissiveness: encodeAnchoredExport rejects transition count over bound (#17)", () => {
-  const k = freshKey();
   const zeroPrev = Z32.slice();
   const rowEntry: ConsumptionEntry = {
     chainId: "urn:example:chain", sequence: 1, previousHash: zeroPrev, commitment: new Uint8Array(32),
@@ -564,17 +563,27 @@ test("permissiveness: encodeAnchoredExport rejects transition count over bound (
   if (!encoded.ok) throw new Error("setup encode failed");
   const rowBytes = encoded.value.bytes;
   const lastHash = encoded.value.hash;
+  // FIX-D delta-review FINDING 2: supply 257 matching ExpectedKeyTransition entries over a 258-key
+  // chain so the count-mismatch check passes and the key_transitions=256 BOUND check is the
+  // load-bearing gate (otherwise expected.transitions=[] makes count-mismatch fire first). Build a
+  // chronology-clean path (distinct keys, strictly-increasing effectiveAt, no fingerprint cycle).
+  const keys = Array.from({ length: 258 }, () => freshKey());
+  const startKey = keys[0]!;
+  const endKey = keys[257]!;
   const startCompact = signedAnchorCompact({
     anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
-    sequence: 0, chainHash: zeroPrev, keyId: "k0", publicKey: k.publicKey,
-  }, k.privateKey);
+    sequence: 0, chainHash: zeroPrev, keyId: "k0", publicKey: startKey.publicKey,
+  }, startKey.privateKey);
   const endCompact = signedAnchorCompact({
-    anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
-    sequence: 1, chainHash: lastHash, keyId: "k0", publicKey: k.publicKey,
-  }, k.privateKey);
-  // 257 dummy non-empty transition frames (encode only frames them — no signature check here).
-  const dummy = strUtf8("x");
-  const transitions = Array.from({ length: 257 }, () => dummy);
+    anchorId: "urn:example:anchor:end", anchoredAt: 100000, chainId: "urn:example:chain",
+    sequence: 1, chainHash: lastHash, keyId: "k257", publicKey: endKey.publicKey,
+  }, endKey.privateKey);
+  const transitions: Uint8Array[] = Array.from({ length: 257 }, () => strUtf8("x"));
+  const expectedTransitions: ExpectedKeyTransition[] = keys.slice(0, 257).map((_, i) => ({
+    transitionId: `urn:example:t:${i}`, chainId: "urn:example:chain", effectiveAt: 2000 + i,
+    currentKeyId: `k${i}`, currentKeyFingerprint: thumbprintOf(keys[i]!.publicKey),
+    nextKeyId: `k${i + 1}`, nextKeyFingerprint: thumbprintOf(keys[i + 1]!.publicKey),
+  }));
   const chain: ExpectedChain = {
     chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
     previousHash: zeroPrev, lastHash,
@@ -589,13 +598,13 @@ test("permissiveness: encodeAnchoredExport rejects transition count over bound (
       chain, digest: new Uint8Array(32),
       startAnchor: {
         anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
-        sequence: 0, chainHash: zeroPrev, keyId: "k0", keyFingerprint: thumbprintOf(k.publicKey),
+        sequence: 0, chainHash: zeroPrev, keyId: "k0", keyFingerprint: thumbprintOf(startKey.publicKey),
       },
       endAnchor: {
-        anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
-        sequence: 1, chainHash: lastHash, keyId: "k0", keyFingerprint: thumbprintOf(k.publicKey),
+        anchorId: "urn:example:anchor:end", anchoredAt: 100000, chainId: "urn:example:chain",
+        sequence: 1, chainHash: lastHash, keyId: "k257", keyFingerprint: thumbprintOf(endKey.publicKey),
       },
-      transitions: [], objectVersion: "v1",
+      transitions: expectedTransitions, objectVersion: "v1",
     },
   );
   assert.equal(r.ok, false, "257 transitions must reject (over the key_transitions=256 bound)");
