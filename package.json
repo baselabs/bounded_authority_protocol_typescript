@@ -4,8 +4,8 @@
   "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority — a typed TypeScript reimplementation of the BAP v1 verification profile.",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": [
     "dist",
     "LICENSE",

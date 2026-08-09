@@ -63,14 +63,22 @@ interface CorpusCase {
 }
 interface Raws extends Map<string, Uint8Array> {}
 
+// The certified index.json SHA-256 (base64url of the SHA-256 digest). ADR 0014 D4: the SDK binds to
+// the exact corpus it was certified against; a mismatched vendored corpus fails closed rather than
+// drifting silently. This MUST match the Python runner's hex SHA (c3b0bcf7...757084dd → base64url).
+const CERTIFIED_INDEX_SHA = "w7C892ZcIX6kWEOpxJwnaaYcIcSZjYuFJJz2y3VwhN0";
+
 function loadCorpus(): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
   const indexPath = join(CORPUS_DIR, "index.json");
   const indexRaw = readFileSync(indexPath);
   const index = JSON.parse(indexRaw.toString("utf8"));
-  // ADR 0014 D8: assert the index.json SHA-256 matches the certified snapshot. (The SDK tracks the
+  // ADR 0014 D4: assert the index.json SHA-256 matches the certified snapshot. (The SDK tracks the
   // published corpus; a mismatched vendored corpus fails closed rather than drifting silently.) In
   // dev mode the in-repo corpus IS the certified snapshot, so this asserts self-consistency.
   const indexSha = b64e(sha256(indexRaw));
+  if (indexSha !== CERTIFIED_INDEX_SHA) {
+    abort(`index.json SHA mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA}`);
+  }
   const totalCases = index.total_cases as number;
   const cases: CorpusCase[] = [];
   const raws: Raws = new Map();

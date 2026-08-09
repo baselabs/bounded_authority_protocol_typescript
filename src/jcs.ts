@@ -142,8 +142,15 @@ function appendUtf8Bytes(cp: number, out: number[]): void {
   else if (cp < 0x800) {
     out.push(0xc0 | (cp >> 6));
     out.push(0x80 | (cp & 0x3f));
-  } else {
+  } else if (cp < 0x10000) {
     out.push(0xe0 | (cp >> 12));
+    out.push(0x80 | ((cp >> 6) & 0x3f));
+    out.push(0x80 | (cp & 0x3f));
+  } else {
+    // Astral code points (cp >= 0x10000) — 4-byte UTF-8 (RFC 8785 keeps astral chars as their UTF-8
+    // bytes, not \u escapes). The prior 3-byte-cap branch produced a malformed sequence for astral.
+    out.push(0xf0 | (cp >> 18));
+    out.push(0x80 | ((cp >> 12) & 0x3f));
     out.push(0x80 | ((cp >> 6) & 0x3f));
     out.push(0x80 | (cp & 0x3f));
   }

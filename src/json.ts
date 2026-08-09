@@ -131,6 +131,15 @@ function parseString(ctx: DecodeCtx): Tagged {
   node(ctx);
   const start = ctx.pos;
   const bytes = scanString(ctx, start);
+  // RFC 8259 §2.5 / REQ1-JSON-no-normalization: a JSON string's bytes MUST be valid UTF-8. The
+  // scanner copies raw bytes (multi-byte sequences pass through); validate here so an invalid byte
+  // (e.g. a lone 0xff) rejects as InvalidError rather than producing a wrong JCS digest or a
+  // non-InvalidError TextDecoder throw at a later utf8Str conversion.
+  try {
+    DECODER.decode(bytes);
+  } catch {
+    fail("json: string not valid UTF-8");
+  }
   if (bytes.length > resolve(ctx.bounds, "string_bytes" as MaximaKey)) fail("json: string_bytes bound");
   return { t: "string", v: bytes };
 }

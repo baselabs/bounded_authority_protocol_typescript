@@ -38,6 +38,7 @@ import assert from "node:assert/strict";
 import { jsonDecode, strUtf8, type Tagged } from "../src/json.js";
 import { InvalidError } from "../src/error.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
+import { jcsEncode } from "../src/jcs.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
 
@@ -108,6 +109,24 @@ test("permissiveness: equals selector distinguishes int path from float value", 
   const selFloat = parseSelector(dec('{"kind":"equals","path":["n"],"value":1.0}'));
   assert.equal(selectorMatches(selInt, args), true);
   assert.equal(selectorMatches(selFloat, args), false); // float 1.0 ≠ integer 1
+});
+
+// 6. JCS float canonicalization (RFC 8785 §3.2.2 / ECMAScript Number.prototype.toString). V8's
+// JSON.stringify already produces the ECMAScript form; these pin it so a future drift is caught.
+test("permissiveness: jcs float serialization matches ECMAScript (1.0 → 1, 1e-7 → 1e-7)", () => {
+  assert.deepEqual(Array.from(jcsEncode(dec("1.0"))), Array.from(strUtf8("1")));
+  assert.deepEqual(Array.from(jcsEncode(dec("10.0"))), Array.from(strUtf8("10")));
+  assert.deepEqual(Array.from(jcsEncode(dec("1e-7"))), Array.from(strUtf8("1e-7")));
+  assert.deepEqual(Array.from(jcsEncode(dec("1.5"))), Array.from(strUtf8("1.5")));
+});
+
+// 7. JCS astral codepoint emits 4-byte UTF-8 (RFC 8785 keeps astral chars as UTF-8 bytes, not \u).
+// The defect: a 3-byte-cap appendUtf8Bytes produces F0 80 80 ... for astral chars.
+test("permissiveness: jcs astral codepoint emits 4-byte UTF-8", () => {
+  const v = dec('"\\ud800\\udc00"'); // U+10000 (𐀀) as a surrogate pair
+  const out = jcsEncode(v);
+  // opening " + F0 90 80 80 + closing "
+  assert.deepEqual(Array.from(out), [0x22, 0xf0, 0x90, 0x80, 0x80, 0x22]);
 });
 
 function toHex(b: Uint8Array): string {

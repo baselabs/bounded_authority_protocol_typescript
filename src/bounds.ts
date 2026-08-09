@@ -57,7 +57,10 @@ export interface Bounds {
 export const MAXIMUM_BOUNDS: Bounds = { maximum: MAXIMA, overrides: new Map() };
 
 export function boundsMaximum(): Bounds {
-  return MAXIMUM_BOUNDS;
+  // Return a FRESH Bounds each call so a caller cannot mutate a shared singleton's overrides Map
+  // to widen the profile maximum globally (ReadonlyMap is compile-time only; runtime mutation is
+  // otherwise possible). REQ1-BOUNDS-tighten-only.
+  return { maximum: MAXIMA, overrides: new Map() };
 }
 
 // REQ1-BOUNDS-reject-list (L397): unknown, non-integer, zero, negative, widening, or fixed-width-
