@@ -368,7 +368,7 @@ function validateGrantPayload(p: Tagged, bounds: Bounds): asserts p is Extract<T
     const sels = opObj.v.get("selectors")!;
     if (sels.t !== "array") fail("grant: selectors array");
     if (sels.v.length < 1 || sels.v.length > resolve(bounds, "selectors" as MaximaKey)) fail("grant: selectors count");
-    for (const s of sels.v) parseSelector(s); // validate each selector's closed shape
+    for (const s of sels.v) parseSelector(s, bounds); // validate each selector's closed shape (thread caller bounds — selector/2 in the reference enforces path_segments, one_of_values, selector value node bounds)
   }
 }
 
@@ -701,7 +701,7 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const selsV = matchOp.v.get("selectors");
     if (!selsV || selsV.t !== "array") fail("check_envelope: selectors");
     for (const s of selsV.v) {
-      const sel = parseSelector(s);
+      const sel = parseSelector(s, b);
       if (!selectorMatches(sel, expected.castArguments)) fail("check_envelope: selector");
     }
     return {

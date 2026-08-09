@@ -797,6 +797,30 @@ test("permissiveness: checkEnvelope honors caller bounds (kid tightening rejects
   assert.equal(checkEnvelope(grantCompact, proofCompact, tight).ok, false, "kid_bytes=5 must reject a 13-byte kid");
 });
 
+// #10 delta-review FINDING 1: decodeGrant MUST thread caller bounds into parseSelector (the reference's
+// selector/2 enforces one_of_values, path_segments, selector value node bounds). A grant with a one_of
+// selector of 2 values is accepted at MAX, rejected under one_of_values=1. Defect: revert the
+// parseSelector(s) call to default bounds → the tightened call returns Ok.
+test("permissiveness: decodeGrant threads caller bounds into selector decode (#10 delta-review F1)", () => {
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintOf(holder.publicKey);
+  const grant: GrantProducer = {
+    keyId: "k1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+    operations: [{ name: "read", selectors: [{ kind: "one_of", path: ["x"], values: [{ t: "int", v: 1 }, { t: "int", v: 2 }] }] }],
+  };
+  const si = grantSigningInput(grant);
+  if (!si.ok) throw new Error("grant signing input failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const compact = assembleCompact(si.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), issuer.privateKey)));
+  // Control: at MAX, a one_of with 2 values is accepted.
+  assert.equal(decodeGrant(compact).ok, true, "one_of with 2 values must be accepted at MAX");
+  // Tightened: one_of_values=1 → the 2-value selector must be rejected (parseSelector threads bounds).
+  assert.equal(decodeGrant(compact, boundsNew({ one_of_values: 1 })).ok, false, "one_of_values=1 must reject a 2-value selector");
+});
+
 // #10/#11 control: bounds absent on every Expected* MUST default to MAX (the conformance runner
 // constructs Expected* without bounds; a missing default would break 259/259). The 13-byte kid grant
 // verifies at MAX via every entry point that takes an Expected*.
