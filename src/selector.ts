@@ -27,10 +27,9 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
   if (!kindV || kindV.t !== "string") fail("selector: kind");
   const kind = utf8Str(kindV.v);
   if (!SELECTOR_KINDS.has(kind)) fail("selector: kind closed set");
-  // The member-set check mirrors the official's open-map `selector/2` clause for `all`: a selector
-  // carrying kind:"all" decodes as :all on ANY of the three closed member sets (kind / kind,path,value
-  // / kind,path,values). Requiring members === "kind" alone made this runner STRICTER than the
-  // official — the one divergence direction that fails a conforming implementation.
+  // The reference accepts kind:"all" on ANY of the three closed member sets (kind / kind,path,value
+  // / kind,path,values) — verified by the corpus case check-envelope-valid-selector-all-with-extra-
+  // members, which the Elixir reference accepts (conformance reports agreed=259 including it).
   if (kind === "all") return { kind: "all" };
   // equals / one_of need path + value/values.
   if (kind === "equals") {
