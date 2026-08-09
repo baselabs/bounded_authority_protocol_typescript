@@ -511,8 +511,12 @@ test("permissiveness: checkChain rejects noncanonical row bytes + sequence zero 
   // Control: the canonical row verifies.
   assert.equal(checkChain(goodChain, goodChain).ok, true);
   // Defect A: a row with leading whitespace (valid JSON to JSON.parse, but NOT canonical) must reject.
+  // Recompute lastHash from the padded row's ACTUAL hash so the hash-chain check passes and ONLY the
+  // canonical re-encode check is the load-bearing gate (otherwise the hash mismatch rejects first,
+  // masking a regression to the canonical check specifically).
   const padded = strUtf8(" " + new TextDecoder().decode(canonical));
-  const paddedChain: ChainInput = { ...goodChain, rows: [padded] };
+  const paddedLastHash = sha256(ROW_PREFIX, padded);
+  const paddedChain: ChainInput = { ...goodChain, rows: [padded], lastHash: paddedLastHash };
   assert.equal(checkChain(paddedChain, paddedChain).ok, false, "noncanonical (whitespace) row must reject");
   // Defect B: a sequence-0 row must reject even if its bytes are otherwise canonical for sequence 0.
   const seqZeroEnc = (() => {
@@ -646,6 +650,11 @@ test("permissiveness: verifyAnchoredExport rejects non-monotonic rollover (#2)",
   // chronology gate rejects.
   const nonMono = buildArchive([a, b, c], { effectiveAts: [1500, 1400], endAnchoredAt: 2000 });
   assert.equal(verifyAnchoredExport({ chunks: [nonMono.archive], version: "v1" }, nonMono.keyChain, nonMono.expected).ok, false, "non-monotonic effective_at must reject");
+  // Strict-`>` boundary: EQUAL consecutive effective_at must also reject (strictly_after? is `>`,
+  // not `>=`; anchored_export_codec.ex:722). Each compact is individually valid; only the strict
+  // chronology check rejects.
+  const equalAt = buildArchive([a, b, c], { effectiveAts: [1500, 1500], endAnchoredAt: 2000 });
+  assert.equal(verifyAnchoredExport({ chunks: [equalAt.archive], version: "v1" }, equalAt.keyChain, equalAt.expected).ok, false, "equal consecutive effective_at must reject (strict >)");
 });
 
 // Cross-vendor #2 (cycle): a key-path where a fingerprint repeats (A→B→A) must reject. Built with a
