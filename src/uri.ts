@@ -171,7 +171,44 @@ function removeDotSegments(path: string): string {
 }
 
 function ipv6Kind(literal: string): 6 | "future" | null {
-  if (/^[0-9A-Fa-f:.]+$/.test(literal)) return 6;
+  if (/^[0-9A-Fa-f:.]+$/.test(literal) && validIpv6Literal(literal)) return 6;
   if (/^v[0-9A-Fa-f]+\.[A-Za-z0-9._~!$&'()*+,;=:-]+$/.test(literal)) return "future";
   return null;
+}
+
+// Structural IPv6 validation mirroring the reference (uri.ex:181-226 valid_ipv6_literal? /
+// ipv6_side_length / ipv6_groups_length). Rejects malformed literals like ":::", "1:2:3:4:5:6:7:8:9"
+// (too many groups), and a "::" that does not actually compress (< 8 groups required). The prior
+// implementation only checked the character class, so structurally-invalid literals normalized.
+function validIpv6Literal(literal: string): boolean {
+  const parts = literal.split("::");
+  if (parts.length === 1) {
+    return ipv6SideLength(parts[0]!) === 8;
+  }
+  if (parts.length === 2) {
+    const left = ipv6SideLength(parts[0]!);
+    const right = ipv6SideLength(parts[1]!);
+    if (left === null || right === null) return false;
+    return left + right < 8;
+  }
+  return false; // multiple "::" compressions
+}
+
+// Count groups on one side of "::". Returns null if any group is malformed.
+function ipv6SideLength(side: string): number | null {
+  if (side === "") return 0;
+  const groups = side.split(":");
+  let total = 0;
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i]!;
+    if (group.includes(".")) {
+      // IPv4 tail counts as 2 groups (reference ipv6_groups_length).
+      if (!isCanonicalIpv4(group)) return null;
+      total += 2;
+    } else {
+      if (!(group.length >= 1 && group.length <= 4) || !/^[0-9A-Fa-f]+$/.test(group)) return null;
+      total += 1;
+    }
+  }
+  return total;
 }

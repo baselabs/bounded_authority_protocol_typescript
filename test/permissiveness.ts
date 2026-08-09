@@ -39,6 +39,7 @@ import { jsonDecode, strUtf8, type Tagged } from "../src/json.js";
 import { InvalidError } from "../src/error.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
 import { jcsEncode } from "../src/jcs.js";
+import { uriNormalize } from "../src/uri.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
 
@@ -127,6 +128,61 @@ test("permissiveness: jcs astral codepoint emits 4-byte UTF-8", () => {
   const out = jcsEncode(v);
   // opening " + F0 90 80 80 + closing "
   assert.deepEqual(Array.from(out), [0x22, 0xf0, 0x90, 0x80, 0x80, 0x22]);
+});
+
+// === BAP-09 cross-vendor remediation — fail-closed + reference-parity closures (defect-injected) ===
+// Each closure below was verified divergent against the RUNNING Elixir reference, fixed to match the
+// reference verdict, then proven red-capable by mechanically removing/breaking the fix and watching
+// the named test go RED. The reference verdict is the contract (AGENTS rule 7); RFC 8785 is cited
+// only where the reference agrees with it.
+
+// Cross-vendor #14: malformed UTF-8 in an object member name must fail closed (InvalidError), not
+// throw a non-InvalidError TypeError via the fatal TextDecoder. Defect: revert parseObject to the
+// bare `utf8Str(nameBytes)` (no DECODER.decode try/catch) → this throws TypeError.
+test("permissiveness: malformed UTF-8 member name fails closed (cross-vendor #14)", () => {
+  // {"<0xFF>":1} — a member name with an invalid UTF-8 lead byte.
+  const input = new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d]);
+  assert.throws(() => jsonDecode(input), InvalidError);
+  // Control: a valid name still decodes.
+  const ok = new Uint8Array([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x31, 0x7d]); // {"a":1}
+  const r = jsonDecode(ok);
+  assert.equal(r.t, "object");
+});
+
+// Cross-vendor #7: a float lexeme whose value exceeds the maximum but rounds to it under Number()
+// (9007199254740991.0001 → 9007199254740991) MUST be rejected on the raw lexeme. Defect: revert to
+// the post-conversion Math.abs(n) > MAX check → this lexeme is accepted (lossy).
+rejects("float magnitude checked on raw lexeme not lossy conversion (cross-vendor #7)", () =>
+  jsonDecode(strUtf8("9007199254740991.0001")));
+test("permissiveness: float raw-lexeme magnitude controls (cross-vendor #7)", () => {
+  // Exactly MAX (int) is valid; MAX+1 as int is rejected on the raw lexeme.
+  assert.equal(jsonDecode(strUtf8("9007199254740991")).t, "int");
+  assert.throws(() => jsonDecode(strUtf8("9007199254740992")), InvalidError);
+  // A float strictly under MAX is valid.
+  assert.equal(jsonDecode(strUtf8("9007199254740990.5")).t, "float");
+});
+
+// Cross-vendor #6: structurally-invalid IPv6 literals must be rejected, not normalized. Defect:
+// revert ipv6Kind to the regex-only branch → [:::] normalizes to Ok.
+test("permissiveness: malformed IPv6 literal rejected (cross-vendor #6)", () => {
+  const bad = ["https://[:::]/", "https://[1:2:3:4:5:6:7:8:9]/", "https://[1::2::3]/", "https://[gggg]/"];
+  for (const u of bad) {
+    assert.equal(uriNormalize(strUtf8(u)).ok, false, `${u} should be invalid`);
+  }
+  // Controls: valid IPv6 literals still normalize.
+  const good = ["https://[::1]/", "https://[2001:db8::1]/", "https://[1:2:3:4:5:6:7:8]/", "https://[::ffff:192.0.2.1]/"];
+  for (const u of good) {
+    assert.equal(uriNormalize(strUtf8(u)).ok, true, `${u} should be valid`);
+  }
+});
+
+// Cross-vendor #8: JCS DEL (U+007F) MUST emit the raw byte 0x7f, matching the Elixir reference
+// (jcs.ex has no DEL case → general codepoint branch passes it raw). RFC 8785 §3.2.2.3 mandates
+// \u007f, but the reference bytes are the contract (AGENTS rule 7). Defect: revert to the appendU
+// branch → bytes differ ([34,120,92,117,48,48,55,102,121,34]).
+test("permissiveness: jcs DEL emits raw byte matching reference (cross-vendor #8)", () => {
+  const v: Tagged = { t: "string", v: strUtf8("x\u007fy") };
+  assert.deepEqual(Array.from(jcsEncode(v)), [34, 120, 127, 121, 34]); // "x<raw DEL>y"
 });
 
 function toHex(b: Uint8Array): string {

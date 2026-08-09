@@ -119,7 +119,12 @@ function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
       const short = SHORT_ESCAPES[cp]!;
       for (let j = 0; j < short.length; j++) out.push(short.charCodeAt(j));
     } else if (cp === 0x7f) {
-      appendU(0x7f, out);
+      // DEL: RFC 8785 §3.2.2.3 mandates \u007f, BUT the Elixir reference (the contract per AGENTS
+      // rule 7 — canonical bytes are the contract) emits RAW 0x7f here (jcs.ex:147 has no DEL case,
+      // so the general codepoint branch passes it through raw). Matching the reference bytes is
+      // required for identical signed inputs and request digests; the SDK MUST NOT diverge to the
+      // RFC's escaped form. Verified: Jcs.encode("x<DEL>y") -> [34,120,127,121,34].
+      out.push(0x7f);
     } else {
       appendUtf8Bytes(cp, out);
     }

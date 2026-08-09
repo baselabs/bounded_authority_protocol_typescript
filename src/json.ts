@@ -283,15 +283,65 @@ function parseNumber(ctx: DecodeCtx): Tagged {
   ctx.pos = lexemeEnd;
   const text = asciiStr(lexeme);
   if (isFloat) {
+    // REQ1-JSON-raw-lexeme: check the magnitude of the RAW lexeme by decimal arithmetic BEFORE
+    // Number() conversion. A lexeme like "9007199254740991.0001" rounds to the max binary64 value
+    // under Number(), so a post-conversion Math.abs(n) > MAX check accepts it — defeating the exact
+    // bound. The reference (json.ex magnitude_within?) compares the lexeme's significant digits
+    // against the maximum's digit string. Mirror that here.
+    if (!lexemeMagnitudeWithin(text, MAX_FLOAT)) fail("json: float magnitude bound");
     const n = Number(text);
     if (!Number.isFinite(n)) fail("json: float not finite");
-    if (Math.abs(n) > MAX_FLOAT) fail("json: float magnitude bound");
     return { t: "float", v: n };
   }
+  if (!lexemeMagnitudeWithin(text, MAX_INT)) fail("json: integer magnitude bound");
   const n = Number(text);
   if (!Number.isSafeInteger(n)) fail("json: integer magnitude bound or unsafe");
-  if (Math.abs(n) > MAX_INT) fail("json: integer magnitude bound");
   return { t: "int", v: n };
+}
+
+// Exact decimal magnitude check of a number lexeme against `maximum`, mirroring the reference
+// (json.ex:298-349 magnitude_within? / compare_boundary). Returns true if |value| <= maximum.
+// Compares the lexeme's significant digits by their effective integer position — NOT the float
+// value (which loses precision). Handles sign, fraction, and exponent exactly.
+function lexemeMagnitudeWithin(text: string, maximum: number): boolean {
+  const unsigned = text[0] === "-" || text[0] === "+" ? text.slice(1) : text;
+  // Split mantissa / exponent (sign already validated by the scanner).
+  let mantissa = unsigned;
+  let exponent = 0;
+  const eIdx = unsigned.search(/[eE]/);
+  if (eIdx !== -1) {
+    mantissa = unsigned.slice(0, eIdx);
+    exponent = parseInt(unsigned.slice(eIdx + 1), 10);
+  }
+  let integerDigits = mantissa;
+  let fractionDigits = "";
+  const dotIdx = mantissa.indexOf(".");
+  if (dotIdx !== -1) {
+    integerDigits = mantissa.slice(0, dotIdx);
+    fractionDigits = mantissa.slice(dotIdx + 1);
+  }
+  const digits = (integerDigits + fractionDigits).replace(/^0+/, "");
+  if (digits === "") return true; // value is zero
+  const maximumDigits = String(maximum);
+  // Effective integer-position of the last significant digit (reference's integer_length).
+  const integerLength = digits.length + exponent - fractionDigits.length;
+  if (integerLength < maximumDigits.length) return true;
+  if (integerLength > maximumDigits.length) return false;
+  // Same digit-count boundary: compare the leading integer_part (padded/truncated to maximum's
+  // length) then require the leftover fractional_part to be all-zero if equal (compare_boundary).
+  const maximumLength = maximumDigits.length;
+  let integerPart: string;
+  let fractionalPart: string;
+  if (digits.length >= maximumLength) {
+    integerPart = digits.slice(0, maximumLength);
+    fractionalPart = digits.slice(maximumLength);
+  } else {
+    integerPart = digits + "0".repeat(maximumLength - digits.length);
+    fractionalPart = "";
+  }
+  return integerPart < maximumDigits || (
+    integerPart === maximumDigits && /^[0]*$/.test(fractionalPart)
+  );
 }
 
 // Null-prototype object parse: Object.create(null) shape; duplicate keys reject at every depth.
@@ -311,6 +361,14 @@ function parseObject(ctx: DecodeCtx, childLevel: number): Tagged {
     if (src[ctx.pos] !== 0x22 /* " */) fail("json: expected member name");
     const nameBytes = scanString(ctx, ctx.pos);
     if (nameBytes.length > resolve(ctx.bounds, "key_bytes" as MaximaKey)) fail("json: key_bytes bound");
+    // A member name's bytes MUST be valid UTF-8 (RFC 8259 §2.5 / REQ1-JSON-no-normalization).
+    // Validate before utf8Str so a lone 0xff in a name fails closed as InvalidError rather than
+    // throwing a non-InvalidError TypeError via the fatal TextDecoder (matches parseString above).
+    try {
+      DECODER.decode(nameBytes);
+    } catch {
+      fail("json: member name not valid UTF-8");
+    }
     const nameStr = utf8Str(nameBytes);
     // REQ1-JSON-no-duplicate: reject before map conversion.
     if (members.has(nameStr)) fail("json: duplicate member");
