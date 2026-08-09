@@ -812,9 +812,10 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     }
     if (!bytesEqual(previous, expected.lastHash)) fail("check_chain: head");
     return {
-      chainId: chain.chainId, firstSequence: chain.firstSequence,
+      version: 1 as const, chainId: chain.chainId, firstSequence: chain.firstSequence,
       lastSequence: chain.lastSequence, rowCount: chain.rowCount,
-      trust: "not_evaluated" as const,
+      previousHash: chain.previousHash, lastHash: previous,
+      verification: "boundary_consistent" as const, trust: "not_evaluated" as const,
     };
   });
 }
@@ -1215,8 +1216,9 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     const pk = importPublicKey(key.publicKey, utf8Str(base64urlEncode(derivedFp)));
     if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_historical_anchor: signature");
     return {
-      anchorId, anchoredAt, chainId, sequence, chainHash, keyId: expected.keyId,
-      keyFingerprint: keyFpRaw, trust: "not_evaluated" as const,
+      version: 1 as const, anchorId, anchoredAt, chainId, sequence, chainHash,
+      keyFingerprint: keyFpRaw, verification: "signature_and_window" as const,
+      trust: "not_evaluated" as const,
     };
   });
 }
@@ -1258,10 +1260,9 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     const pk = importPublicKey(oldKey.publicKey, utf8Str(base64urlEncode(derivedFrom)));
     if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_key_transition: signature");
     return {
-      transitionId, chainId, effectiveAt,
-      fromKeyId: expected.currentKeyId, fromKeyFingerprint: fromFpRaw,
-      toKeyId: expected.nextKeyId, toKeyFingerprint: toFpRaw,
-      trust: "not_evaluated" as const,
+      version: 1 as const, transitionId, chainId, effectiveAt,
+      currentKeyFingerprint: fromFpRaw, nextKeyFingerprint: toFpRaw,
+      verification: "authenticated_transition" as const, trust: "not_evaluated" as const,
     };
   });
 }
@@ -1356,10 +1357,17 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     }
     if (!bytesEqual(previous, expected.chain.lastHash)) fail("verify_anchored_export: head");
     return {
-      objectVersion: archived.version, chainId: expected.chain.chainId,
+      version: 1 as const, objectVersion: archived.version, chainId: expected.chain.chainId,
       firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence,
-      rowCount: expected.chain.rowCount, transitionCount: expected.transitions.length,
-      digest, trust: "not_evaluated" as const, authorization: "not_evaluated" as const,
+      rowCount: expected.chain.rowCount, previousHash: expected.chain.previousHash,
+      lastHash: previous, digest,
+      startAnchorId: expected.startAnchor.anchorId, startAnchoredAt: expected.startAnchor.anchoredAt,
+      startKeyFingerprint: expected.startAnchor.keyFingerprint,
+      endAnchorId: expected.endAnchor.anchorId, endAnchoredAt: expected.endAnchor.anchoredAt,
+      endKeyFingerprint: expected.endAnchor.keyFingerprint,
+      transitionCount: expected.transitions.length,
+      verification: "anchored_export" as const, trust: "not_evaluated" as const,
+      authorization: "not_evaluated" as const,
     };
   });
 }

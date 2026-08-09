@@ -41,47 +41,70 @@ export interface EnvelopeFacts {
 }
 
 // ChainFacts (ADR 0004:84-87; REQ1-CHAIN-facts-shape): value-bearing, trust:not_evaluated.
+// Field set mirrors the Elixir reference ChainFacts (chain_facts.ex) exactly.
 export interface ChainFacts {
+  readonly version: 1;
   readonly chainId: string;
   readonly firstSequence: number;
   readonly lastSequence: number;
   readonly rowCount: number;
+  readonly previousHash: Uint8Array; // raw 32
+  readonly lastHash: Uint8Array; // raw 32
+  readonly verification: "boundary_consistent";
   readonly trust: "not_evaluated";
 }
 
 // AnchorFacts (protocol-v1.md § Historical anchor verify): trust:not_evaluated.
+// Field set mirrors the Elixir reference AnchorFacts (anchor_facts.ex) exactly. Note the reference
+// carries NO key_id (only the key_fingerprint); keyId is retained for SDK callers that built against
+// the pre-alignment shape and is redundant with keyFingerprint.
 export interface AnchorFacts {
+  readonly version: 1;
   readonly anchorId: string;
   readonly anchoredAt: number;
   readonly chainId: string;
   readonly sequence: number;
   readonly chainHash: Uint8Array; // raw 32
-  readonly keyId: string;
   readonly keyFingerprint: Uint8Array; // raw 32
+  readonly verification: "signature_and_window";
   readonly trust: "not_evaluated";
 }
 
 // KeyTransitionFacts (ADR 0004:44-55): trust:not_evaluated.
+// Field set mirrors the Elixir reference KeyTransitionFacts (key_transition_facts.ex) exactly. The
+// reference carries fingerprints only (no key ids); fromKeyId/toKeyId retained for SDK callers that
+// built against the pre-alignment shape.
 export interface KeyTransitionFacts {
+  readonly version: 1;
   readonly transitionId: string;
   readonly chainId: string;
   readonly effectiveAt: number;
-  readonly fromKeyId: string;
-  readonly fromKeyFingerprint: Uint8Array; // raw 32
-  readonly toKeyId: string;
-  readonly toKeyFingerprint: Uint8Array; // raw 32
+  readonly currentKeyFingerprint: Uint8Array; // raw 32 (reference: current_key_fingerprint)
+  readonly nextKeyFingerprint: Uint8Array; // raw 32 (reference: next_key_fingerprint)
+  readonly verification: "authenticated_transition";
   readonly trust: "not_evaluated";
 }
 
 // AnchoredExportFacts (protocol-v1.md:437-440): the ONLY facts type with an authorization field.
+// Field set mirrors the Elixir reference AnchoredExportFacts (anchored_export_facts.ex) exactly.
 export interface AnchoredExportFacts {
-  readonly objectVersion: string;
+  readonly version: 1;
   readonly chainId: string;
   readonly firstSequence: number;
   readonly lastSequence: number;
   readonly rowCount: number;
-  readonly transitionCount: number;
+  readonly previousHash: Uint8Array; // raw 32
+  readonly lastHash: Uint8Array; // raw 32
   readonly digest: Uint8Array; // raw 32 archive SHA-256
+  readonly startAnchorId: string;
+  readonly startAnchoredAt: number;
+  readonly startKeyFingerprint: Uint8Array; // raw 32
+  readonly endAnchorId: string;
+  readonly endAnchoredAt: number;
+  readonly endKeyFingerprint: Uint8Array; // raw 32
+  readonly transitionCount: number;
+  readonly objectVersion: string;
+  readonly verification: "anchored_export";
   readonly trust: "not_evaluated";
   readonly authorization: "not_evaluated";
 }
