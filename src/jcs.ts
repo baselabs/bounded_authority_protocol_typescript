@@ -17,7 +17,7 @@ import { strUtf8, utf8Str, type Tagged } from "./json.js";
 
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   const parts: Uint8Array[] = [];
-  emit(value, parts, bounds);
+  emit(value, parts, bounds, 0, 0);
   let total = 0;
   for (const p of parts) total += p.length;
   if (total > resolve(bounds, "jcs_bytes" as MaximaKey)) fail("jcs: jcs_bytes bound");
@@ -27,38 +27,75 @@ export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8
   return out;
 }
 
-function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds): void {
+// Emit one tagged value as RFC 8785 bytes, enforcing every per-node resource bound DURING encode
+// (mirrors jcs.ex:27-101 encode_value). Returns the updated node count. Per-node invariants:
+//   scalars: level <= depth (NOT <); int/float magnitude; string byte_size <= string_bytes.
+//   array/object: level < depth (children at level+1); length <= array_items/object_members;
+//     object key byte_size <= key_bytes. total_nodes incremented + checked at every node.
+function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number, nodes: number): number {
+  const depth = resolve(bounds, "depth" as MaximaKey);
   switch (value.t) {
-    case "null": parts.push(STR_NULL); return;
-    case "bool": parts.push(value.v ? STR_TRUE : STR_FALSE); return;
-    case "int": parts.push(strUtf8(formatInt(value.v))); return;
-    case "float": parts.push(strUtf8(formatFloat(value.v))); return;
-    case "string": parts.push(escapeString(value.v, bounds)); return;
+    case "null":
+      if (level > depth) fail("jcs: depth bound");
+      parts.push(STR_NULL);
+      return nextNode(nodes, bounds);
+    case "bool":
+      if (level > depth) fail("jcs: depth bound");
+      parts.push(value.v ? STR_TRUE : STR_FALSE);
+      return nextNode(nodes, bounds);
+    case "int":
+      if (level > depth || Math.abs(value.v) > resolve(bounds, "integer_magnitude" as MaximaKey)) fail("jcs: integer bound");
+      parts.push(strUtf8(formatInt(value.v)));
+      return nextNode(nodes, bounds);
+    case "float":
+      if (level > depth || Math.abs(value.v) > resolve(bounds, "float_magnitude" as MaximaKey)) fail("jcs: float bound");
+      parts.push(strUtf8(formatFloat(value.v)));
+      return nextNode(nodes, bounds);
+    case "string":
+      // The decoder already validated UTF-8 + string_bytes; re-check here so a programmatically-built
+      // over-bound value (not from the decoder) is rejected at encode, matching jcs.ex:57-59.
+      if (level > depth || value.v.length > resolve(bounds, "string_bytes" as MaximaKey)) fail("jcs: string bound");
+      parts.push(escapeString(value.v, bounds));
+      return nextNode(nodes, bounds);
     case "array": {
+      if (level >= depth || value.v.length > resolve(bounds, "array_items" as MaximaKey)) fail("jcs: array bound");
+      let n = nextNode(nodes, bounds);
       parts.push(LBRACKET);
       for (let i = 0; i < value.v.length; i++) {
         if (i > 0) parts.push(COMMA);
-        emit(value.v[i]!, parts, bounds);
+        n = emit(value.v[i]!, parts, bounds, level + 1, n);
       }
       parts.push(RBRACKET);
-      return;
+      return n;
     }
     case "object": {
+      if (level >= depth || value.v.size > resolve(bounds, "object_members" as MaximaKey)) fail("jcs: object bound");
+      const keyBytes = resolve(bounds, "key_bytes" as MaximaKey);
+      let n = nextNode(nodes, bounds);
       // RFC 8785 §3.2.3: object names sorted by unsigned UTF-16 code unit sequence.
       const names = [...value.v.keys()].sort(utf16Sort);
+      for (const name of names) {
+        if (strUtf8(name).length > keyBytes) fail("jcs: key_bytes bound");
+      }
       parts.push(LBRACE);
       for (let i = 0; i < names.length; i++) {
         if (i > 0) parts.push(COMMA);
         const name = names[i]!;
         parts.push(escapeString(strUtf8(name), bounds));
         parts.push(COLON);
-        emit(value.v.get(name)!, parts, bounds);
+        n = emit(value.v.get(name)!, parts, bounds, level + 1, n);
       }
       parts.push(RBRACE);
-      return;
+      return n;
     }
     default: fail("jcs: unknown tag");
   }
+}
+
+function nextNode(nodes: number, bounds: Bounds): number {
+  const next = nodes + 1;
+  if (next > resolve(bounds, "total_nodes" as MaximaKey)) fail("jcs: total_nodes bound");
+  return next;
 }
 
 const STR_NULL = strUtf8("null");

@@ -185,6 +185,31 @@ test("permissiveness: jcs DEL emits raw byte matching reference (cross-vendor #8
   assert.deepEqual(Array.from(jcsEncode(v)), [34, 120, 127, 121, 34]); // "x<raw DEL>y"
 });
 
+// Cross-vendor #9: the JCS encoder MUST enforce per-node resource bounds DURING encode (mirrors
+// jcs.ex:27-101 encode_value), not only the final jcs_bytes total. A 257-item array (array_items
+// bound 256), a depth-33 nested array (depth bound 32), and an 8193-byte string (string_bytes bound
+// 8192) must all reject — the reference rejects each. Defect: revert emit to the boundless recurse
+// (no level/nodes/length checks) → all three encode successfully.
+test("permissiveness: jcs enforces per-node bounds at encode (cross-vendor #9)", () => {
+  const int = (n: number): Tagged => ({ t: "int", v: n });
+  // 257-item array (over array_items=256).
+  assert.throws(() => jcsEncode({ t: "array", v: Array.from({ length: 257 }, (_, i) => int(i)) }), InvalidError);
+  // Control: 256 items is the boundary and encodes.
+  assert.ok(jcsEncode({ t: "array", v: Array.from({ length: 256 }, (_, i) => int(i)) }) instanceof Uint8Array);
+  // depth-33 nested array (over depth=32).
+  let deep: Tagged = int(0);
+  for (let i = 0; i < 33; i++) deep = { t: "array", v: [deep] };
+  assert.throws(() => jcsEncode(deep), InvalidError);
+  // Control: depth-32 encodes.
+  let deep32: Tagged = int(0);
+  for (let i = 0; i < 32; i++) deep32 = { t: "array", v: [deep32] };
+  assert.ok(jcsEncode(deep32) instanceof Uint8Array);
+  // oversized string (over string_bytes=8192).
+  assert.throws(() => jcsEncode({ t: "string", v: new Uint8Array(8193) }), InvalidError);
+  // Control: exactly 8192 bytes encodes.
+  assert.ok(jcsEncode({ t: "string", v: new Uint8Array(8192) }) instanceof Uint8Array);
+});
+
 function toHex(b: Uint8Array): string {
   let s = "";
   for (let i = 0; i < b.length; i++) s += b[i]!.toString(16).padStart(2, "0");
