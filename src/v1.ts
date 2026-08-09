@@ -717,18 +717,33 @@ export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds)
     const chainIdBytes = strUtf8(entry.chainId);
     if (chainIdBytes.length < 1 || chainIdBytes.length > resolve(b, "identifier_bytes" as MaximaKey)) fail("encode_consumption_entry: chain_id bytes");
     if (!isStringOrUri(entry.chainId)) fail("encode_consumption_entry: chain_id string-or-uri");
-    const members = new Map<string, Tagged>([
-      ["chain_id", { t: "string", v: chainIdBytes }],
-      ["commitment", { t: "string", v: strUtf8(utf8Str(base64urlEncode(entry.commitment))) }],
-      ["previous", { t: "string", v: strUtf8(utf8Str(base64urlEncode(entry.previousHash))) }],
-      ["sequence", { t: "int", v: entry.sequence }],
-      ["v", { t: "int", v: VERSION }],
-    ]);
-    const rowBytes = jcsEncode({ t: "object", v: members }, b);
+    // Genesis invariant (consumption_chain.ex:123 validate_entry): sequence 1 requires the
+    // all-zero predecessor. The verifier re-checks this, but the producer must reject pre-signing.
+    if (entry.sequence === 1 && !bytesEqual(entry.previousHash, DEFAULT_HASH)) fail("encode_consumption_entry: genesis predecessor");
+    const rowBytes = canonicalRowBytesFromId(chainIdBytes, entry.sequence, entry.previousHash, entry.commitment, b);
     if (rowBytes.length > resolve(b, "chain_row_bytes" as MaximaKey)) fail("encode_consumption_entry: chain_row_bytes");
     const hash = sha256(ROW_PREFIX, rowBytes);
     return { bytes: rowBytes, hash };
   });
+}
+
+// The canonical row bytes shared by the producer and the verifier (so the verifier's re-encode
+// produces EXACTLY the bytes the producer emits and the chain hash is computed over). Two entry
+// points: the producer works from the chain_id UTF-8 bytes it already validated; the verifier works
+// from the decoded chain_id string (re-encoding it to bytes). Both must agree byte-for-byte.
+function canonicalRowBytesFromId(chainIdBytes: Uint8Array, sequence: number, previousHash: Uint8Array, commitment: Uint8Array, b: Bounds): Uint8Array {
+  const members = new Map<string, Tagged>([
+    ["chain_id", { t: "string", v: chainIdBytes }],
+    ["commitment", { t: "string", v: strUtf8(utf8Str(base64urlEncode(commitment))) }],
+    ["previous", { t: "string", v: strUtf8(utf8Str(base64urlEncode(previousHash))) }],
+    ["sequence", { t: "int", v: sequence }],
+    ["v", { t: "int", v: VERSION }],
+  ]);
+  return jcsEncode({ t: "object", v: members }, b);
+}
+
+function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint8Array, commitment: Uint8Array): Uint8Array {
+  return canonicalRowBytesFromId(strUtf8(chainId), sequence, previousHash, commitment, MAXIMUM_BOUNDS);
 }
 
 // 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
@@ -760,9 +775,18 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
       if (cidV.t !== "string" || utf8Str(cidV.v) !== chain.chainId) fail(`check_chain row ${i}: chain_id`);
       const seqV = row.v.get("sequence")!;
       if (seqV.t !== "int" || seqV.v !== sequence) fail(`check_chain row ${i}: sequence`);
+      // valid_sequence?: sequence must be strictly positive (> 0). The encode_consumption_entry
+      // producer already rejects sequence < 1, but the raw row stream is untrusted input here, so
+      // reject sequence 0 at verify time too (mirrors consumption_chain.ex:163 valid_sequence?).
+      if (seqV.v < 1) fail(`check_chain row ${i}: sequence positive`);
       const prevRaw = requireB64urlN(row.v.get("previous"), "previous", 32);
       if (!bytesEqual(prevRaw, previous)) fail(`check_chain row ${i}: previous link`);
-      requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      const commitmentRaw = requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      // Canonical re-encode: the input row bytes MUST byte-equal the canonical re-encoded form
+      // (mirrors consumption_chain.ex:96 parse_row `encode(entry).bytes == ^bytes`). This rejects
+      // whitespace drift and member-order drift that would otherwise hash to a different chain link.
+      const reEncoded = canonicalRowBytes(chain.chainId, seqV.v, prevRaw, commitmentRaw);
+      if (!bytesEqual(reEncoded, rowBytes)) fail(`check_chain row ${i}: canonical`);
       previous = sha256(ROW_PREFIX, rowBytes);
       sequence++;
     }
@@ -983,6 +1007,10 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
     if (!Number.isInteger(anchor.sequence) || anchor.sequence < 0) fail("anchor_signing_input: non-negative sequence");
     assert(anchor.chainHash.length === 32, "anchor_signing_input: chain_hash width");
     assert(anchor.publicKey.length === 32, "anchor_signing_input: public_key width");
+    // Genesis invariant (boundary_anchor_codec.ex:185-189 valid_anchor_binding?): sequence 0 is the
+    // chain root and requires the all-zero chain_hash. The verifier re-checks this; the producer
+    // rejects pre-signing so a mis-bound genesis anchor cannot be minted.
+    if (anchor.sequence === 0 && !bytesEqual(anchor.chainHash, DEFAULT_HASH)) fail("anchor_signing_input: genesis chain_hash");
     const header = new Map<string, Tagged>([
       ["alg", { t: "string", v: strUtf8(ALG) }],
       ["kid", { t: "string", v: keyIdBytes }],
@@ -1049,6 +1077,10 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
 export interface EncodedAnchoredExport { readonly archive: Uint8Array; readonly digest: Uint8Array; }
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
   return trying(() => {
+    // Validate inputs BEFORE framing (mirrors anchored_export_codec.ex:33-57 encode →
+    // validate_expected_export + parse_expected_transitions + validate_expected_key_path). The
+    // parser would reject the bytes a too-large input would produce; the producer rejects earlier.
+    validateExportInputs(input, expected);
     const headerBytes = buildArchiveHeader(input, expected.chain);
     const archive = concat(
       ARCHIVE_PREFIX,
@@ -1061,6 +1093,35 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
     return { archive, digest: sha256(archive) };
   });
+}
+
+// Encode-time input validation (mirrors anchored_export_codec.ex validate_expected_export +
+// validate_chunks): the transition count, chain range coherence, anchor bindings, and the chunk
+// list shape must hold before framing. The parser enforces all of this at verify time; the producer
+// must not mint bytes its own consumer would reject.
+function validateExportInputs(input: AnchoredExportInput, expected: ExpectedExport): void {
+  const chain = expected.chain;
+  // Transition count bound (anchored_export_codec.ex:360 transition_count <= bounds.key_transitions).
+  if (!Number.isInteger(input.transitions.length) || input.transitions.length > resolve(MAXIMUM_BOUNDS, "key_transitions" as MaximaKey)) {
+    fail("encode_anchored_export: transition_count bound");
+  }
+  if (expected.transitions.length !== input.transitions.length) fail("encode_anchored_export: transition count");
+  // Anchor bindings (anchored_export_codec.ex:364-371): start spans first_sequence-1 with the
+  // chain's previous_hash; end spans last_sequence with the chain's last_hash.
+  if (expected.startAnchor.sequence !== chain.firstSequence - 1) fail("encode_anchored_export: start sequence");
+  if (!bytesEqual(expected.startAnchor.chainHash, chain.previousHash)) fail("encode_anchored_export: start chain_hash");
+  if (expected.endAnchor.sequence !== chain.lastSequence) fail("encode_anchored_export: end sequence");
+  if (!bytesEqual(expected.endAnchor.chainHash, chain.lastHash)) fail("encode_anchored_export: end chain_hash");
+  // All transitions + both anchors carry the chain_id (anchored_export_codec.ex:361-363).
+  for (let i = 0; i < expected.transitions.length; i++) {
+    if (expected.transitions[i]!.chainId !== chain.chainId) fail(`encode_anchored_export: transition ${i} chain_id`);
+  }
+  if (expected.startAnchor.chainId !== chain.chainId) fail("encode_anchored_export: start chain_id");
+  if (expected.endAnchor.chainId !== chain.chainId) fail("encode_anchored_export: end chain_id");
+  // Key-path invariants (validate_expected_key_path): the no-transition path requires start==end key
+  // identity with a chronologically-non-decreasing end anchor; the transition path requires strictly
+  // increasing effective_at with no fingerprint cycle. Mirrored by validateKeyPath.
+  validateKeyPath(expected.startAnchor, expected.transitions, expected.endAnchor);
 }
 
 function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain): Uint8Array {
@@ -1180,6 +1241,10 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
+    // Validate the chunk list BEFORE concatenation (mirrors anchored_export_codec.ex:101-102,333-342
+    // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
+    // happens after the shape is validated.
+    validateChunks(archived.chunks);
     const archive = concat(...archived.chunks);
     if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
     if (archive.length > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("verify_anchored_export: byte bound");
@@ -1204,15 +1269,32 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     const expectedHeaderBytes = jcsEncode({ t: "object", v: headerMembers });
     if (!bytesEqual(parsed.headerBytes, expectedHeaderBytes)) fail("verify_anchored_export: header");
     // Verify start + end anchors + each transition against the ordered historical key chain.
-    if (keyChain.keys.length < 2) fail("verify_anchored_export: key chain");
+    // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]); a 1-key,
+    // 0-transition archive is the no-rollover case the reference accepts (validate_historical_key_shapes
+    // requires keys == transitions+1, with no minimum). The exact-count check below is the gate.
     verifyAnchorCompact(parsed.start, keyChain.keys[0]!, expected.startAnchor, "verify_anchored_export start");
     verifyAnchorCompact(parsed.end, keyChain.keys[keyChain.keys.length - 1]!, expected.endAnchor, "verify_anchored_export end");
     if (parsed.transitions.length !== expected.transitions.length) fail("verify_anchored_export: transition count");
-    // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]).
     if (keyChain.keys.length !== parsed.transitions.length + 1) fail("verify_anchored_export: key chain length");
+    // Key-path invariants (anchored_export_codec.ex:506-572 validate_expected_key_path): the expected
+    // transition list must form a strictly-increasing effective_at sequence with no fingerprint cycle,
+    // and the end anchor must close the path with a chronologically-non-decreasing anchored_at.
+    validateKeyPath(expected.startAnchor, expected.transitions, expected.endAnchor);
     for (let i = 0; i < parsed.transitions.length; i++) {
       verifyTransitionCompact(parsed.transitions[i]!, keyChain.keys[i]!, keyChain.keys[i + 1]!, expected.transitions[i]!, `verify_anchored_export transition ${i}`);
     }
+    // Chronology over the ACTUAL anchored times (anchored_export_codec.ex:138-154 verify_transitions
+    // + chronological_end?): each transition's effective_at must be strictly greater than the
+    // previous anchor/transition time, and the end anchor's anchored_at must be >= the last
+    // transition's effective_at (>= the start anchor's anchored_at for the no-transition case —
+    // covered by validateKeyPath's chronological_end on the start anchor).
+    let transitionTime = expected.startAnchor.anchoredAt;
+    for (let i = 0; i < expected.transitions.length; i++) {
+      const t = expected.transitions[i]!;
+      if (!(t.effectiveAt > transitionTime)) fail(`verify_anchored_export transition ${i}: chronology`);
+      transitionTime = t.effectiveAt;
+    }
+    if (!(expected.endAnchor.anchoredAt >= transitionTime)) fail("verify_anchored_export: end chronology");
     // Re-check every row (REQ1-EXPORT-complete-scan; mirrors check_chain).
     let previous = expected.chain.previousHash;
     let sequence = expected.chain.firstSequence;
@@ -1230,9 +1312,12 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       if (cidV.t !== "string" || utf8Str(cidV.v) !== expected.chain.chainId) fail(`verify_anchored_export row ${i}: chain_id`);
       const seqV = row.v.get("sequence")!;
       if (seqV.t !== "int" || seqV.v !== sequence) fail(`verify_anchored_export row ${i}: sequence`);
+      if (seqV.v < 1) fail(`verify_anchored_export row ${i}: sequence positive`);
       const prevRaw = requireB64urlN(row.v.get("previous"), "previous", 32);
       if (!bytesEqual(prevRaw, previous)) fail(`verify_anchored_export row ${i}: previous link`);
-      requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      const commitmentRaw = requireB64urlN(row.v.get("commitment"), "commitment", 32);
+      const reEncoded = canonicalRowBytes(expected.chain.chainId, seqV.v, prevRaw, commitmentRaw);
+      if (!bytesEqual(reEncoded, rowBytes)) fail(`verify_anchored_export row ${i}: canonical`);
       previous = sha256(ROW_PREFIX, rowBytes);
       sequence++;
     }
@@ -1367,6 +1452,57 @@ function readFrame(bytes: Uint8Array, cursor: number, maximum: number, ctx: stri
   const end = start + length;
   if (end > bytes.length) fail(`${ctx}: complete frame`);
   return { bytes: bytes.subarray(start, end), next: end };
+}
+
+// Validate the expected key-transition path (anchored_export_codec.ex:506-572 validate_expected_key_path).
+// The no-transition path requires the start and end anchors to share key id + fingerprint with a
+// chronologically-non-decreasing end anchored_at. The transition path requires: each transition's
+// current key matches the running key; effective_at is strictly increasing; no next fingerprint has
+// appeared before (cycle rejection); the end anchor closes on the last transition's next key with a
+// chronologically-non-decreasing anchored_at.
+function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransition[], end: ExpectedAnchor): void {
+  if (transitions.length === 0) {
+    if (start.keyId !== end.keyId || !bytesEqual(start.keyFingerprint, end.keyFingerprint)) fail("key path: start==end key");
+    if (!(end.anchoredAt >= start.anchoredAt)) fail("key path: end chronological");
+    return;
+  }
+  let currentKeyId = start.keyId;
+  let currentFp = start.keyFingerprint;
+  let previousTime = start.anchoredAt;
+  // seen is seeded with the start anchor's fingerprint (anchored_export_codec.ex:523).
+  const seen: Uint8Array[] = [start.keyFingerprint];
+  for (let i = 0; i < transitions.length; i++) {
+    const t = transitions[i]!;
+    if (t.currentKeyId !== currentKeyId || !bytesEqual(t.currentKeyFingerprint, currentFp)) fail(`key path: transition ${i} current key`);
+    // strictly_after?(effective_at, previous_time) — strictly increasing (anchored_export_codec.ex:559,722).
+    if (!(t.effectiveAt > previousTime)) fail(`key path: transition ${i} chronology`);
+    // No cycle: next_key_fingerprint must not be in seen (anchored_export_codec.ex:560,716-720).
+    for (const s of seen) {
+      if (bytesEqual(t.nextKeyFingerprint, s)) fail(`key path: transition ${i} cycle`);
+    }
+    currentKeyId = t.nextKeyId;
+    currentFp = t.nextKeyFingerprint;
+    previousTime = t.effectiveAt;
+    seen.push(t.nextKeyFingerprint);
+  }
+  // The end anchor must close on the last transition's next key (anchored_export_codec.ex:535-536).
+  if (end.keyId !== currentKeyId || !bytesEqual(end.keyFingerprint, currentFp)) fail("key path: end key");
+  // chronological_end?(end.anchored_at, previous_time) — >= the last transition's effective_at.
+  if (!(end.anchoredAt >= previousTime)) fail("key path: end chronological");
+}
+
+// Validate the chunk list BEFORE concatenation (anchored_export_codec.ex:333-342 validate_chunks):
+// at least one chunk, each chunk nonempty, count < archive_chunks, running total ≤ archive_bytes.
+function validateChunks(chunks: Uint8Array[]): void {
+  if (chunks.length === 0) fail("archive: no chunks");
+  if (chunks.length >= resolve(MAXIMUM_BOUNDS, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
+  let total = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i]!;
+    if (c.length === 0) fail(`archive: empty chunk ${i}`);
+    total += c.length;
+    if (total > resolve(MAXIMUM_BOUNDS, "archive_bytes" as MaximaKey)) fail("archive: chunk bytes");
+  }
 }
 
 // Re-export the primitives the public index exposes (protocol-v1.md L299-309).

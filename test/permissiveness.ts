@@ -35,12 +35,23 @@
 //  5. int/float tag distinction — 1 ≠ 1.0 in selector semantic identity.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import nodeCrypto from "node:crypto";
 import { jsonDecode, strUtf8, type Tagged } from "../src/json.js";
 import { InvalidError } from "../src/error.js";
+import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
 import { jcsEncode } from "../src/jcs.js";
 import { uriNormalize } from "../src/uri.js";
-import { untrustedKeyLocator, checkEnvelope, type ExpectedRequest } from "../src/v1.js";
+import {
+  untrustedKeyLocator, checkEnvelope, type ExpectedRequest,
+  encodeConsumptionEntry, checkChain, boundaryAnchorSigningInput, keyTransitionSigningInput,
+  encodeAnchoredExport, verifyAnchoredExport, assembleCompact, ROW_PREFIX,
+  type BoundaryAnchorProducer, type ConsumptionEntry, type ChainInput, type ExpectedChain,
+  type AnchoredExportInput, type ExpectedExport, type ExpectedAnchor, type ExpectedKeyTransition,
+  type HistoricalKeyChain, type HistoricalPublicKey, type KeyTransitionProducer,
+} from "../src/v1.js";
+import { sha256, _resetCensus } from "../src/ed25519.js";
+import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
 
@@ -265,3 +276,385 @@ function toHex(b: Uint8Array): string {
   for (let i = 0; i < b.length; i++) s += b[i]!.toString(16).padStart(2, "0");
   return s;
 }
+
+// === BAP-09 #2/#3/#15/#16/#17/#18 cross-vendor remediation — chain/archive verify + encode paths ===
+// Each closure was verified divergent against the RUNNING Elixir reference (the verification agents
+// confirmed precise behaviors), fixed to match the reference verdict, then proven red-capable by
+// mechanically reverting the named fix and watching the test go RED. The reference bytes are the
+// contract (AGENTS rule 7).
+//
+// The SDK is verify-only (public keys; AGENTS rule 6), so to build red-capable deny cases for the
+// archive path we mint throwaway Ed25519 keys via node:crypto, sign anchors/transitions through the
+// SDK's own producers, assemble archives via encodeAnchoredExport, and then mutate one variable per
+// finding. The producer/encode tests (#16, #17) need no signatures.
+
+// Build a fresh Ed25519 keypair; return raw 32-byte public key + the signing KeyObject.
+function freshKey(): { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject } {
+  const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("ed25519");
+  const raw = new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-32));
+  return { publicKey: raw, privateKey };
+}
+
+// Sign the canonical anchor message (protected.payload ASCII) with the producer + assembleCompact.
+function signedAnchorCompact(
+  anchor: BoundaryAnchorProducer, privateKey: nodeCrypto.KeyObject,
+): Uint8Array {
+  const si = boundaryAnchorSigningInput(anchor);
+  if (!si.ok) throw new Error("anchor signing input failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), privateKey));
+  return assembleCompact(si.value, sig);
+}
+
+const Z32 = new Uint8Array(32); // the all-zero 32-byte hash (genesis chain_hash / predecessor)
+
+// A self-contained archive builder parameterized by the key path. Produces signed anchors +
+// transitions, encodes rows via encodeConsumptionEntry, and assembles the archive. Returns the pieces
+// verifyAnchoredExport needs. `keys` drives the rollover: 1 key = no transitions, N keys = N-1
+// transitions. By default effective_at increases strictly (1500, 2000, ...); pass `effectiveAts` to
+// override (used by the #2 non-monotone test). The builder intentionally does NOT validate the
+// path — it signs whatever effective_at sequence is requested, so a malformed path can be assembled
+// and then offered to verifyAnchoredExport to prove the chronology/cycle gate fires.
+function buildArchive(
+  keys: { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject }[],
+  opts: { effectiveAts?: number[]; endAnchoredAt?: number } = {},
+) {
+  const chainId = "urn:example:chain";
+  // Genesis chain: firstSequence 1, previous_hash all-zero, one row whose hash becomes last_hash.
+  const zeroPrev = Z32.slice();
+  const rowEntry: ConsumptionEntry = {
+    chainId, sequence: 1, previousHash: zeroPrev, commitment: new Uint8Array(32).fill(7),
+  };
+  const encoded = encodeConsumptionEntry(rowEntry);
+  if (!encoded.ok) throw new Error("row encode failed");
+  const rowBytes = encoded.value.bytes;
+  const lastHash = sha256(ROW_PREFIX, rowBytes);
+  const startKey = keys[0]!;
+  // Start anchor: sequence 0, chain_hash all-zero (genesis), signed by startKey.
+  const startCompact = signedAnchorCompact({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId, sequence: 0,
+    chainHash: zeroPrev, keyId: "k0", publicKey: startKey.publicKey,
+  }, startKey.privateKey);
+  // Transitions + end anchor.
+  const transitions: Uint8Array[] = [];
+  const expectedTransitions: ExpectedKeyTransition[] = [];
+  const defaultAt = (i: number) => 1500 + 500 * i;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const cur = keys[i]!, nxt = keys[i + 1]!;
+    const fromFp = thumbprintOf(cur.publicKey);
+    const toFp = thumbprintOf(nxt.publicKey);
+    const effectiveAt = opts.effectiveAts ? opts.effectiveAts[i]! : defaultAt(i);
+    const transition: KeyTransitionProducer = {
+      transitionId: `urn:example:transition:${i}`, chainId, effectiveAt,
+      currentKeyId: `k${i}`, currentPublicKey: cur.publicKey,
+      nextKeyId: `k${i + 1}`, nextPublicKey: nxt.publicKey,
+    };
+    const si = keyTransitionSigningInput(transition);
+    if (!si.ok) throw new Error("transition signing input failed");
+    const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+    const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), cur.privateKey));
+    transitions.push(assembleCompact(si.value, sig));
+    expectedTransitions.push({
+      transitionId: `urn:example:transition:${i}`, chainId, effectiveAt,
+      currentKeyId: `k${i}`, currentKeyFingerprint: fromFp,
+      nextKeyId: `k${i + 1}`, nextKeyFingerprint: toFp,
+    });
+  }
+  const endKey = keys[keys.length - 1]!;
+  const lastEffectiveAt = expectedTransitions.length > 0
+    ? expectedTransitions[expectedTransitions.length - 1]!.effectiveAt
+    : 1000;
+  const endAnchoredAt = opts.endAnchoredAt ?? Math.max(lastEffectiveAt + 1, 1000 + 500 * keys.length);
+  const endCompact = signedAnchorCompact({
+    anchorId: "urn:example:anchor:end", anchoredAt: endAnchoredAt, chainId, sequence: 1,
+    chainHash: lastHash, keyId: `k${keys.length - 1}`, publicKey: endKey.publicKey,
+  }, endKey.privateKey);
+  const chain: ExpectedChain = {
+    chainId, firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: zeroPrev, lastHash,
+  };
+  const input: AnchoredExportInput = {
+    rows: [rowBytes], startAnchor: startCompact, endAnchor: endCompact,
+    transitions, chainId, firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: zeroPrev, lastHash,
+  };
+  const startAnchor: ExpectedAnchor = {
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId, sequence: 0,
+    chainHash: zeroPrev, keyId: "k0", keyFingerprint: thumbprintOf(startKey.publicKey),
+  };
+  const endAnchor: ExpectedAnchor = {
+    anchorId: "urn:example:anchor:end", anchoredAt: endAnchoredAt, chainId, sequence: 1,
+    chainHash: lastHash, keyId: `k${keys.length - 1}`, keyFingerprint: thumbprintOf(endKey.publicKey),
+  };
+  // encodeAnchoredExport validates inputs (incl. the key path) — for the malformed-path archives
+  // (#2 non-monotone / cycle), bypass encode-time validation by hand-assembling the frames.
+  let archive: Uint8Array;
+  let digest: Uint8Array;
+  if (opts.effectiveAts === undefined) {
+    const enc = encodeAnchoredExport(input, {
+      chain, digest: new Uint8Array(32), startAnchor, endAnchor,
+      transitions: expectedTransitions, objectVersion: "v1",
+    });
+    if (!enc.ok) throw new Error("archive encode failed");
+    archive = enc.value.archive;
+    digest = enc.value.digest;
+  } else {
+    archive = handFrameArchive(input);
+    digest = sha256(archive);
+  }
+  const expected: ExpectedExport = {
+    chain, digest, startAnchor, endAnchor, transitions: expectedTransitions, objectVersion: "v1",
+  };
+  const keyChain: HistoricalKeyChain = {
+    keys: keys.map((k, i) => ({
+      keyId: `k${i}`, publicKey: k.publicKey, validFrom: 0, validBefore: null,
+    } as HistoricalPublicKey)),
+  };
+  return { archive, digest, expected, keyChain, input, chain, startAnchor, endAnchor, expectedTransitions };
+}
+
+// Default builder: a fully-valid archive (strictly-increasing effective_at, no cycle).
+function buildValidArchive(keys: { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject }[]) {
+  return buildArchive(keys);
+}
+
+// Hand-assemble the archive byte stream (mirrors encodeAnchoredExport's framing) WITHOUT the
+// encode-time key-path validation — used to build malformed-path archives for the #2 tests.
+function handFrameArchive(input: AnchoredExportInput): Uint8Array {
+  const headerMembers = new Map<string, Tagged>([
+    ["chain_id", { t: "string", v: strUtf8(input.chainId) }],
+    ["first_sequence", { t: "int", v: input.firstSequence }],
+    ["last_hash", { t: "string", v: strUtf8(new TextDecoder().decode(base64urlEncode(input.lastHash))) }],
+    ["last_sequence", { t: "int", v: input.lastSequence }],
+    ["previous_hash", { t: "string", v: strUtf8(new TextDecoder().decode(base64urlEncode(input.previousHash))) }],
+    ["row_count", { t: "int", v: input.rowCount }],
+    ["transition_count", { t: "int", v: input.transitions.length }],
+    ["v", { t: "int", v: 1 }],
+  ]);
+  const headerBytes = jcsEncode({ t: "object", v: headerMembers });
+  const frame = (b: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(4 + b.length);
+    out[0] = (b.length >>> 24) & 0xff; out[1] = (b.length >>> 16) & 0xff;
+    out[2] = (b.length >>> 8) & 0xff; out[3] = b.length & 0xff;
+    out.set(b, 4);
+    return out;
+  };
+  const prefix = strUtf8("BAP1-ARCHIVE\0EXPORT\0");
+  const parts = [prefix, frame(headerBytes), frame(input.startAnchor)];
+  for (const t of input.transitions) parts.push(frame(t));
+  for (const r of input.rows) parts.push(frame(r));
+  parts.push(frame(input.endAnchor));
+  let len = 0; for (const p of parts) len += p.length;
+  const out = new Uint8Array(len);
+  let off = 0; for (const p of parts) { out.set(p, off); off += p.length; }
+  return out;
+}
+
+const ROW_PREFIX_ARR = Array.from(ROW_PREFIX);
+
+// Compute the JWK thumbprint the SDK uses (RFC 7638 S256 over the canonical JWK), so expected
+// fingerprints match what verifyHistoricalAnchor derives from the public key.
+function thumbprintOf(publicKey: Uint8Array): Uint8Array {
+  return publicKeyThumbprintRaw(publicKey);
+}
+
+// Cross-vendor #16: encode_consumption_entry MUST reject a sequence-1 row whose previous_hash is not
+// the all-zero hash (consumption_chain.ex:123 validate_entry genesis invariant). The verifier
+// re-checks this, but the producer must reject pre-signing. Defect: revert the genesis check → Ok.
+test("permissiveness: encodeConsumptionEntry rejects genesis row with non-zero previous_hash (#16)", () => {
+  const nonzero = new Uint8Array(32).fill(9);
+  const r = encodeConsumptionEntry({
+    chainId: "urn:example:chain", sequence: 1, previousHash: nonzero, commitment: new Uint8Array(32),
+  });
+  assert.equal(r.ok, false, "sequence-1 with non-zero previous_hash must reject");
+  // Control: sequence 1 with the all-zero previous_hash encodes.
+  const ok = encodeConsumptionEntry({
+    chainId: "urn:example:chain", sequence: 1, previousHash: Z32.slice(), commitment: new Uint8Array(32),
+  });
+  assert.equal(ok.ok, true);
+});
+
+// Cross-vendor #16: boundary_anchor_signing_input MUST reject a sequence-0 (genesis) anchor whose
+// chain_hash is not the all-zero hash (boundary_anchor_codec.ex:185-189 valid_anchor_binding?).
+// Defect: revert the genesis check → Ok.
+test("permissiveness: boundaryAnchorSigningInput rejects genesis anchor with non-zero chain_hash (#16)", () => {
+  const { publicKey } = freshKey();
+  const nonzero = new Uint8Array(32).fill(9);
+  const r = boundaryAnchorSigningInput({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+    sequence: 0, chainHash: nonzero, keyId: "k0", publicKey,
+  });
+  assert.equal(r.ok, false, "sequence-0 with non-zero chain_hash must reject");
+  // Control: sequence 0 with the all-zero chain_hash produces a signing input.
+  const ok = boundaryAnchorSigningInput({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+    sequence: 0, chainHash: Z32.slice(), keyId: "k0", publicKey,
+  });
+  assert.equal(ok.ok, true);
+});
+
+// Cross-vendor #15: check_chain MUST re-encode each row canonically and require byte-equality with
+// the input (consumption_chain.ex:96 parse_row), and reject sequence 0 (consumption_chain.ex:163
+// valid_sequence? value > 0). Defect A: revert the canonical check → a whitespace-padded row passes.
+// Defect B: revert the sequence-positive check → a sequence-0 row passes.
+test("permissiveness: checkChain rejects noncanonical row bytes + sequence zero (#15)", () => {
+  const enc = encodeConsumptionEntry({
+    chainId: "urn:example:chain", sequence: 1, previousHash: Z32.slice(), commitment: new Uint8Array(32).fill(7),
+  });
+  if (!enc.ok) throw new Error("setup encode failed");
+  const canonical = enc.value.bytes;
+  const lastHash = enc.value.hash;
+  const goodChain: ChainInput = {
+    rows: [canonical], chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: Z32.slice(), lastHash,
+  };
+  // Control: the canonical row verifies.
+  assert.equal(checkChain(goodChain, goodChain).ok, true);
+  // Defect A: a row with leading whitespace (valid JSON to JSON.parse, but NOT canonical) must reject.
+  const padded = strUtf8(" " + new TextDecoder().decode(canonical));
+  const paddedChain: ChainInput = { ...goodChain, rows: [padded] };
+  assert.equal(checkChain(paddedChain, paddedChain).ok, false, "noncanonical (whitespace) row must reject");
+  // Defect B: a sequence-0 row must reject even if its bytes are otherwise canonical for sequence 0.
+  const seqZeroEnc = (() => {
+    // Build the canonical bytes for a sequence-0 row directly (the producer rejects seq<1, so hand-roll).
+    const members = new Map<string, Tagged>([
+      ["chain_id", { t: "string", v: strUtf8("urn:example:chain") }],
+      ["commitment", { t: "string", v: strUtf8(new TextDecoder().decode(base64urlEncode(new Uint8Array(32).fill(7)))) }],
+      ["previous", { t: "string", v: strUtf8(new TextDecoder().decode(base64urlEncode(Z32.slice()))) }],
+      ["sequence", { t: "int", v: 0 }],
+      ["v", { t: "int", v: 1 }],
+    ]);
+    return jcsEncode({ t: "object", v: members });
+  })();
+  const seqZeroChain: ChainInput = {
+    rows: [seqZeroEnc], chainId: "urn:example:chain", firstSequence: 0, lastSequence: 0, rowCount: 1,
+    previousHash: Z32.slice(), lastHash: sha256(new Uint8Array([...ROW_PREFIX_ARR, ...seqZeroEnc])),
+  };
+  assert.equal(checkChain(seqZeroChain, seqZeroChain).ok, false, "sequence-0 row must reject");
+});
+
+// Cross-vendor #17: encode_anchored_export MUST validate inputs before framing — at minimum the
+// transition count <= key_transitions bound (256). The SDK previously accepted 257 transitions,
+// producing bytes its own parser would reject. Defect: revert the bound check → encode returns Ok.
+test("permissiveness: encodeAnchoredExport rejects transition count over bound (#17)", () => {
+  const k = freshKey();
+  const zeroPrev = Z32.slice();
+  const rowEntry: ConsumptionEntry = {
+    chainId: "urn:example:chain", sequence: 1, previousHash: zeroPrev, commitment: new Uint8Array(32),
+  };
+  const encoded = encodeConsumptionEntry(rowEntry);
+  if (!encoded.ok) throw new Error("setup encode failed");
+  const rowBytes = encoded.value.bytes;
+  const lastHash = encoded.value.hash;
+  const startCompact = signedAnchorCompact({
+    anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+    sequence: 0, chainHash: zeroPrev, keyId: "k0", publicKey: k.publicKey,
+  }, k.privateKey);
+  const endCompact = signedAnchorCompact({
+    anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
+    sequence: 1, chainHash: lastHash, keyId: "k0", publicKey: k.publicKey,
+  }, k.privateKey);
+  // 257 dummy non-empty transition frames (encode only frames them — no signature check here).
+  const dummy = strUtf8("x");
+  const transitions = Array.from({ length: 257 }, () => dummy);
+  const chain: ExpectedChain = {
+    chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+    previousHash: zeroPrev, lastHash,
+  };
+  const r = encodeAnchoredExport(
+    {
+      rows: [rowBytes], startAnchor: startCompact, endAnchor: endCompact, transitions,
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+      previousHash: zeroPrev, lastHash,
+    },
+    {
+      chain, digest: new Uint8Array(32),
+      startAnchor: {
+        anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+        sequence: 0, chainHash: zeroPrev, keyId: "k0", keyFingerprint: thumbprintOf(k.publicKey),
+      },
+      endAnchor: {
+        anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
+        sequence: 1, chainHash: lastHash, keyId: "k0", keyFingerprint: thumbprintOf(k.publicKey),
+      },
+      transitions: [], objectVersion: "v1",
+    },
+  );
+  assert.equal(r.ok, false, "257 transitions must reject (over the key_transitions=256 bound)");
+});
+
+// Cross-vendor #17 (anchor binding): encode_anchored_export MUST reject when the start anchor's
+// sequence != chain.first_sequence - 1 (anchored_export_codec.ex:364). Defect: revert the binding
+// check → encode returns Ok with a mis-bound anchor.
+test("permissiveness: encodeAnchoredExport rejects mis-bound start anchor (#17)", () => {
+  const k = freshKey();
+  const built = buildValidArchive([k]);
+  // Tamper expected: start anchor sequence 5 (not first_sequence-1 = 0).
+  const badExpected: ExpectedExport = {
+    ...built.expected,
+    startAnchor: { ...built.startAnchor, sequence: 5 },
+  };
+  const r = encodeAnchoredExport(built.input, badExpected);
+  assert.equal(r.ok, false, "start anchor sequence != first_sequence-1 must reject");
+});
+
+// Cross-vendor #3: a valid 1-key / 0-transition archive MUST verify (anchored_export_codec.ex:94-99
+// validate_historical_key_shapes accepts keys == transitions+1 with NO minimum). The SDK previously
+// gated on keys.length < 2 and falsely rejected it. Defect: revert to the `< 2` gate → this valid
+// archive returns Err.
+test("permissiveness: verifyAnchoredExport accepts a valid 1-key / 0-transition archive (#3)", () => {
+  _resetCensus();
+  const built = buildValidArchive([freshKey()]);
+  const r = verifyAnchoredExport(
+    { chunks: [built.archive], version: "v1" },
+    built.keyChain,
+    built.expected,
+  );
+  assert.equal(r.ok, true, "a valid 1-key/0-transition archive must verify");
+  if (r.ok) assert.equal(r.value.transitionCount, 0);
+});
+
+// Cross-vendor #18: verify_anchored_export MUST validate the chunk list BEFORE concatenation
+// (anchored_export_codec.ex:333-342 validate_chunks): reject empty chunks, reject chunk count >=
+// archive_chunks, reject total > archive_bytes. Defect: revert validateChunks → these pass to parse.
+test("permissiveness: verifyAnchoredExport rejects bad chunk lists (#18)", () => {
+  _resetCensus();
+  const built = buildValidArchive([freshKey()]);
+  // Empty chunk in the list.
+  const withEmpty = { chunks: [built.archive, new Uint8Array(0)], version: "v1" };
+  assert.equal(verifyAnchoredExport(withEmpty, built.keyChain, built.expected).ok, false, "empty chunk must reject");
+  // Too many chunks (>= archive_chunks bound 65796).
+  const tooMany = { chunks: Array.from({ length: 65796 }, () => new Uint8Array(1)), version: "v1" };
+  assert.equal(verifyAnchoredExport(tooMany, built.keyChain, built.expected).ok, false, "chunk count over bound must reject");
+  // Control: a single-chunk split of the valid archive still verifies.
+  assert.equal(verifyAnchoredExport({ chunks: [built.archive], version: "v1" }, built.keyChain, built.expected).ok, true);
+});
+
+// Cross-vendor #2: verify_anchored_export MUST enforce rollover chronology (effective_at strictly
+// increasing) and reject fingerprint cycles (anchored_export_codec.ex:516-572 validate_expected_key_path).
+// The signed transitions are built with the actual malformed effective_at sequence (each compact
+// individually valid), so the chronology check is the load-bearing gate. Defect: revert
+// validateKeyPath + the chronology loop → this archive wrongly verifies.
+test("permissiveness: verifyAnchoredExport rejects non-monotonic rollover (#2)", () => {
+  _resetCensus();
+  const a = freshKey(), b = freshKey(), c = freshKey();
+  // Control: a valid 3-key/2-transition archive verifies.
+  const valid = buildValidArchive([a, b, c]);
+  assert.equal(verifyAnchoredExport({ chunks: [valid.archive], version: "v1" }, valid.keyChain, valid.expected).ok, true, "control: valid 3-key archive verifies");
+  // Non-monotonic: transition[1].effective_at (1400) < transition[0].effective_at (1500). Each
+  // compact is validly signed with its own effective_at, so verifyTransitionCompact passes; only the
+  // chronology gate rejects.
+  const nonMono = buildArchive([a, b, c], { effectiveAts: [1500, 1400], endAnchoredAt: 2000 });
+  assert.equal(verifyAnchoredExport({ chunks: [nonMono.archive], version: "v1" }, nonMono.keyChain, nonMono.expected).ok, false, "non-monotonic effective_at must reject");
+});
+
+// Cross-vendor #2 (cycle): a key-path where a fingerprint repeats (A→B→A) must reject. Built with a
+// REAL repeated key (keys[0] === keys[2] = A) so each transition (A→B, B→A) is individually valid,
+// and the cycle check is the load-bearing gate. Defect: revert validateKeyPath → cycle verifies.
+test("permissiveness: verifyAnchoredExport rejects fingerprint cycle A→B→A (#2)", () => {
+  _resetCensus();
+  const a = freshKey(), b = freshKey();
+  // 3-position key chain where position 2 reuses key A (the cycle: A→B→A).
+  const cyclic = buildArchive([a, b, a], { effectiveAts: [1500, 2000], endAnchoredAt: 3000 });
+  assert.equal(verifyAnchoredExport({ chunks: [cyclic.archive], version: "v1" }, cyclic.keyChain, cyclic.expected).ok, false, "fingerprint cycle A→B→A must reject");
+});
