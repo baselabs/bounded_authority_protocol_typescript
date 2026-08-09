@@ -180,7 +180,10 @@ test("permissiveness: float raw-lexeme magnitude controls (cross-vendor #7)", ()
 // Cross-vendor #6: structurally-invalid IPv6 literals must be rejected, not normalized. Defect:
 // revert ipv6Kind to the regex-only branch → [:::] normalizes to Ok.
 test("permissiveness: malformed IPv6 literal rejected (cross-vendor #6)", () => {
-  const bad = ["https://[:::]/", "https://[1:2:3:4:5:6:7:8:9]/", "https://[1::2::3]/", "https://[gggg]/"];
+  // Cross-vendor re-review Finding 1: a non-tail IPv4-style group (https://[1.2.3.4:5::6]/) must
+  // reject — the reference's ipv6_groups_length checks non-last groups as hex-only. The prior fix
+  // accepted it.
+  const bad = ["https://[:::]/", "https://[1:2:3:4:5:6:7:8:9]/", "https://[1::2::3]/", "https://[gggg]/", "https://[1.2.3.4:5::6]/"];
   for (const u of bad) {
     assert.equal(uriNormalize(strUtf8(u)).ok, false, `${u} should be invalid`);
   }

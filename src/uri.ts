@@ -201,9 +201,12 @@ function ipv6SideLength(side: string): number | null {
   let total = 0;
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i]!;
+    const isLast = i === groups.length - 1;
     if (group.includes(".")) {
-      // IPv4 tail counts as 2 groups (reference ipv6_groups_length).
-      if (!isCanonicalIpv4(group)) return null;
+      // An IPv4-style group is valid ONLY in the tail position (reference ipv6_groups_length checks
+      // non-last groups as hex-only via valid_hex_group?). A non-tail IPv4 group is a malformed
+      // literal the reference rejects.
+      if (!isLast || !isCanonicalIpv4(group)) return null;
       total += 2;
     } else {
       if (!(group.length >= 1 && group.length <= 4) || !/^[0-9A-Fa-f]+$/.test(group)) return null;

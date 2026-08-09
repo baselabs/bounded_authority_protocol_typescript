@@ -501,7 +501,9 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
     const protectedText = compact.subarray(0, d0);
     if (protectedText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("key_locator: protected bound");
     const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
-    const h = jsonDecode(protectedBytes);
+    // Cross-vendor re-review Finding 3: thread the caller-resolved bounds into the JSON decode
+    // (reference v1.ex:27 Json.decode(header_bytes, bounds) — depth/total_nodes limits honor bounds).
+    const h = jsonDecode(protectedBytes, b);
     requireObjectExact(h, ["alg", "typ", "kid"], "grant header");
     requireStringLit(h, "alg", ALG, "grant header alg");
     requireStringLit(h, "typ", GRANT_TYP, "grant header typ");
@@ -1540,7 +1542,9 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
 // at least one chunk, each chunk nonempty, count < archive_chunks, running total ≤ archive_bytes.
 function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
   if (chunks.length === 0) fail("archive: no chunks");
-  if (chunks.length >= resolve(bounds, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
+  // Cross-vendor re-review Finding 2: the reference's validate_chunks guard is `count < archive_chunks`
+  // on the recursive clause (start 0), accepting up to archive_chunks INCLUSIVE. Use `>` not `>=`.
+  if (chunks.length > resolve(bounds, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
   let total = 0;
   for (let i = 0; i < chunks.length; i++) {
     const c = chunks[i]!;
