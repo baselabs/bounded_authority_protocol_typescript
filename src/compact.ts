@@ -1,4 +1,4 @@
-import { fail, assert, ok, err, trying, type Result } from "./error.js";
+import { fail, assert, trying, type Result } from "./error.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
