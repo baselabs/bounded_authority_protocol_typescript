@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Conformance runner for @bounded-authority/verifier (BAP-09 T5). Loads the published corpus from
 // priv/conformance/v1/corpus/, recomputes EVERY verdict from scratch by calling the SDK façade
-// (sdks/typescript/src/v1.ts), and asserts agreement on all 259 cases. Asserts the index.json
+// (sdks/typescript/src/v1.ts), and asserts agreement on all 280 cases. Asserts the index.json
 // SHA-256 at startup (ADR 0014 D8: the SDK binds to the exact corpus it was certified against).
 // Runs the two-boundary key census (discovery == verify-import == index public_key_fingerprints).
 //
@@ -65,8 +65,8 @@ interface Raws extends Map<string, Uint8Array> {}
 
 // The certified index.json SHA-256 (base64url of the SHA-256 digest). ADR 0014 D4: the SDK binds to
 // the exact corpus it was certified against; a mismatched vendored corpus fails closed rather than
-// drifting silently. This MUST match the Python runner's hex SHA (c3b0bcf7...757084dd → base64url).
-const CERTIFIED_INDEX_SHA = "w7C892ZcIX6kWEOpxJwnaaYcIcSZjYuFJJz2y3VwhN0";
+// drifting silently. This MUST match the Python runner's hex SHA (557c1d94...e68b03a → base64url).
+const CERTIFIED_INDEX_SHA = "VXwdlNDT5VVuL1Q8BIOMqWfutvPaE6KRurhqu45osDo";
 
 function loadCorpus(): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
   const indexPath = join(CORPUS_DIR, "index.json");

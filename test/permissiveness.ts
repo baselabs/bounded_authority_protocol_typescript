@@ -195,10 +195,11 @@ test("permissiveness: malformed IPv6 literal rejected (cross-vendor #6)", () => 
   }
 });
 
-// Cross-vendor #8: JCS DEL (U+007F) MUST emit the raw byte 0x7f, matching the Elixir reference
-// (jcs.ex has no DEL case → general codepoint branch passes it raw). RFC 8785 §3.2.2.3 mandates
-// \u007f, but the reference bytes are the contract (AGENTS rule 7). Defect: revert to the appendU
-// branch → bytes differ ([34,120,92,117,48,48,55,102,121,34]).
+// Cross-vendor #8: JCS DEL (U+007F) MUST emit the raw byte 0x7f. This is RFC-CONFORMANT, not a
+// deviation: RFC 8785 §3.2.2.2 escapes only U+0000–U+001F plus quote (0x22) and backslash (0x5c);
+// DEL (0x7f) is outside that range, so it is serialized "as is" (raw). The reference (jcs.ex:142-148:
+// the < 0x20 branch skips DEL, the general codepoint clause emits it raw) and JSON.stringify agree.
+// Defect: revert to the appendU branch → bytes differ ([34,120,92,117,48,48,55,102,121,34]).
 test("permissiveness: jcs DEL emits raw byte matching reference (cross-vendor #8)", () => {
   const v: Tagged = { t: "string", v: strUtf8("x\u007fy") };
   assert.deepEqual(Array.from(jcsEncode(v)), [34, 120, 127, 121, 34]); // "x<raw DEL>y"
@@ -860,7 +861,7 @@ test("permissiveness: decodeGrant threads caller bounds into selector decode (#1
 });
 
 // #10/#11 control: bounds absent on every Expected* MUST default to MAX (the conformance runner
-// constructs Expected* without bounds; a missing default would break 259/259). The 13-byte kid grant
+// constructs Expected* without bounds; a missing default would break 280/280). The 13-byte kid grant
 // verifies at MAX via every entry point that takes an Expected*.
 test("permissiveness: Expected*.bounds absent defaults to MAX (#11)", () => {
   _resetCensus();
