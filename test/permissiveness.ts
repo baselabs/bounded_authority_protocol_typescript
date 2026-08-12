@@ -861,7 +861,7 @@ test("permissiveness: decodeGrant threads caller bounds into selector decode (#1
 });
 
 // #10/#11 control: bounds absent on every Expected* MUST default to MAX (the conformance runner
-// constructs Expected* without bounds; a missing default would break 280/280). The 13-byte kid grant
+// constructs Expected* without bounds; a missing default would break 283/283). The 13-byte kid grant
 // verifies at MAX via every entry point that takes an Expected*.
 test("permissiveness: Expected*.bounds absent defaults to MAX (#11)", () => {
   _resetCensus();

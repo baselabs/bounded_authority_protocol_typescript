@@ -22,14 +22,14 @@ via `node:crypto`; SHA-256, base64url, and JSON canonicalization hand-rolled fro
 ## Conformance
 
 This SDK is certified against the published corpus (`priv/conformance/v1/corpus/`) and passes every
-one of its **280** valid + invalid vectors, recomputed from scratch — not cached verdicts. The
+one of its **283** valid + invalid vectors, recomputed from scratch — not cached verdicts. The
 conformance runner asserts the corpus `index.json` SHA-256 at startup
-(`f3054cbb37c4d40b148d98a118b3ae9ac862e00b0076f7f25c0f6c7b2ff675f2`), so a consumer who vendors a
+(`a5ac7361c508d2bb55c6ca3045a5cc06ec4a3f64f65904214108c6f10c704dcc`), so a consumer who vendors a
 mismatched corpus snapshot gets a hard failure rather than a silent drift ([ADR 0014 D4][adr14]).
 
 ```bash
 pnpm install
-pnpm conformance   # 280/280 + two-boundary key census
+pnpm conformance   # 283/283 + two-boundary key census
 ```
 
 Permissiveness is invisible to corpus agreement by construction, so each parser-layer closure is
@@ -133,7 +133,7 @@ pnpm typecheck       # tsc --noEmit, strict (noUncheckedIndexedAccess + exactOpt
 pnpm lint            # eslint . — includes the library-path purity rule (no I/O/clock/RNG/network in src/)
 pnpm license-check   # dependency-license gate (zero runtime deps expected)
 pnpm test            # unit + struct + façade corpus-vector tests
-pnpm conformance     # 280/280 + two-boundary key census
+pnpm conformance     # 283/283 + two-boundary key census
 pnpm test:permissiveness   # the per-language mutation-gate
 ```
 
