@@ -641,6 +641,60 @@ test("assembleCompact rejects a well-formed grant payload with a numeric iss (fi
   assert.equal(r.ok, false);
 });
 
+// Canonical-form (reference BoundaryAnchorCodec.parse:95-96,118-119 / KeyTransitionCodec.parse): the
+// protected AND payload segments of an anchor/transition compact must be the exact JCS encoding.
+// The SDK parse helpers now enforce this (parseAnchorHeader/parseTransitionHeader on the protected
+// segment; validateAnchorPayload/validateTransitionPayload on the payload). These prove BOTH sites
+// fire — without the check the façade accepts the non-canonical compact.
+const ANCHOR_HEADER = strUtf8(START_ANCHOR_COMPACT.split(".")[0]!);   // canonical anchor header
+const ANCHOR_PAYLOAD = strUtf8(START_ANCHOR_COMPACT.split(".")[1]!);   // canonical anchor payload
+
+test("assembleCompact rejects a non-canonical anchor protected header (canonical-form)", () => {
+  // Same members as the canonical anchor header, but in a non-JCS order → bytes != Jcs.encode.
+  const nonCanonical = base64urlEncode(strUtf8('{"typ":"ba+chain-anchor","alg":"EdDSA","kid":"archive-a"}'));
+  const r = assembleCompact({ kind: "boundary_anchor", protectedSegment: nonCanonical, payloadSegment: ANCHOR_PAYLOAD }, new Uint8Array(64));
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects a non-canonical anchor payload (canonical-form)", () => {
+  // Canonical header + the canonical payload's members in reverse (non-JCS) order, values unchanged.
+  const canon = JSON.parse(utf8(base64urlDecode(ANCHOR_PAYLOAD))) as Record<string, unknown>;
+  const reversed = "{" + Object.keys(canon).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(canon[k])}`).join(",") + "}";
+  const nonCanonicalPayload = base64urlEncode(strUtf8(reversed));
+  const r = assembleCompact({ kind: "boundary_anchor", protectedSegment: ANCHOR_HEADER, payloadSegment: nonCanonicalPayload }, new Uint8Array(64));
+  assert.equal(r.ok, false);
+});
+
+test("decodeGrant rejects a compact with a wrong-width signature (signature-width gate)", () => {
+  // Reference parse_grant (runtime.ex:237) requires byte_size(signature) == signature_bytes (64).
+  // The SDK decode path now enforces this (compact.ts parseCompact); a grant compact with a 32-byte
+  // signature segment must reject where it previously decoded to Ok.
+  const parts = GRANT_COMPACT.split(".");
+  const wrongSig = utf8(base64urlEncode(new Uint8Array(32)));
+  const r = decodeGrant(strUtf8(`${parts[0]!}.${parts[1]!}.${wrongSig}`));
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects a non-canonical transition protected header (canonical-form)", () => {
+  // Same members as the canonical transition header, but in a non-JCS order → bytes != Jcs.encode
+  // (reference KeyTransitionCodec.parse:127-128). Symmetric to the anchor-header test above.
+  const nonCanonical = base64urlEncode(strUtf8('{"typ":"ba+key-transition","alg":"EdDSA","kid":"anchor-a"}'));
+  const payload = strUtf8(TRANSITION_COMPACT.split(".")[1]!);
+  const r = assembleCompact({ kind: "key_transition", protectedSegment: nonCanonical, payloadSegment: payload }, new Uint8Array(64));
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects a non-canonical transition payload (canonical-form)", () => {
+  // Canonical header + the canonical payload's members in reverse (non-JCS) order, values unchanged
+  // (reference KeyTransitionCodec.parse:151-152). Symmetric to the anchor-payload test above.
+  const header = strUtf8(TRANSITION_COMPACT.split(".")[0]!);
+  const canon = JSON.parse(utf8(base64urlDecode(strUtf8(TRANSITION_COMPACT.split(".")[1]!)))) as Record<string, unknown>;
+  const reversed = "{" + Object.keys(canon).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(canon[k])}`).join(",") + "}";
+  const nonCanonicalPayload = base64urlEncode(strUtf8(reversed));
+  const r = assembleCompact({ kind: "key_transition", protectedSegment: header, payloadSegment: nonCanonicalPayload }, new Uint8Array(64));
+  assert.equal(r.ok, false);
+});
+
 // === census sanity: the valid verify surfaces imported their keys ===
 test("census tracks imported fingerprints", () => {
   _resetCensus();

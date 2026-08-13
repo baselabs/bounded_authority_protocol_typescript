@@ -198,6 +198,8 @@ function parseAnchorHeader(seg: CompactSegments, bounds: Bounds): { kid: string 
   requireStringLit(h, "alg", ALG, "anchor header alg");
   requireStringLit(h, "typ", ANCHOR_TYP, "anchor header typ");
   const kid = requireKid(h, bounds);
+  // Canonical form: the protected segment must be the exact JCS encoding (boundary_anchor_codec.ex:95-96).
+  if (!bytesEqual(jcsEncode(h, bounds), seg.protectedBytes)) fail("anchor header: canonical");
   return { kid };
 }
 
@@ -207,6 +209,8 @@ function parseTransitionHeader(seg: CompactSegments, bounds: Bounds): { kid: str
   requireStringLit(h, "alg", ALG, "transition header alg");
   requireStringLit(h, "typ", TRANSITION_TYP, "transition header typ");
   const kid = requireKid(h, bounds);
+  // Canonical form: the protected segment must be the exact JCS encoding (key_transition_codec.ex:127-128).
+  if (!bytesEqual(jcsEncode(h, bounds), seg.protectedBytes)) fail("transition header: canonical");
   return { kid };
 }
 
@@ -428,7 +432,7 @@ function validateProofPayload(p: Tagged, bounds: Bounds): asserts p is Extract<T
 }
 
 // Validate the closed anchor payload (ADR 0004 § Boundary anchors).
-function validateAnchorPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
+function validateAnchorPayload(p: Tagged, payloadBytes: Uint8Array, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["anchor_id", "anchored_at", "chain_hash", "chain_id", "key_fingerprint", "sequence", "v"], "anchor payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("anchor: v=1");
@@ -438,10 +442,12 @@ function validateAnchorPayload(p: Tagged, bounds: Bounds): asserts p is Extract<
   requireInt(p.v.get("sequence"), "sequence");
   requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32);
   requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32);
+  // Canonical form: the payload segment must be the exact JCS encoding (boundary_anchor_codec.ex:118-119).
+  if (!bytesEqual(jcsEncode(p, bounds), payloadBytes)) fail("anchor payload: canonical");
 }
 
 // Validate the closed key-transition payload (ADR 0004 § Authenticated key transitions).
-function validateTransitionPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
+function validateTransitionPayload(p: Tagged, payloadBytes: Uint8Array, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["chain_id", "effective_at", "from_key_fingerprint", "to_key_fingerprint", "to_key_id", "transition_id", "v"], "transition payload");
   const vV = p.v.get("v")!;
   if (vV.t !== "int" || vV.v !== VERSION) fail("transition: v=1");
@@ -456,6 +462,8 @@ function validateTransitionPayload(p: Tagged, bounds: Bounds): asserts p is Extr
   const s = utf8Str(toKeyId.v);
   if (s.length < 1 || s.length > resolve(bounds, "kid_bytes" as MaximaKey)) fail("transition: to_key_id bytes");
   if (!/^[A-Za-z0-9._~-]+$/.test(s)) fail("transition: to_key_id charset");
+  // Canonical form: the payload segment must be the exact JCS encoding (key_transition_codec.ex:151-152).
+  if (!bytesEqual(jcsEncode(p, bounds), payloadBytes)) fail("transition payload: canonical");
 }
 
 // inWindow: valid_from <= time && (valid_before null/unbounded OR time < valid_before).
@@ -1061,8 +1069,8 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array): Res
         break;
       }
       case "proof": parseProofHeader(seg, b); validateProofPayload(payload, b); break;
-      case "boundary_anchor": parseAnchorHeader(seg, b); validateAnchorPayload(payload, b); break;
-      case "key_transition": parseTransitionHeader(seg, b); validateTransitionPayload(payload, b); break;
+      case "boundary_anchor": parseAnchorHeader(seg, b); validateAnchorPayload(payload, seg.payloadBytes, b); break;
+      case "key_transition": parseTransitionHeader(seg, b); validateTransitionPayload(payload, seg.payloadBytes, b); break;
       default: fail("assemble_compact: kind");
     }
     return compact;
@@ -1253,7 +1261,7 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
     if (expected.keyId !== key.keyId) fail("verify_historical_anchor: expected key id");
     const p = jsonDecode(seg.payloadBytes, b);
-    validateAnchorPayload(p, b);
+    validateAnchorPayload(p, seg.payloadBytes, b);
     if (p.t !== "object") fail("verify_historical_anchor: payload object");
     const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id", b);
     if (anchorId !== expected.anchorId) fail("verify_historical_anchor: anchor_id");
@@ -1296,7 +1304,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     if (expected.currentKeyId !== oldKey.keyId) fail("verify_key_transition: current key id");
     if (expected.nextKeyId !== newKey.keyId) fail("verify_key_transition: next key id");
     const p = jsonDecode(seg.payloadBytes, b);
-    validateTransitionPayload(p, b);
+    validateTransitionPayload(p, seg.payloadBytes, b);
     if (p.t !== "object") fail("verify_key_transition: payload object");
     const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id", b);
     if (transitionId !== expected.transitionId) fail("verify_key_transition: transition_id");
@@ -1471,7 +1479,7 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
   if (kid !== key.keyId) fail(`${ctx}: kid`);
   if (expected.keyId !== key.keyId) fail(`${ctx}: expected key id`);
   const p = jsonDecode(seg.payloadBytes, b);
-  validateAnchorPayload(p, b);
+  validateAnchorPayload(p, seg.payloadBytes, b);
   if (p.t !== "object") fail(`${ctx}: payload object`);
   const anchorId = requireStringOrUri(p.v.get("anchor_id"), "anchor_id", b);
   if (anchorId !== expected.anchorId) fail(`${ctx}: anchor_id`);
@@ -1506,7 +1514,7 @@ function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPubl
   if (expected.currentKeyId !== currentKey.keyId) fail(`${ctx}: current key id`);
   if (expected.nextKeyId !== nextKey.keyId) fail(`${ctx}: next key id`);
   const p = jsonDecode(seg.payloadBytes, b);
-  validateTransitionPayload(p, b);
+  validateTransitionPayload(p, seg.payloadBytes, b);
   if (p.t !== "object") fail(`${ctx}: payload object`);
   const transitionId = requireStringOrUri(p.v.get("transition_id"), "transition_id", b);
   if (transitionId !== expected.transitionId) fail(`${ctx}: transition_id`);

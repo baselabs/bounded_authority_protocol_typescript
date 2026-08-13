@@ -40,6 +40,11 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
   const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
   const payloadBytes = base64urlDecode(payloadText, resolve(b, "decoded_segment_bytes" as MaximaKey));
   const signature = base64urlDecode(signatureText);
+  // Decoded signature-width gate (runtime.ex:237 parse_grant, :259 parse_proof,
+  // boundary_anchor_codec.ex:88, key_transition_codec.ex:120 all enforce byte_size(signature) ==
+  // signature_bytes). scanCompact (the ath/hash gate) intentionally does NOT — it mirrors
+  // CompactJws.scan (shape+size only); the decoded-width check belongs to the decode path.
+  if (signature.length !== resolve(b, "signature_bytes" as MaximaKey)) fail("compact: signature width");
   return {
     protectedSegment: protectedText,
     payloadSegment: payloadText,
