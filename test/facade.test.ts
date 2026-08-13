@@ -627,6 +627,20 @@ test("assembleCompact rejects a structurally-invalid grant payload (re-parse)", 
   assert.equal(r.ok, false);
 });
 
+test("assembleCompact rejects a well-formed grant payload with a numeric iss (field re-parse)", () => {
+  // Cross-vendor (codex): the grant re-parse must validate FIELD values, not just the closed key-set.
+  // This payload has every required key with the right types EXCEPT `iss` (numeric, not a string) —
+  // the structural validator alone accepts it; the full decode_grant re-parse must reject it.
+  const json = '{"v":1,"iss":123,"jti":"urn:example:g:1","aud":["https://resource.example.test"],' +
+    '"iat":1000,"nbf":1000,"exp":2000,"cnf":{"jkt":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},' +
+    '"operations":[{"name":"read","selectors":[{"kind":"all"}]}]}';
+  const r = assembleCompact(
+    { kind: "grant", protectedSegment: GRANT_PROTECTED, payloadSegment: base64urlEncode(strUtf8(json)) },
+    new Uint8Array(64),
+  );
+  assert.equal(r.ok, false);
+});
+
 // === census sanity: the valid verify surfaces imported their keys ===
 test("census tracks imported fingerprints", () => {
   _resetCensus();

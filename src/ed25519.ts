@@ -55,3 +55,12 @@ export function sha256(...parts: Uint8Array[]): Uint8Array {
   for (const p of parts) h.update(Buffer.from(p));
   return new Uint8Array(h.digest());
 }
+
+// SHA-256 over an ARRAY of chunks (no spread). Used by archive-verify, which hashes a caller-supplied
+// chunk list that may hold up to archive_chunks (65796) entries — beyond V8's ~65534 call-argument
+// ceiling, so the chunk list MUST be fed as an array, not spread into sha256(...chunks).
+export function sha256Concat(parts: Uint8Array[]): Uint8Array {
+  const h = createHash("sha256");
+  for (const p of parts) h.update(Buffer.from(p));
+  return new Uint8Array(h.digest());
+}

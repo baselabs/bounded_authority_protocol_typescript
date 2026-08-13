@@ -3,7 +3,7 @@ import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { parseCompact, assembleSegments, scanCompact, type SigningInput, type CompactSegments } from "./compact.js";
 import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
-import { importPublicKey, ed25519Verify, sha256, _resetCensus } from "./ed25519.js";
+import { importPublicKey, ed25519Verify, sha256, sha256Concat, _resetCensus } from "./ed25519.js";
 import { requestDigest as computeRequestDigest, REQUEST_PREFIX, typedProject } from "./digest.js";
 import { parseSelector, selectorMatches, type Selector } from "./selector.js";
 import { uriNormalize } from "./uri.js";
@@ -468,15 +468,6 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
   return diff === 0;
-}
-
-function concat(...parts: Uint8Array[]): Uint8Array {
-  let len = 0;
-  for (const p of parts) len += p.length;
-  const out = new Uint8Array(len);
-  let off = 0;
-  for (const p of parts) { out.set(p, off); off += p.length; }
-  return out;
 }
 
 // --- the 17 façade functions ---
@@ -1057,12 +1048,18 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array): Res
     const compact = assembled.value;
     if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("assemble_compact: compact_bytes");
     // Re-parse the composed compact per kind (validate_assembled_compact). parseCompact enforces the
-    // segment bounds + base64url decode; parseXxxHeader enforces kind↔typ; validateXxxPayload
-    // enforces the full payload structure.
+    // segment bounds + base64url decode; parseXxxHeader enforces kind↔typ; the payload validators
+    // enforce the full payload structure. The GRANT arm uses decodeGrant (the full decoder) because
+    // validateGrantPayload is structural-only — it does not validate iss/jti/aud/times/cnf, which
+    // decodeGrant extracts + validates (mirrors reference parse_grant → decode_grant_fields).
     const seg = parseCompact(compact, b);
     const payload = jsonDecode(seg.payloadBytes, b);
     switch (input.kind) {
-      case "grant": parseGrantHeader(seg, b); validateGrantPayload(payload, b); break;
+      case "grant": {
+        const r = decodeGrant(compact, b);
+        if (!r.ok) fail("assemble_compact: grant re-parse");
+        break;
+      }
       case "proof": parseProofHeader(seg, b); validateProofPayload(payload, b); break;
       case "boundary_anchor": parseAnchorHeader(seg, b); validateAnchorPayload(payload, b); break;
       case "key_transition": parseTransitionHeader(seg, b); validateTransitionPayload(payload, b); break;
@@ -1163,20 +1160,21 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     validateExportInputs(input, expected, b);
     const headerBytes = buildArchiveHeader(input, expected.chain, b);
-    const archive = concat(
-      ARCHIVE_PREFIX,
-      frame(headerBytes),
-      frame(input.startAnchor),
-      ...input.transitions.map(frame),
-      ...input.rows.map(frame),
-      frame(input.endAnchor),
-    );
-    // Aggregate chunk-count bound (anchored_export_codec.ex:69 validate_chunks enforces
-    // archive_chunks DURING encode, not only archive_bytes). Frame count = prefix + header + start
-    // + transitions + rows + end. A producer must not mint an archive its own consumer rejects.
-    const frameCount = 4 + input.transitions.length + input.rows.length;
-    if (frameCount > resolve(b, "archive_chunks" as MaximaKey)) fail("encode_anchored_export: archive_chunks");
-    if (archive.length > resolve(b, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
+    // Build the framed chunk list, then validate count + bytes BEFORE materializing the joined
+    // archive (mirrors reference validate_chunks on the chunk list, anchored_export_codec.ex:69 — not
+    // on a concatenated binary, so an over-bound input rejects before the allocation). Loop-build
+    // avoids spreading the chunk list past V8's ~65534 call-arg ceiling (archive_chunks ≤ 65796).
+    const parts: Uint8Array[] = [ARCHIVE_PREFIX, frame(headerBytes), frame(input.startAnchor)];
+    for (const t of input.transitions) parts.push(frame(t));
+    for (const r of input.rows) parts.push(frame(r));
+    parts.push(frame(input.endAnchor));
+    if (parts.length > resolve(b, "archive_chunks" as MaximaKey)) fail("encode_anchored_export: archive_chunks");
+    let total = 0;
+    for (const p of parts) total += p.length;
+    if (total > resolve(b, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
+    const archive = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) { archive.set(p, off); off += p.length; }
     return { archive, digest: sha256(archive) };
   });
 }
@@ -1352,17 +1350,22 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
     // happens after the shape is validated.
     validateChunks(archived.chunks, b);
-    // Stream the digest over the chunks WITHOUT materializing the whole archive first (reference
-    // hash_chunks, anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat). An
-    // inauthentic/oversized archive is rejected at the digest compare before the parse materializes
-    // the bytes (BAP-15 Rust precedent, v1.rs:30-40). archive_bytes is already enforced by
-    // validateChunks (running total), so no post-materialization byte bound is needed.
-    const digest = sha256(...archived.chunks);
+    // Stream the digest over the chunks WITHOUT materializing/spreading them (reference hash_chunks,
+    // anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat). sha256Concat feeds
+    // the chunk list as an array, never spread, so a list of up to archive_chunks (65796) entries
+    // cannot hit V8's ~65534 call-arg ceiling. An inauthentic/oversized archive is rejected at the
+    // digest compare before the parse materializes the bytes (BAP-15 Rust precedent, v1.rs:30-40).
+    const digest = sha256Concat(archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
     // Object version: exact equality (out-of-band context, not embedded).
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
-    const archive = concat(...archived.chunks);
+    // Loop-build (no spread) for the same V8 arg-ceiling reason.
+    let total = 0;
+    for (const c of archived.chunks) total += c.length;
+    const archive = new Uint8Array(total);
+    let off = 0;
+    for (const c of archived.chunks) { archive.set(c, off); off += c.length; }
     if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
     // Parse the archive frames.
     const parsed = parseArchive(archive, b);
