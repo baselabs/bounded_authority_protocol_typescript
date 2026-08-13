@@ -8,6 +8,7 @@ import { requestDigestB64url, requestDigest } from "../src/digest.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
 import { parseCompact, assembleSegments, type SigningInput } from "../src/compact.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
+import { sha256, sha256Concat } from "../src/ed25519.js";
 import { ok } from "../src/error.js";
 
 const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -109,6 +110,18 @@ test("assembleSegments rejects bad kind", () => {
 test("assembleSegments rejects short signature", () => {
   const r = assembleSegments({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(32));
   assert.equal(r.ok, false, "short signature must return Err");
+});
+
+test("sha256Concat hashes a >65534-element list without V8's spread RangeError", () => {
+  // archive_chunks (65796) exceeds V8's ~65534 call-argument ceiling. sha256Concat feeds the list as
+  // an array (loop), never spread into call args, so this must NOT throw and must equal SHA-256 of
+  // the joined bytes. Reverting sha256Concat to `sha256(...parts)` throws RangeError here (red).
+  const n = 65535;
+  const parts: Uint8Array[] = Array.from({ length: n }, () => new Uint8Array([0x61]));
+  const joined = new Uint8Array(n).fill(0x61);
+  const viaConcat = sha256Concat(parts);
+  assert.equal(viaConcat.length, 32);
+  assert.deepEqual(Array.from(viaConcat), Array.from(sha256(joined)));
 });
 
 void ok; void base64urlDecode; void requestDigest;
