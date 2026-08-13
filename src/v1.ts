@@ -1,7 +1,7 @@
 import { fail, assert, type Result, trying } from "./error.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
-import { parseCompact, assembleCompact, type SigningInput, type CompactSegments } from "./compact.js";
+import { parseCompact, assembleSegments, scanCompact, type SigningInput, type CompactSegments } from "./compact.js";
 import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
 import { importPublicKey, ed25519Verify, sha256, _resetCensus } from "./ed25519.js";
 import { requestDigest as computeRequestDigest, REQUEST_PREFIX, typedProject } from "./digest.js";
@@ -666,7 +666,10 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const hkey = importPublicKey(holderKey, utf8Str(base64urlEncode(holderThumbprint)));
     if (!ed25519Verify(pseg.signingInput, pseg.signature, hkey)) fail("check_envelope: proof signature");
     if (pp.t !== "object") fail("check_envelope: proof payload");
-    // ath = SHA-256(ASCII grant compact).
+    // ath = SHA-256(ASCII grant compact), gated by scan (shape+size, not canonicity) — mirrors
+    // CompactJws.hash (compact_jws.ex:60-66 scan then hash). The grant was already parsed above, so
+    // this scan is redundant for verify but matches the reference's hash gate exactly.
+    scanCompact(grantCompact, b);
     const athRaw = sha256(grantCompact);
     const athB64 = utf8Str(base64urlEncode(athRaw));
     const ppAth = pp.v.get("ath")!;
@@ -1003,6 +1006,10 @@ export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result
       ["jwk", jwkToTagged(jwk)],
       ["typ", { t: "string", v: strUtf8(PROOF_TYP) }],
     ]);
+    // Producer ath: gate the grant compact by scan (shape+size, NOT base64url canonicity) before
+    // hashing it into `ath` — mirrors CompactJws.ath (compact_jws.ex:53-58 scan then hash). A
+    // caller-supplied non-compact grant must not be embedded as sha256(garbage) in the proof.
+    scanCompact(proof.grantCompact, b);
     const athRaw = sha256(proof.grantCompact);
     const baReqRaw = computeRequestDigest(proof.operation, proof.castArguments, b);
     const payloadMembers = new Map<string, Tagged>([
@@ -1034,8 +1041,36 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
   return { t: "object", v: members };
 }
 
-// 11. assemble_compact (REQ1-VERIFY-no-signer-callback). Re-exported from compact.ts.
-export { assembleCompact };
+// 11. assemble_compact (REQ1-VERIFY-no-signer-callback; public /2 contract, protocol-v1.md:299,319).
+// Mirrors runtime.ex:147-155 assemble_compact: assemble via the low-level assembler, then
+// validate_assembled_compact (runtime.ex:754-780) re-parses the composed compact per kind. The
+// signing-input gates (kind↔typ, segment bounds, base64url payload, compact_bytes) come from
+// CompactJws.assemble's valid_signing_input? (compact_jws.ex:36,80-101). The public contract
+// carries no caller bounds, so the profile maximum (MAXIMUM_BOUNDS) is used. A mislabeled kind
+// (typ ≠ kind), oversized segment, non-base64url payload, or malformed payload content fails
+// closed — the producer must not mint bytes its own consumer (verify) would reject.
+export function assembleCompact(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
+  return trying(() => {
+    const b = MAXIMUM_BOUNDS;
+    const assembled = assembleSegments(input, signature);
+    if (!assembled.ok) fail("assemble_compact: signing input");
+    const compact = assembled.value;
+    if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("assemble_compact: compact_bytes");
+    // Re-parse the composed compact per kind (validate_assembled_compact). parseCompact enforces the
+    // segment bounds + base64url decode; parseXxxHeader enforces kind↔typ; validateXxxPayload
+    // enforces the full payload structure.
+    const seg = parseCompact(compact, b);
+    const payload = jsonDecode(seg.payloadBytes, b);
+    switch (input.kind) {
+      case "grant": parseGrantHeader(seg, b); validateGrantPayload(payload, b); break;
+      case "proof": parseProofHeader(seg, b); validateProofPayload(payload, b); break;
+      case "boundary_anchor": parseAnchorHeader(seg, b); validateAnchorPayload(payload, b); break;
+      case "key_transition": parseTransitionHeader(seg, b); validateTransitionPayload(payload, b); break;
+      default: fail("assemble_compact: kind");
+    }
+    return compact;
+  });
+}
 
 // 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
@@ -1136,6 +1171,11 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
       ...input.rows.map(frame),
       frame(input.endAnchor),
     );
+    // Aggregate chunk-count bound (anchored_export_codec.ex:69 validate_chunks enforces
+    // archive_chunks DURING encode, not only archive_bytes). Frame count = prefix + header + start
+    // + transitions + rows + end. A producer must not mint an archive its own consumer rejects.
+    const frameCount = 4 + input.transitions.length + input.rows.length;
+    if (frameCount > resolve(b, "archive_chunks" as MaximaKey)) fail("encode_anchored_export: archive_chunks");
     if (archive.length > resolve(b, "archive_bytes" as MaximaKey)) fail("encode_anchored_export: archive_bytes");
     return { archive, digest: sha256(archive) };
   });
@@ -1312,14 +1352,18 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
     // happens after the shape is validated.
     validateChunks(archived.chunks, b);
-    const archive = concat(...archived.chunks);
-    if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
-    if (archive.length > resolve(b, "archive_bytes" as MaximaKey)) fail("verify_anchored_export: byte bound");
-    // Digest: SHA-256 of the complete archive (constant-time compare).
-    const digest = sha256(archive);
+    // Stream the digest over the chunks WITHOUT materializing the whole archive first (reference
+    // hash_chunks, anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat). An
+    // inauthentic/oversized archive is rejected at the digest compare before the parse materializes
+    // the bytes (BAP-15 Rust precedent, v1.rs:30-40). archive_bytes is already enforced by
+    // validateChunks (running total), so no post-materialization byte bound is needed.
+    const digest = sha256(...archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
     // Object version: exact equality (out-of-band context, not embedded).
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
+    // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
+    const archive = concat(...archived.chunks);
+    if (archive.length <= ARCHIVE_PREFIX.length) fail("verify_anchored_export: archive too short");
     // Parse the archive frames.
     const parsed = parseArchive(archive, b);
     // Header canonical equality.

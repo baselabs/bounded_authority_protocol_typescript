@@ -6,7 +6,7 @@ import { strUtf8 } from "../src/json.js";
 import { jsonDecode } from "../src/json.js";
 import { requestDigestB64url, requestDigest } from "../src/digest.js";
 import { parseSelector, selectorMatches, semanticIdentity } from "../src/selector.js";
-import { parseCompact, assembleCompact, type SigningInput } from "../src/compact.js";
+import { parseCompact, assembleSegments, type SigningInput } from "../src/compact.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { ok } from "../src/error.js";
 
@@ -86,15 +86,15 @@ test("parseCompact rejects 4 segments", () => {
   assert.throws(() => parseCompact(strUtf8("aaa.bbb.ccc.ddd")));
 });
 
-// assemble_compact round-trip: encode 64 zero bytes with our own encoder for the expected suffix.
-test("assembleCompact builds 3-segment compact", () => {
+// assemble_segments round-trip (low-level assembler): encode 64 zero bytes with our own encoder for the expected suffix.
+test("assembleSegments builds 3-segment compact", () => {
   const si: SigningInput = {
     kind: "grant",
     protectedSegment: strUtf8("eyJ2IjoxfQ"),
     payloadSegment: strUtf8("eyJ2IjoyfQ"),
   };
   const sig = new Uint8Array(64); // zeros
-  const r = assembleCompact(si, sig);
+  const r = assembleSegments(si, sig);
   assert.equal(r.ok, true, "valid assemble must succeed");
   if (!r.ok) return;
   const expected = "eyJ2IjoxfQ.eyJ2IjoyfQ." + utf8(base64urlEncode(new Uint8Array(64)));
@@ -102,12 +102,12 @@ test("assembleCompact builds 3-segment compact", () => {
   const seg = parseCompact(r.value);
   assert.equal(seg.signature.length, 64);
 });
-test("assembleCompact rejects bad kind", () => {
-  const r = assembleCompact({ kind: "bogus" as never, protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(64));
+test("assembleSegments rejects bad kind", () => {
+  const r = assembleSegments({ kind: "bogus" as never, protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(64));
   assert.equal(r.ok, false, "bad kind must return Err");
 });
-test("assembleCompact rejects short signature", () => {
-  const r = assembleCompact({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(32));
+test("assembleSegments rejects short signature", () => {
+  const r = assembleSegments({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(32));
   assert.equal(r.ok, false, "short signature must return Err");
 });
 

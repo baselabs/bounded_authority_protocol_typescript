@@ -52,6 +52,28 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
 
 const DOTB = new Uint8Array([DOT]);
 
+// scan_compact — faithful port of the reference CompactJws.scan (compact_jws.ex:16-27): the
+// shape+size gate that `ath`/`hash` run BEFORE hashing a compact. It validates structure + bounds
+// only — NOT base64url canonicity (canonicity is the full verify path's job via parseCompact). The
+// producer ath (proof_signing_input) and the verify grant-hash both gate on this so a non-compact
+// grant (wrong segment count, oversized, dotted signature) is rejected rather than hashed. Mirrors
+// the Rust scan_compact gate added in the BAP-15 closeout.
+export function scanCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): void {
+  const b = coerceBounds(bounds);
+  if (input.length > resolve(b, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
+  if (input.length === 0) fail("compact: empty");
+  const dots: number[] = [];
+  for (let i = 0; i < input.length; i++) if (input[i] === DOT) dots.push(i);
+  if (dots.length !== 2) fail("compact: three segments");
+  const d0 = dots[0]!, d1 = dots[1]!;
+  if (d0 === 0 || d1 === d0 + 1 || d1 === input.length - 1) fail("compact: empty segment");
+  const segBytes = resolve(b, "encoded_segment_bytes" as MaximaKey);
+  if (d0 > segBytes) fail("compact: protected segment bound");
+  if (d1 - d0 - 1 > segBytes) fail("compact: payload segment bound");
+  if (input.length - d1 - 1 > segBytes) fail("compact: signature segment bound");
+  // signature dot-free: dots.length === 2 guarantees no dot inside the signature segment.
+}
+
 function concat(...parts: Uint8Array[]): Uint8Array {
   let len = 0;
   for (const p of parts) len += p.length;
@@ -72,14 +94,17 @@ export interface SigningInput {
   readonly payloadSegment: Uint8Array; // base64url text
 }
 
-// Cross-vendor #21: assemble_compact returns Ok<Uint8Array> | Err, mirroring the Elixir
-// {:ok, binary} | {:error, :invalid} and the other 15 façade functions (ADR 0014 D3). Failures
-// (bad kind, signature width) return Err via the trying wrapper rather than throwing InvalidError.
-export function assembleCompact(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
+// assemble_segments: the LOW-LEVEL compact assembler (mirrors CompactJws.assemble's byte assembly,
+// compact_jws.ex:41-43). Validates only the kind closed-set + 64-byte signature width, then
+// concatenates protected.payload.base64url(signature). It does NOT validate the signing-input
+// header/payload content — that is the v1.ts assemble_compact FAÇADE's job (re-parse per kind,
+// runtime.ex:151 validate_assembled_compact). Test helpers and conformance use this to build
+// compacts freely; the public contract is the façade (assembleCompact in v1.ts).
+export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
     const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
-    if (!KINDS.includes(input.kind)) fail("assemble_compact: kind closed set");
-    assert(signature.length === 64, "assemble_compact: signature width 64");
+    if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
+    assert(signature.length === 64, "assemble_segments: signature width 64");
     // compact = protected "." payload "." base64url(signature).
     const sigB64 = base64urlEncode(signature);
     return concat(input.protectedSegment, DOTB, input.payloadSegment, DOTB, sigB64);

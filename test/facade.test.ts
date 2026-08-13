@@ -18,6 +18,7 @@ import {
 import { sha256 } from "../src/ed25519.js";
 import { _resetCensus, _importedFingerprints } from "../src/ed25519.js";
 import { jsonDecode } from "../src/json.js";
+import { boundsNew } from "../src/bounds.js";
 
 const utf8 = (b: Uint8Array) => new TextDecoder().decode(b);
 const b64d = (s: string) => base64urlDecode(strUtf8(s));
@@ -524,6 +525,106 @@ test("verifyAnchoredExport accepts a valid archive", () => {
     assert.equal(r.value.trust, "not_evaluated");
     assert.equal(r.value.authorization, "not_evaluated");
   }
+});
+
+// === BAP-09 derisk: cross-vendor reference-divergence tripwires ===
+
+// #9 producer ath scan: proof_signing_input MUST scan the grant compact (shape+size) before hashing
+// it into `ath` (compact_jws.ex:16-27 scan gates ath/hash). A 2-segment grant compact is not a
+// valid compact JWS; the producer must reject it rather than embed sha256(garbage) in the proof.
+test("proofSigningInput rejects a malformed (2-segment) grant compact", () => {
+  const r = proofSigningInput({
+    holderPublicKey: b64d(HOLDER_PUB),
+    proofId: "urn:example:proof:1", method: "POST", targetUri: "https://resource.example.test/invoke",
+    issuedAt: 1100, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    grantCompact: strUtf8("eyJhbGciOiJFZERTQSJ9.bm90YWNvbXBhY3Q"), // 2 segments — not a compact
+    castArguments: jsonDecode(strUtf8('{"limit":10}')),
+  });
+  assert.equal(r.ok, false);
+});
+
+// #4 archive encode aggregate bounds: encode_anchored_export MUST enforce archive_chunks (frame
+// COUNT) during encode (anchored_export_codec.ex:69 validate_chunks), not only archive_bytes. The
+// corpus archive frames into 6 chunks (prefix+header+start+transition+row+end); tightening
+// archive_chunks below 6 must reject at encode even though archive_bytes is still ample.
+test("encodeAnchoredExport rejects when archive_chunks frame count is exceeded", () => {
+  const r = encodeAnchoredExport(
+    {
+      rows: [b64d(CHAIN_ROW1)],
+      startAnchor: strUtf8(START_ANCHOR_COMPACT),
+      endAnchor: strUtf8(END_ANCHOR_COMPACT),
+      transitions: [strUtf8(TRANSITION_COMPACT)],
+      chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+      previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+      lastHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+    },
+    {
+      bounds: boundsNew({ archive_chunks: 5 }), // 6 frames > 5 → reject
+      chain: {
+        chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1, rowCount: 1,
+        previousHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        lastHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+      },
+      digest: b64d(ARCHIVE_DIGEST),
+      startAnchor: {
+        anchorId: "urn:example:anchor:start", anchoredAt: 1000, chainId: "urn:example:chain",
+        sequence: 0, chainHash: b64d("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+        keyId: "archive-a", keyFingerprint: b64d("o7gl0rdxSPU-qXbmNod4RAkV5pUjaB47JhPA43hwKP8"),
+      },
+      endAnchor: {
+        anchorId: "urn:example:anchor:end", anchoredAt: 2000, chainId: "urn:example:chain",
+        sequence: 1, chainHash: b64d("FrvjVtWavRLRAhJETmPVabO-GkFoIECYuZTaq3D2rzw"),
+        keyId: "archive-b", keyFingerprint: b64d("inGhtkoCo4fChHxdTEsAtMrCebtW84GM_7v2rPbowok"),
+      },
+      transitions: [{
+        transitionId: "urn:example:transition:a-b", chainId: "urn:example:chain", effectiveAt: 1500,
+        currentKeyId: "archive-a", currentKeyFingerprint: b64d("o7gl0rdxSPU-qXbmNod4RAkV5pUjaB47JhPA43hwKP8"),
+        nextKeyId: "archive-b", nextKeyFingerprint: b64d("inGhtkoCo4fChHxdTEsAtMrCebtW84GM_7v2rPbowok"),
+      }],
+      objectVersion: "v1",
+    },
+  );
+  assert.equal(r.ok, false);
+});
+
+// #11 assemble_compact content validation: the public façade must validate the signing input
+// (kind↔typ, segment bounds, base64url payload) and re-parse the composed compact per kind
+// (runtime.ex:151 validate_assembled_compact). It must NOT assemble a mislabeled or malformed compact.
+const GRANT_PROTECTED = strUtf8(GRANT_COMPACT.split(".")[0]!);
+const PROOF_PROTECTED = strUtf8(PROOF_COMPACT.split(".")[0]!);
+
+test("assembleCompact rejects a kind/typ mismatch (grant kind, proof header)", () => {
+  const r = assembleCompact(
+    { kind: "grant", protectedSegment: PROOF_PROTECTED, payloadSegment: strUtf8("e30") },
+    new Uint8Array(64),
+  );
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects an oversized protected segment", () => {
+  const r = assembleCompact(
+    { kind: "grant", protectedSegment: new Uint8Array(32769).fill(0x41), payloadSegment: strUtf8("e30") },
+    new Uint8Array(64),
+  );
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects a non-base64url payload segment", () => {
+  const r = assembleCompact(
+    { kind: "grant", protectedSegment: GRANT_PROTECTED, payloadSegment: strUtf8("not-valid!@#") },
+    new Uint8Array(64),
+  );
+  assert.equal(r.ok, false);
+});
+
+test("assembleCompact rejects a structurally-invalid grant payload (re-parse)", () => {
+  // Valid grant header + a payload that is valid base64url + valid JSON but NOT a valid grant
+  // (empty object, missing every required field). The per-kind re-parse must reject it.
+  const r = assembleCompact(
+    { kind: "grant", protectedSegment: GRANT_PROTECTED, payloadSegment: strUtf8("e30") },
+    new Uint8Array(64),
+  );
+  assert.equal(r.ok, false);
 });
 
 // === census sanity: the valid verify surfaces imported their keys ===

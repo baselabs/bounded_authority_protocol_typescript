@@ -45,7 +45,7 @@ import { uriNormalize } from "../src/uri.js";
 import {
   untrustedKeyLocator, checkEnvelope, type ExpectedRequest,
   encodeConsumptionEntry, checkChain, boundaryAnchorSigningInput, keyTransitionSigningInput,
-  encodeAnchoredExport, verifyAnchoredExport, assembleCompact, ROW_PREFIX,
+  encodeAnchoredExport, verifyAnchoredExport, ROW_PREFIX,
   type BoundaryAnchorProducer, type ConsumptionEntry, type ChainInput, type ExpectedChain,
   type AnchoredExportInput, type ExpectedExport, type ExpectedAnchor, type ExpectedKeyTransition,
   type HistoricalKeyChain, type HistoricalPublicKey, type KeyTransitionProducer,
@@ -54,6 +54,7 @@ import {
   type SigningInput,
 } from "../src/v1.js";
 import { boundsNew, MAXIMA, type Bounds } from "../src/bounds.js";
+import { assembleSegments } from "../src/compact.js";
 import { sha256, _resetCensus } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
@@ -296,10 +297,12 @@ function toHex(b: Uint8Array): string {
 // SDK's own producers, assemble archives via encodeAnchoredExport, and then mutate one variable per
 // finding. The producer/encode tests (#16, #17) need no signatures.
 
-// Unwrap a Result<Uint8Array> from assembleCompact in test helpers (failure is a test-setup bug).
+// Unwrap a Result<Uint8Array> from the low-level assembler in test helpers (failure is a test-setup
+// bug). Uses assembleSegments (not the validating façade) so permissiveness cases can build compacts
+// freely and then prove the VERIFY path (or the façade) rejects them.
 function mustAssemble(si: SigningInput, sig: Uint8Array): Uint8Array {
-  const c = assembleCompact(si, sig);
-  if (!c.ok) throw new Error("assembleCompact failed in test helper");
+  const c = assembleSegments(si, sig);
+  if (!c.ok) throw new Error("assembleSegments failed in test helper");
   return c.value;
 }
 
