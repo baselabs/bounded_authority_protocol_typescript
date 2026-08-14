@@ -1167,6 +1167,21 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // checks so a caller tightening via expected.bounds takes effect (matches verify_anchored_export).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     validateExportInputs(input, expected, b);
+    // Row chain re-check (anchored_export_codec.ex:37-39 — ConsumptionChain.check):
+    // the rows must verify against the expected boundaries before they are archived.
+    const chainRes = checkChain(
+      { rows: input.rows, chainId: expected.chain.chainId, firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence, rowCount: expected.chain.rowCount, previousHash: expected.chain.previousHash, lastHash: expected.chain.lastHash },
+      expected.chain,
+    );
+    if (!chainRes.ok) fail("encode_anchored_export: rows chain");
+    // Gated parses + full signed-field matches (anchored_export_codec.ex:40-52): the
+    // start anchor, the end anchor, and every transition go through the width+canonical
+    // gated decode and match their expected values field-by-field.
+    parseAndMatchAnchor(input.startAnchor, expected.startAnchor, "start", b);
+    parseAndMatchAnchor(input.endAnchor, expected.endAnchor, "end", b);
+    for (let i = 0; i < input.transitions.length; i++) {
+      parseAndMatchTransition(input.transitions[i]!, expected.transitions[i]!, i, b);
+    }
     const headerBytes = buildArchiveHeader(input, expected.chain, b);
     // Build the framed chunk list, then validate count + bytes BEFORE materializing the joined
     // archive (mirrors reference validate_chunks on the chunk list, anchored_export_codec.ex:69 — not
@@ -1185,6 +1200,43 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     for (const p of parts) { archive.set(p, off); off += p.length; }
     return { archive, digest: sha256(archive) };
   });
+}
+
+// Gated parse + full 7-field match of an anchor compact against its expected values
+// (reference BoundaryAnchorCodec.parse + anchor_matches?, anchored_export_codec.ex:40-42/:485-492).
+// Encode never verifies a signature (a producer, not an authority) — it mirrors the
+// reference's structural gates (width, canonical form) and the signed-field match.
+function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): void {
+  const seg = parseCompact(compact, b);
+  const { kid } = parseAnchorHeader(seg, b);
+  if (kid !== expected.keyId) fail(`encode_anchored_export: ${which} anchor kid`);
+  const p = jsonDecode(seg.payloadBytes, b);
+  validateAnchorPayload(p, seg.payloadBytes, b);
+  if (p.t !== "object") fail(`encode_anchored_export: ${which} anchor payload`);
+  if (requireStringOrUri(p.v.get("anchor_id"), "anchor_id", b) !== expected.anchorId) fail(`encode_anchored_export: ${which} anchor_id`);
+  if (requireInt(p.v.get("anchored_at"), "anchored_at") !== expected.anchoredAt) fail(`encode_anchored_export: ${which} anchored_at`);
+  if (requireStringOrUri(p.v.get("chain_id"), "chain_id", b) !== expected.chainId) fail(`encode_anchored_export: ${which} chain_id`);
+  if (requireInt(p.v.get("sequence"), "sequence") !== expected.sequence) fail(`encode_anchored_export: ${which} sequence`);
+  if (!bytesEqual(requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32), expected.chainHash)) fail(`encode_anchored_export: ${which} chain_hash`);
+  if (!bytesEqual(requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32), expected.keyFingerprint)) fail(`encode_anchored_export: ${which} key_fingerprint`);
+}
+
+// Gated parse + full 7-field match of a transition compact (reference
+// KeyTransitionCodec.parse + transition_matches?, anchored_export_codec.ex:443-504).
+function parseAndMatchTransition(compact: Uint8Array, expected: ExpectedKeyTransition, i: number, b: Bounds): void {
+  const seg = parseCompact(compact, b);
+  const { kid } = parseTransitionHeader(seg, b);
+  if (kid !== expected.currentKeyId) fail(`encode_anchored_export: transition ${i} kid`);
+  const p = jsonDecode(seg.payloadBytes, b);
+  validateTransitionPayload(p, seg.payloadBytes, b);
+  if (p.t !== "object") fail(`encode_anchored_export: transition ${i} payload`);
+  if (requireStringOrUri(p.v.get("transition_id"), "transition_id", b) !== expected.transitionId) fail(`encode_anchored_export: transition ${i} transition_id`);
+  if (requireStringOrUri(p.v.get("chain_id"), "chain_id", b) !== expected.chainId) fail(`encode_anchored_export: transition ${i} chain_id`);
+  if (requireInt(p.v.get("effective_at"), "effective_at") !== expected.effectiveAt) fail(`encode_anchored_export: transition ${i} effective_at`);
+  if (!bytesEqual(requireB64urlN(p.v.get("from_key_fingerprint"), "from_key_fingerprint", 32), expected.currentKeyFingerprint)) fail(`encode_anchored_export: transition ${i} from_key_fingerprint`);
+  if (!bytesEqual(requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32), expected.nextKeyFingerprint)) fail(`encode_anchored_export: transition ${i} to_key_fingerprint`);
+  const toKeyIdTagged = p.v.get("to_key_id");
+  if (toKeyIdTagged === undefined || toKeyIdTagged.t !== "string" || utf8Str(toKeyIdTagged.v) !== expected.nextKeyId) fail(`encode_anchored_export: transition ${i} to_key_id`);
 }
 
 // Encode-time input validation (mirrors anchored_export_codec.ex validate_expected_export +

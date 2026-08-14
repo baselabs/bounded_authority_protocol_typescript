@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { strUtf8 } from "../src/json.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
+import { jwkFromPublicKey, thumbprintRaw } from "../src/jwk.js";
 import {
   untrustedKeyLocator, decodeGrant, decodeProof, verifyGrant, checkEnvelope,
   requestDigest, encodeConsumptionEntry, checkChain, grantSigningInput, proofSigningInput,
@@ -705,4 +706,117 @@ test("census tracks imported fingerprints", () => {
   );
   // After verify_grant, the issuer fingerprint is in the census.
   assert.ok(_importedFingerprints().has(ISSUER_FP), "issuer fingerprint must be tracked");
+});
+
+// ============================================================================
+// Encode-path validation parity (reference anchored_export_codec.ex encode):
+// the row chain re-check + gated parses + full matches for both anchors and
+// every transition. One red-capable leg per NEW clause; each leg's mutation =
+// neutralize that clause in encodeAnchoredExport / parseAndMatchAnchor /
+// parseAndMatchTransition / the checkChain call (proven in the task log).
+// ============================================================================
+
+const KEY_A = new Uint8Array(32).fill(7);
+const KEY_B = new Uint8Array(32).fill(8);
+const Z32T = new Uint8Array(32);
+const SIG64T = new Uint8Array(64);
+const SIG32T = new Uint8Array(32);
+
+function conformantExportT() {
+  const rowR = encodeConsumptionEntry({ chainId: "chain-x", sequence: 1, previousHash: Z32T, commitment: new Uint8Array(32).fill(5) });
+  assert.equal(rowR.ok, true);
+  const row = (rowR as { ok: true; value: { bytes: Uint8Array; hash: Uint8Array } }).value.bytes;
+  const head = (rowR as { ok: true; value: { bytes: Uint8Array; hash: Uint8Array } }).value.hash;
+  const fpOf = (k: Uint8Array) => thumbprintRaw(jwkFromPublicKey(k));
+  const startR = boundaryAnchorSigningInput({ anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A });
+  assert.equal(startR.ok, true);
+  const startCompact = (assembleCompact((startR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const endR = boundaryAnchorSigningInput({ anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", publicKey: KEY_B });
+  assert.equal(endR.ok, true);
+  const endCompact = (assembleCompact((endR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const tR = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentPublicKey: KEY_A, nextKeyId: "anchor-b", nextPublicKey: KEY_B });
+  assert.equal(tR.ok, true);
+  const tCompact = (assembleCompact((tR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const chain = { chainId: "chain-x", firstSequence: 1, lastSequence: 1, rowCount: 1, previousHash: Z32T, lastHash: head };
+  const expected = {
+    chain,
+    digest: Z32T,
+    startAnchor: { anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: fpOf(KEY_A) },
+    endAnchor: { anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", keyFingerprint: fpOf(KEY_B) },
+    transitions: [{ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentKeyFingerprint: fpOf(KEY_A), nextKeyId: "anchor-b", nextKeyFingerprint: fpOf(KEY_B) }],
+    objectVersion: "v1",
+  };
+  const input = { rows: [row], startAnchor: startCompact, endAnchor: endCompact, transitions: [tCompact], ...chain };
+  return { input, expected, fpOf };
+}
+
+function expectEncodeErr(input: unknown, expected: unknown): void {
+  const r = encodeAnchoredExport(input as never, expected as never);
+  assert.equal(r.ok, false, "encode must reject");
+}
+
+test("encode-parity control: the conformant export encodes Ok", () => {
+  const { input, expected } = conformantExportT();
+  const r = encodeAnchoredExport(input, expected);
+  assert.equal(r.ok, true);
+});
+
+test("encode-parity: a tampered row byte rejects (rows chain re-check)", () => {
+  const { input, expected } = conformantExportT();
+  const bad = Uint8Array.from(input.rows[0]!);
+  bad[0]! ^= 1;
+  expectEncodeErr({ ...input, rows: [bad] }, expected);
+});
+
+test("encode-parity: a start-anchor field mismatch rejects (7-field match)", () => {
+  const { input, expected } = conformantExportT();
+  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A });
+  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  expectEncodeErr({ ...input, startAnchor: wrongCompact }, expected);
+});
+
+test("encode-parity: an end-anchor field mismatch rejects (7-field match)", () => {
+  const { input, expected } = conformantExportT();
+  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: expected.chain.lastHash, keyId: "anchor-b", publicKey: KEY_B });
+  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  expectEncodeErr({ ...input, endAnchor: wrongCompact }, expected);
+});
+
+test("encode-parity: a non-canonical end anchor rejects (gated parse)", () => {
+  const { input, expected } = conformantExportT();
+  const segs = new TextDecoder().decode(input.endAnchor).split(".");
+  const payloadObj = JSON.parse(new TextDecoder().decode(b64d(segs[1]!)));
+  const reversed = "{" + Object.keys(payloadObj).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(payloadObj[k])}`).join(",") + "}";
+  const nonCanonical = segs[0]! + "." + Buffer.from(reversed, "utf-8") && b64e(strUtf8(reversed)) + "." + segs[2]!;
+  expectEncodeErr({ ...input, endAnchor: strUtf8(nonCanonical) }, expected);
+});
+
+test("encode-parity: a wrong-width end-anchor signature rejects (gated parse)", () => {
+  const { input, expected } = conformantExportT();
+  const segs = new TextDecoder().decode(input.endAnchor).split(".");
+  const rebuilt = segs[0]! + "." + segs[1]! + "." + b64e(SIG32T);
+  expectEncodeErr({ ...input, endAnchor: strUtf8(rebuilt) }, expected);
+});
+
+test("encode-parity: a transition field mismatch rejects (7-field match)", () => {
+  const { input, expected } = conformantExportT();
+  const wrong = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1501, currentKeyId: "anchor-a", currentPublicKey: KEY_A, nextKeyId: "anchor-b", nextPublicKey: KEY_B });
+  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  expectEncodeErr({ ...input, transitions: [wrongCompact] }, expected);
+});
+
+test("encode-parity: a non-canonical transition rejects (gated parse)", () => {
+  const { input, expected } = conformantExportT();
+  const segs = new TextDecoder().decode(input.transitions[0]!).split(".");
+  const payloadObj = JSON.parse(new TextDecoder().decode(b64d(segs[1]!)));
+  const reversed = "{" + Object.keys(payloadObj).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(payloadObj[k])}`).join(",") + "}";
+  const nonCanonical = segs[0]! + "." + Buffer.from(reversed, "utf-8") && b64e(strUtf8(reversed)) + "." + segs[2]!;
+  expectEncodeErr({ ...input, transitions: [strUtf8(nonCanonical)] }, expected);
+});
+
+test("encode-parity: a wrong-width transition signature rejects (gated parse)", () => {
+  const { input, expected } = conformantExportT();
+  const segs = new TextDecoder().decode(input.transitions[0]!).split(".");
+  const rebuilt = segs[0]! + "." + segs[1]! + "." + b64e(SIG32T);
+  expectEncodeErr({ ...input, transitions: [strUtf8(rebuilt)] }, expected);
 });
