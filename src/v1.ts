@@ -1573,6 +1573,13 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
   // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
   // the nested anchor's bounds so the top-level tightening takes effect.
   const b = bounds ?? coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+  // Key-window endpoints: integral + magnitude-bounded (the standalone path's
+  // gates — cross-vendor round 7: the archive path skipped them).
+  {
+    const mag = resolve(b, "integer_magnitude" as MaximaKey);
+    if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
+    if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail(`${ctx}: valid_before magnitude`);
+  }
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
   if (kid !== key.keyId) fail(`${ctx}: kid`);
@@ -1607,6 +1614,13 @@ function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPubl
   // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
   // the nested transition's bounds so the top-level tightening takes effect.
   const b = bounds ?? coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+  // Key-window endpoints: integral + magnitude-bounded for BOTH keys (the
+  // standalone path's gates — cross-vendor round 7).
+  {
+    const mag = resolve(b, "integer_magnitude" as MaximaKey);
+    if (!Number.isInteger(currentKey.validFrom) || !Number.isInteger(nextKey.validFrom) || Math.abs(currentKey.validFrom) > mag || Math.abs(nextKey.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
+    if ((currentKey.validBefore !== null && (!Number.isInteger(currentKey.validBefore) || Math.abs(currentKey.validBefore) > mag)) || (nextKey.validBefore !== null && (!Number.isInteger(nextKey.validBefore) || Math.abs(nextKey.validBefore) > mag))) fail(`${ctx}: valid_before magnitude`);
+  }
   const seg = parseCompact(compact, b);
   const { kid } = parseTransitionHeader(seg, b);
   if (kid !== currentKey.keyId) fail(`${ctx}: kid`);

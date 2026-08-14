@@ -18,6 +18,8 @@ import {
   verifyHistoricalAnchor, verifyKeyTransition, verifyAnchoredExport,
 } from "../src/v1.js";
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import { join } from "node:path";
 import { sha256 } from "../src/ed25519.js";
 import { _resetCensus, _importedFingerprints } from "../src/ed25519.js";
 import { jsonDecode } from "../src/json.js";
@@ -992,4 +994,37 @@ test("bounds-parity: fractional/NaN key-validity endpoints reject at verify (cro
   }
   const r2 = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000.5 }, expected as never);
   assert.equal(r2.ok, false, "fractional validBefore must reject");
+});
+
+test("bounds-parity: the ARCHIVE verify path guards key validity (round 7)", () => {
+  // The corpus' REAL signed export; only the caller keys are tampered.
+  // (The corpus path mirrors the Python leg — ../../priv/conformance.)
+  const { readFileSync } = fs as typeof import("node:fs");
+  const corpusPath = join(process.cwd(), "../../priv/conformance/v1/corpus/cases/anchored-export/verify.json");
+  const cases = JSON.parse(readFileSync(corpusPath, "utf8")).cases as any[];
+  const c = cases.find((x) => x.class === "valid")!;
+  const dec = (s: string) => new Uint8Array(Buffer.from(s, "base64url"));
+  const obj = { chunks: (c.input.chunks as string[]).map(dec), version: c.input.version };
+  const mkKey = (v: any) => ({ keyId: v.key_id, publicKey: dec(v.public_key), validFrom: v.valid_from, validBefore: v.valid_before ?? null });
+  const keysOk = { keys: (c.input.keys as any[]).map(mkKey) };
+  const e = c.input.expected;
+  const b32 = (v: any, k: string) => dec(v[k]);
+  const ea = (v: any) => ({ anchorId: v.anchor_id, anchoredAt: v.anchored_at, chainId: v.chain_id, sequence: v.sequence, chainHash: b32(v, "chain_hash"), keyId: v.key_id, keyFingerprint: b32(v, "key_fingerprint") });
+  const exp = {
+    chain: { chainId: e.chain.chain_id, firstSequence: e.chain.first_sequence, lastSequence: e.chain.last_sequence, rowCount: e.chain.row_count, previousHash: b32(e.chain, "previous_hash"), lastHash: b32(e.chain, "last_hash") },
+    digest: b32(e, "digest"),
+    startAnchor: ea(e.start_anchor),
+    endAnchor: ea(e.end_anchor),
+    transitions: (e.transitions ?? []).map((t: any) => ({ transitionId: t.transition_id, chainId: t.chain_id, effectiveAt: t.effective_at, currentKeyId: t.current_key_id, currentKeyFingerprint: b32(t, "current_key_fingerprint"), nextKeyId: t.next_key_id, nextKeyFingerprint: b32(t, "next_key_fingerprint") })),
+    objectVersion: e.object_version,
+  };
+  // Control: verifies Ok.
+  assert.equal(verifyAnchoredExport(obj as never, keysOk as never, exp as never).ok, true);
+  // Fractional validFrom on key[0] -> fail closed.
+  const bad0 = { keys: [{ ...keysOk.keys[0], validFrom: 0.5 }, keysOk.keys[1]] };
+  assert.equal(verifyAnchoredExport(obj as never, bad0 as never, exp as never).ok, false);
+  // Huge bounded validBefore (2^62) on the LAST key -> fail closed.
+  const last = keysOk.keys[keysOk.keys.length - 1];
+  const bad1 = { keys: [...keysOk.keys.slice(0, -1), { ...last, validBefore: 4611686018427387904 }] };
+  assert.equal(verifyAnchoredExport(obj as never, bad1 as never, exp as never).ok, false);
 });
