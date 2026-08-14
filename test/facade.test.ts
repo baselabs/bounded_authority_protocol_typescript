@@ -787,7 +787,7 @@ test("encode-parity: a non-canonical end anchor rejects (gated parse)", () => {
   const segs = new TextDecoder().decode(input.endAnchor).split(".");
   const payloadObj = JSON.parse(new TextDecoder().decode(b64d(segs[1]!)));
   const reversed = "{" + Object.keys(payloadObj).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(payloadObj[k])}`).join(",") + "}";
-  const nonCanonical = segs[0]! + "." + Buffer.from(reversed, "utf-8") && b64e(strUtf8(reversed)) + "." + segs[2]!;
+  const nonCanonical = segs[0]! + "." + b64e(strUtf8(reversed)) + "." + segs[2]!;
   expectEncodeErr({ ...input, endAnchor: strUtf8(nonCanonical) }, expected);
 });
 
@@ -810,7 +810,7 @@ test("encode-parity: a non-canonical transition rejects (gated parse)", () => {
   const segs = new TextDecoder().decode(input.transitions[0]!).split(".");
   const payloadObj = JSON.parse(new TextDecoder().decode(b64d(segs[1]!)));
   const reversed = "{" + Object.keys(payloadObj).reverse().map(k => `${JSON.stringify(k)}:${JSON.stringify(payloadObj[k])}`).join(",") + "}";
-  const nonCanonical = segs[0]! + "." + Buffer.from(reversed, "utf-8") && b64e(strUtf8(reversed)) + "." + segs[2]!;
+  const nonCanonical = segs[0]! + "." + b64e(strUtf8(reversed)) + "." + segs[2]!;
   expectEncodeErr({ ...input, transitions: [strUtf8(nonCanonical)] }, expected);
 });
 
