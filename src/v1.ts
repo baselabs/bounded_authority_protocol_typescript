@@ -1218,6 +1218,11 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
 // Encode never verifies a signature (a producer, not an authority) — it mirrors the
 // reference's structural gates (width, canonical form) and the signed-field match.
 function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): void {
+  // The reference codec bounds every anchor compact at anchor_bytes (boundary_anchor_codec.ex:82,
+  // from the encode with-chain :40-42) — stricter than parseCompact's whole-input compact_bytes
+  // ceiling; check it BEFORE the parse (cross-vendor round 2: the producer minted archives its
+  // own verifier rejects at the frame read).
+  if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail(`encode_anchored_export: ${which} anchor anchor_bytes`);
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
   if (kid !== expected.keyId) fail(`encode_anchored_export: ${which} anchor kid`);
@@ -1235,6 +1240,8 @@ function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, whic
 // Gated parse + full 7-field match of a transition compact (reference
 // KeyTransitionCodec.parse + transition_matches?, anchored_export_codec.ex:443-504).
 function parseAndMatchTransition(compact: Uint8Array, expected: ExpectedKeyTransition, i: number, b: Bounds): void {
+  // Same anchor_bytes ceiling the reference enforces on transitions (key_transition_codec.ex:114).
+  if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail(`encode_anchored_export: transition ${i} anchor_bytes`);
   const seg = parseCompact(compact, b);
   const { kid } = parseTransitionHeader(seg, b);
   if (kid !== expected.currentKeyId) fail(`encode_anchored_export: transition ${i} kid`);
@@ -1401,6 +1408,22 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
+    // Static expected-side bindings (reference validate_expected_anchored_export →
+    // validate_expected_export, anchored_export_codec.ex:362-371, reached at verify :92/:387):
+    // the caller's expected anchors + transitions belong to the expected chain (cross-vendor
+    // round 2: none of the six were enforced at verify; the anchors bound only to their own
+    // expected structs and the rows/header only to the chain).
+    const vb = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+    if (expected.startAnchor.chainId !== expected.chain.chainId) fail("verify_anchored_export: start chain_id");
+    if (expected.endAnchor.chainId !== expected.chain.chainId) fail("verify_anchored_export: end chain_id");
+    if (expected.startAnchor.sequence !== expected.chain.firstSequence - 1) fail("verify_anchored_export: start sequence");
+    if (!bytesEqual(expected.startAnchor.chainHash, expected.chain.previousHash)) fail("verify_anchored_export: start chain_hash");
+    if (expected.endAnchor.sequence !== expected.chain.lastSequence) fail("verify_anchored_export: end sequence");
+    if (!bytesEqual(expected.endAnchor.chainHash, expected.chain.lastHash)) fail("verify_anchored_export: end chain_hash");
+    for (let i = 0; i < expected.transitions.length; i++) {
+      if (expected.transitions[i]!.chainId !== expected.chain.chainId) fail(`verify_anchored_export: transition ${i} chain_id`);
+    }
+    void vb;
     // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (anchored_export_codec.ex:84-185)
     // and threads it into validate_chunks (archive_chunks, archive_bytes), parse_archive (frame
     // reads), and every row check. The inner anchors/transitions carry their own bounds (used by

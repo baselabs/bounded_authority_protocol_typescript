@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { strUtf8 } from "../src/json.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { jwkFromPublicKey, thumbprintRaw } from "../src/jwk.js";
+import type { HistoricalKeyChain } from "../src/v1.js";
 import {
   untrustedKeyLocator, decodeGrant, decodeProof, verifyGrant, checkEnvelope,
   requestDigest, encodeConsumptionEntry, checkChain, grantSigningInput, proofSigningInput,
@@ -876,4 +877,46 @@ test("encode-parity: the chain nested-bounds pin rejects a mismatched chain.boun
   // the sibling absent-nested pins backstopped it — vacuous under the mutation.
   const r = encodeAnchoredExport(input, { ...expected, chain: { ...expected.chain, bounds: boundsNew({ chain_row_bytes: 4000 }) } });
   assert.equal(r.ok, false, "a chain nested-bounds mismatch must reject at encode (isolated)");
+});
+
+test("encode-parity: a tightened anchor_bytes rejects the anchor compacts at encode (round 2)", () => {
+  const { input, expected } = conformantExportT();
+  // The codex probe: anchor_bytes=1 tightened outer — parseCompact only gates
+  // compact_bytes (65536), so without the explicit per-anchor ceiling the ~440-byte
+  // anchors framed fine (the reference codec gates anchor_bytes at :82/:114).
+  const tight = boundsNew({ anchor_bytes: 1 });
+  const r = encodeAnchoredExport(input, { ...expected, bounds: tight });
+  assert.equal(r.ok, false, "tightened anchor_bytes must reject the anchor compacts at encode");
+});
+
+test("verify-parity: a caller-inconsistent expected end-anchor chain_id rejects (round 2)", () => {
+  const { input, expected } = conformantExportT();
+  const enc = encodeAnchoredExport(input, expected);
+  assert.equal(enc.ok, true);
+  const value = (enc as { ok: true; value: { archive: Uint8Array; digest: Uint8Array } }).value;
+  // reframe into chunks: magic(20) + frames
+  const chunks: Uint8Array[] = [];
+  let off = 20;
+  const b = value.archive;
+  while (off < b.length) {
+    const len = (b[off]! << 24) | (b[off + 1]! << 16) | (b[off + 2]! << 8) | b[off + 3]!;
+    chunks.push(b.slice(off + 4, off + 4 + len));
+    off += 4 + len;
+  }
+  const keys: HistoricalKeyChain = {
+    keys: [
+      { keyId: "anchor-a", publicKey: KEY_A, validFrom: 900, validBefore: null },
+      { keyId: "anchor-b", publicKey: KEY_B, validFrom: 1400, validBefore: null },
+    ],
+  };
+  const vExpected = {
+    chain: expected.chain,
+    digest: value.digest,
+    startAnchor: expected.startAnchor,
+    endAnchor: { ...expected.endAnchor, chainId: "chain-OTHER" },
+    transitions: expected.transitions,
+    objectVersion: "v1",
+  };
+  const r = verifyAnchoredExport({ chunks, version: "v1" }, keys, vExpected as never);
+  assert.equal(r.ok, false, "a caller-inconsistent expected anchor chain_id must reject at verify");
 });
