@@ -1326,6 +1326,13 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check, as
     // the reference does (boundary_anchor_codec.ex parses the compact + payload under bounds).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+    // Key-window endpoints magnitude-bounded under the resolved bounds
+    // (context_validation.ex valid_time? — the Rust round-4 parity fix; without
+    // this the SDKs diverge: an in-window anchored_at with a bounded
+    // valid_before of 2^62 verified in TS and rejected in Rust/reference).
+    const mag = resolve(b, "integer_magnitude" as MaximaKey);
+    if (Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
+    if (key.validBefore !== null && Math.abs(key.validBefore) > mag) fail("verify_historical_anchor: valid_before magnitude");
     const seg = parseCompact(compact, b);
     const { kid } = parseAnchorHeader(seg, b);
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
@@ -1368,6 +1375,10 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
     // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+    // Key-window endpoints magnitude-bounded (both keys — the Rust parity).
+    const mag = resolve(b, "integer_magnitude" as MaximaKey);
+    if (Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
+    if ((oldKey.validBefore !== null && Math.abs(oldKey.validBefore) > mag) || (newKey.validBefore !== null && Math.abs(newKey.validBefore) > mag)) fail("verify_key_transition: valid_before magnitude");
     const seg = parseCompact(compact, b);
     const { kid } = parseTransitionHeader(seg, b);
     if (kid !== oldKey.keyId) fail("verify_key_transition: kid");

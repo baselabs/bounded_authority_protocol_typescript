@@ -17,6 +17,7 @@ import {
   assembleCompact, boundaryAnchorSigningInput, keyTransitionSigningInput, encodeAnchoredExport,
   verifyHistoricalAnchor, verifyKeyTransition, verifyAnchoredExport,
 } from "../src/v1.js";
+import * as crypto from "node:crypto";
 import { sha256 } from "../src/ed25519.js";
 import { _resetCensus, _importedFingerprints } from "../src/ed25519.js";
 import { jsonDecode } from "../src/json.js";
@@ -919,4 +920,33 @@ test("verify-parity: a caller-inconsistent expected end-anchor chain_id rejects 
   };
   const r = verifyAnchoredExport({ chunks, version: "v1" }, keys, vExpected as never);
   assert.equal(r.ok, false, "a caller-inconsistent expected anchor chain_id must reject at verify");
+});
+
+test("bounds-parity: an out-of-magnitude bounded validBefore rejects at verify (all-SDK convergence)", () => {
+  // A REAL runtime-generated signature (node:crypto; nothing persisted) so the
+  // control verifies Ok and only the magnitude gate can reject the bad case.
+  const { generateKeyPairSync, sign: nodeSign } = crypto as typeof import("node:crypto");
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string };
+  const pubRaw = Buffer.from(jwk.x, "base64url");
+  const key = new Uint8Array(pubRaw.subarray(0, 32));
+  const si = boundaryAnchorSigningInput({ anchorId: "anchor-mag", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: key });
+  assert.equal(si.ok, true);
+  const siValue = (si as { ok: true; value: import("../src/compact.js").SigningInput }).value;
+  const message = new Uint8Array(siValue.protectedSegment.length + 1 + siValue.payloadSegment.length);
+  message.set(siValue.protectedSegment, 0);
+  message[siValue.protectedSegment.length] = ".".charCodeAt(0);
+  message.set(siValue.payloadSegment, siValue.protectedSegment.length + 1);
+  const sig = new Uint8Array(nodeSign(null, message, privateKey));
+  const compact = assembleCompact(siValue, sig);
+  assert.equal(compact.ok, true);
+  const comp = (compact as { ok: true; value: Uint8Array }).value;
+  const fp = thumbprintRaw(jwkFromPublicKey(key));
+  const expected = { anchorId: "anchor-mag", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: fp };
+  // Control: normal windows — the real signature verifies Ok.
+  const rOk = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000 }, expected as never);
+  assert.equal(rOk.ok, true, "control: the signed anchor verifies at normal windows");
+  // Huge bounded validBefore (2^62): membership holds; only the magnitude gate fires.
+  const rBad = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 4611686018427387904 }, expected as never);
+  assert.equal(rBad.ok, false, "out-of-magnitude bounded valid_before must reject");
 });
