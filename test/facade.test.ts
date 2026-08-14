@@ -870,7 +870,10 @@ test("encode-parity: the chain nested-bounds pin rejects a mismatched chain.boun
   // chosen here (chain_row_bytes 4096 stays above the row), so the row walk
   // cannot backstop — only the pin fires on the mismatched chain.bounds
   // (delta-review finding 1: the F1 leg's 156 ceiling made it joint-only).
-  const other = boundsNew({ chain_row_bytes: 4000 });
-  const r = encodeAnchoredExport(input, { ...expected, bounds: other, chain: { ...expected.chain, bounds: boundsNew({ chain_row_bytes: 4096 }) } });
-  assert.equal(r.ok, false, "a chain nested-bounds mismatch must reject at encode (isolated from the row walk)");
+  // Isolated the diff-review's way: the OUTER stays at maximum (untightened —
+  // the sibling absent-nested pins pass); ONLY chain.bounds carries a different
+  // value (4000 < 4096, row-safe). The prior fixture tightened the OUTER, so
+  // the sibling absent-nested pins backstopped it — vacuous under the mutation.
+  const r = encodeAnchoredExport(input, { ...expected, chain: { ...expected.chain, bounds: boundsNew({ chain_row_bytes: 4000 }) } });
+  assert.equal(r.ok, false, "a chain nested-bounds mismatch must reject at encode (isolated)");
 });
