@@ -971,3 +971,25 @@ test("bounds-parity: the validFrom magnitude half rejects at verify (delta)", ()
   assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000 }, expected as never).ok, true);
   assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: -4611686018427387904, validBefore: 2000 }, expected as never).ok, false);
 });
+
+test("bounds-parity: fractional/NaN key-validity endpoints reject at verify (cross-vendor)", () => {
+  const { generateKeyPairSync, sign: nodeSign } = crypto as typeof import("node:crypto");
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string };
+  const key = new Uint8Array(Buffer.from(jwk.x, "base64url").subarray(0, 32));
+  const si = boundaryAnchorSigningInput({ anchorId: "anchor-int", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: key });
+  const siValue = (si as { ok: true; value: import("../src/compact.js").SigningInput }).value;
+  const message = new Uint8Array(siValue.protectedSegment.length + 1 + siValue.payloadSegment.length);
+  message.set(siValue.protectedSegment, 0);
+  message[siValue.protectedSegment.length] = ".".charCodeAt(0);
+  message.set(siValue.payloadSegment, siValue.protectedSegment.length + 1);
+  const sig = new Uint8Array(nodeSign(null, message, privateKey));
+  const comp = (assembleCompact(siValue, sig) as { ok: true; value: Uint8Array }).value;
+  const expected = { anchorId: "anchor-int", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: thumbprintRaw(jwkFromPublicKey(key)) };
+  for (const bad of [0.5, NaN, -0.5]) {
+    const r = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: bad, validBefore: 2000 }, expected as never);
+    assert.equal(r.ok, false, `validFrom ${bad} must reject`);
+  }
+  const r2 = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000.5 }, expected as never);
+  assert.equal(r2.ok, false, "fractional validBefore must reject");
+});

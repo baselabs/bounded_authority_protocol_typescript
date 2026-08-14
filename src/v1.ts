@@ -1331,8 +1331,10 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     // this the SDKs diverge: an in-window anchored_at with a bounded
     // valid_before of 2^62 verified in TS and rejected in Rust/reference).
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
-    if (Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
-    if (key.validBefore !== null && Math.abs(key.validBefore) > mag) fail("verify_historical_anchor: valid_before magnitude");
+    // Number.isInteger: fractional/NaN endpoints fail closed (cross-vendor — a
+    // real signed-anchor probe with validFrom 0.5 verified without it).
+    if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
+    if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail("verify_historical_anchor: valid_before magnitude");
     const seg = parseCompact(compact, b);
     const { kid } = parseAnchorHeader(seg, b);
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
@@ -1377,8 +1379,8 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     // Key-window endpoints magnitude-bounded (both keys — the Rust parity).
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
-    if (Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
-    if ((oldKey.validBefore !== null && Math.abs(oldKey.validBefore) > mag) || (newKey.validBefore !== null && Math.abs(newKey.validBefore) > mag)) fail("verify_key_transition: valid_before magnitude");
+    if (!Number.isInteger(oldKey.validFrom) || !Number.isInteger(newKey.validFrom) || Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
+    if ((oldKey.validBefore !== null && (!Number.isInteger(oldKey.validBefore) || Math.abs(oldKey.validBefore) > mag)) || (newKey.validBefore !== null && (!Number.isInteger(newKey.validBefore) || Math.abs(newKey.validBefore) > mag))) fail("verify_key_transition: valid_before magnitude");
     const seg = parseCompact(compact, b);
     const { kid } = parseTransitionHeader(seg, b);
     if (kid !== oldKey.keyId) fail("verify_key_transition: kid");
