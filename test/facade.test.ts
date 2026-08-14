@@ -830,3 +830,22 @@ test("encode-parity: a tightened outer bounds takes effect at the row re-check (
   const r = encodeAnchoredExport(input, { ...expected, bounds: tight });
   assert.equal(r.ok, false, "tightened outer bounds must reject the oversized row at encode");
 });
+
+test("encode-parity: a start-anchor nested-bounds mismatch rejects (the four-pin sweep)", () => {
+  const { input, expected } = conformantExportT();
+  // The reference pins ALL FOUR nested bounds to the outer (anchored_export_codec.ex:352-354,
+  // :404-406); the F1 fix landed only the chain pin — this leg pins the anchor sweep.
+  const anchorTight = boundsNew({ chain_row_bytes: 156 });
+  const r = encodeAnchoredExport(input, { ...expected, startAnchor: { ...expected.startAnchor, bounds: anchorTight } });
+  assert.equal(r.ok, false, "a nested anchor-bounds mismatch must reject at encode");
+});
+
+test("encode-parity: identity overrides (explicit maxima) are NOT tightening (absent nested accepted)", () => {
+  const { input, expected } = conformantExportT();
+  // An outer bounds built from an explicit MAXIMUM value is an identity override: the
+  // reference merges it into the full maximum struct and the pin's struct equality
+  // accepts absent nested bounds. Map-size gating wrong-rejected this (cross-vendor).
+  const identity = boundsNew({ chain_row_bytes: 4096 }); // == MAXIMA.chain_row_bytes
+  const r = encodeAnchoredExport(input, { ...expected, bounds: identity });
+  assert.equal(r.ok, true, "identity overrides must encode (not tightening)");
+});

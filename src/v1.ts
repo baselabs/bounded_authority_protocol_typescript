@@ -1175,6 +1175,11 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // resolving only the chain's own bounds let a tightened outer wrong-ACCEPT rows the
     // reference rejects.
     requireBoundsEqual(expected.chain.bounds, b, "encode_anchored_export: chain bounds");
+    requireBoundsEqual(expected.startAnchor.bounds, b, "encode_anchored_export: start anchor bounds");
+    requireBoundsEqual(expected.endAnchor.bounds, b, "encode_anchored_export: end anchor bounds");
+    for (let i = 0; i < expected.transitions.length; i++) {
+      requireBoundsEqual(expected.transitions[i]!.bounds, b, `encode_anchored_export: transition ${i} bounds`);
+    }
     const chainRes = checkChain(
       { rows: input.rows, chainId: expected.chain.chainId, firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence, rowCount: expected.chain.rowCount, previousHash: expected.chain.previousHash, lastHash: expected.chain.lastHash },
       { ...expected.chain, bounds: b },
@@ -1719,10 +1724,14 @@ function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
 // nested bounds is accepted (both resolve to maximum).
 function requireBoundsEqual(nested: Bounds | undefined, top: Bounds, ctx: string): void {
   if (nested === undefined) {
-    // Absent nested bounds: valid only if the top is also maximum (no tightening). A tightened top
-    // requires every nested struct to carry the same tightening (the reference's pin rejects the
-    // default-to-maximum coerce when top < maximum).
-    if (top.overrides.size !== 0) fail(`${ctx}: nested bounds absent under tightened top`);
+    // Absent nested bounds: valid only if the top coerces EQUAL to maximum (no tightening).
+    // Identity overrides (an explicit override whose value equals the maximum — boundsNew
+    // documents them as "identity no-op") merge to the full maximum struct in the reference
+    // (bounds.ex merge), so the pin's struct equality accepts: gate on EFFECTIVE tightening,
+    // not override-map size (cross-vendor finding: map-size gating wrong-rejected identity).
+    for (const [mk, v] of top.overrides) {
+      if (v !== MAXIMA[mk]) fail(`${ctx}: nested bounds absent under tightened top`);
+    }
     return;
   }
   const coerced = coerceBounds(nested);
