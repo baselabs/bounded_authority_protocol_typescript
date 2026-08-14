@@ -1335,6 +1335,7 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     // real signed-anchor probe with validFrom 0.5 verified without it).
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
     if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail("verify_historical_anchor: valid_before magnitude");
+    if (key.validBefore !== null && key.validBefore <= key.validFrom) fail("verify_historical_anchor: valid_before ordering");
     const seg = parseCompact(compact, b);
     const { kid } = parseAnchorHeader(seg, b);
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
@@ -1381,6 +1382,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(oldKey.validFrom) || !Number.isInteger(newKey.validFrom) || Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
     if ((oldKey.validBefore !== null && (!Number.isInteger(oldKey.validBefore) || Math.abs(oldKey.validBefore) > mag)) || (newKey.validBefore !== null && (!Number.isInteger(newKey.validBefore) || Math.abs(newKey.validBefore) > mag))) fail("verify_key_transition: valid_before magnitude");
+    if ((oldKey.validBefore !== null && oldKey.validBefore <= oldKey.validFrom) || (newKey.validBefore !== null && newKey.validBefore <= newKey.validFrom)) fail("verify_key_transition: valid_before ordering");
     const seg = parseCompact(compact, b);
     const { kid } = parseTransitionHeader(seg, b);
     if (kid !== oldKey.keyId) fail("verify_key_transition: kid");
@@ -1579,6 +1581,7 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
     if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail(`${ctx}: valid_before magnitude`);
+    if (key.validBefore !== null && key.validBefore <= key.validFrom) fail(`${ctx}: valid_before ordering`);
   }
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
@@ -1620,6 +1623,7 @@ function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPubl
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(currentKey.validFrom) || !Number.isInteger(nextKey.validFrom) || Math.abs(currentKey.validFrom) > mag || Math.abs(nextKey.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
     if ((currentKey.validBefore !== null && (!Number.isInteger(currentKey.validBefore) || Math.abs(currentKey.validBefore) > mag)) || (nextKey.validBefore !== null && (!Number.isInteger(nextKey.validBefore) || Math.abs(nextKey.validBefore) > mag))) fail(`${ctx}: valid_before magnitude`);
+    if ((currentKey.validBefore !== null && currentKey.validBefore <= currentKey.validFrom) || (nextKey.validBefore !== null && nextKey.validBefore <= nextKey.validFrom)) fail(`${ctx}: valid_before ordering`);
   }
   const seg = parseCompact(compact, b);
   const { kid } = parseTransitionHeader(seg, b);

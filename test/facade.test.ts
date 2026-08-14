@@ -1028,3 +1028,23 @@ test("bounds-parity: the ARCHIVE verify path guards key validity (round 7)", () 
   const bad1 = { keys: [...keysOk.keys.slice(0, -1), { ...last, validBefore: 4611686018427387904 }] };
   assert.equal(verifyAnchoredExport(obj as never, bad1 as never, exp as never).ok, false);
 });
+
+test("bounds-parity: an inverted key window (validBefore <= validFrom) rejects (ordering leg)", () => {
+  const { generateKeyPairSync, sign: nodeSign } = crypto as typeof import("node:crypto");
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string };
+  const key = new Uint8Array(Buffer.from(jwk.x, "base64url").subarray(0, 32));
+  const si = boundaryAnchorSigningInput({ anchorId: "anchor-ord", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: key });
+  const siValue = (si as { ok: true; value: import("../src/compact.js").SigningInput }).value;
+  const message = new Uint8Array(siValue.protectedSegment.length + 1 + siValue.payloadSegment.length);
+  message.set(siValue.protectedSegment, 0);
+  message[siValue.protectedSegment.length] = ".".charCodeAt(0);
+  message.set(siValue.payloadSegment, siValue.protectedSegment.length + 1);
+  const sig = new Uint8Array(nodeSign(null, message, privateKey));
+  const comp = (assembleCompact(siValue, sig) as { ok: true; value: Uint8Array }).value;
+  const expected = { anchorId: "anchor-ord", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: thumbprintRaw(jwkFromPublicKey(key)) };
+  assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000 }, expected as never).ok, true);
+  // Inverted window: validBefore == validFrom (both in-magnitude, integral) — the
+  // ordering gate fires (jointly with membership; an inverted window admits no time).
+  assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 1000, validBefore: 1000 }, expected as never).ok, false);
+});
