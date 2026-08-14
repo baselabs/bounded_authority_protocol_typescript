@@ -1423,6 +1423,20 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
+    // The count ceiling FIRST (cross-vendor: even the static-bindings walk ran
+    // unbounded caller input before it).
+    const vb0 = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+    if (expected.transitions.length > resolve(vb0, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
+    // Key-window validity BEFORE chunk processing/hashing (the reference validates
+    // key shapes at :91 before validate_chunks).
+    {
+      const mag0 = resolve(vb0, "integer_magnitude" as MaximaKey);
+      for (const k of keyChain.keys) {
+        if (!Number.isInteger(k.validFrom) || Math.abs(k.validFrom) > mag0) fail("verify_anchored_export: key valid_from magnitude");
+        if (k.validBefore !== null && (!Number.isInteger(k.validBefore) || Math.abs(k.validBefore) > mag0)) fail("verify_anchored_export: key valid_before magnitude");
+        if (k.validBefore !== null && k.validBefore <= k.validFrom) fail("verify_anchored_export: key valid_before ordering");
+      }
+    }
     // Static expected-side bindings (reference validate_expected_anchored_export →
     // validate_expected_export, anchored_export_codec.ex:362-371, reached at verify :92/:387):
     // the caller's expected anchors + transitions belong to the expected chain (cross-vendor
@@ -1449,9 +1463,6 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // — a nested value that differs (or defaults to maximum when the top is tightened) is REJECTED.
     // The SDK previously preferred the outer bounds and silently discarded the nested value; pin them
     // explicitly so a mismatch fails closed, matching the reference.
-    // The count ceiling BEFORE any per-element walk (the Rust round-3 fix —
-    // cross-vendor: the pin walks ran unbounded caller input first).
-    if (expected.transitions.length > resolve(b, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
     requireBoundsEqual(expected.chain.bounds, b, "verify_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "verify_anchored_export: start anchor bounds");
     requireBoundsEqual(expected.endAnchor.bounds, b, "verify_anchored_export: end anchor bounds");
