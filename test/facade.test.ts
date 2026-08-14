@@ -849,3 +849,28 @@ test("encode-parity: identity overrides (explicit maxima) are NOT tightening (ab
   const r = encodeAnchoredExport(input, { ...expected, bounds: identity });
   assert.equal(r.ok, true, "identity overrides must encode (not tightening)");
 });
+
+test("encode-parity: an end-anchor nested-bounds mismatch rejects (the four-pin sweep)", () => {
+  const { input, expected } = conformantExportT();
+  const anchorTight = boundsNew({ chain_row_bytes: 156 });
+  const r = encodeAnchoredExport(input, { ...expected, endAnchor: { ...expected.endAnchor, bounds: anchorTight } });
+  assert.equal(r.ok, false, "an end-anchor nested-bounds mismatch must reject at encode");
+});
+
+test("encode-parity: a transition nested-bounds mismatch rejects (the four-pin sweep)", () => {
+  const { input, expected } = conformantExportT();
+  const anchorTight = boundsNew({ chain_row_bytes: 156 });
+  const r = encodeAnchoredExport(input, { ...expected, transitions: [{ ...expected.transitions[0]!, bounds: anchorTight }] });
+  assert.equal(r.ok, false, "a transition nested-bounds mismatch must reject at encode");
+});
+
+test("encode-parity: the chain nested-bounds pin rejects a mismatched chain.bounds (isolated)", () => {
+  const { input, expected } = conformantExportT();
+  // Isolates the CHAIN pin: the row (157 bytes) FITS under the tightened limit
+  // chosen here (chain_row_bytes 4096 stays above the row), so the row walk
+  // cannot backstop — only the pin fires on the mismatched chain.bounds
+  // (delta-review finding 1: the F1 leg's 156 ceiling made it joint-only).
+  const other = boundsNew({ chain_row_bytes: 4000 });
+  const r = encodeAnchoredExport(input, { ...expected, bounds: other, chain: { ...expected.chain, bounds: boundsNew({ chain_row_bytes: 4096 }) } });
+  assert.equal(r.ok, false, "a chain nested-bounds mismatch must reject at encode (isolated from the row walk)");
+});
