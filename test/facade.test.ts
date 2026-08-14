@@ -1021,11 +1021,13 @@ test("bounds-parity: the ARCHIVE verify path guards key validity (round 7)", () 
   // Control: verifies Ok.
   assert.equal(verifyAnchoredExport(obj as never, keysOk as never, exp as never).ok, true);
   // Fractional validFrom on key[0] -> fail closed.
-  const bad0 = { keys: [{ ...keysOk.keys[0], validFrom: 0.5 }, keysOk.keys[1]] };
+  // Shape-coupling guard (the closing cross-vendor note): a corpus reshape
+  // changes the count and trips this assert, not a silent vacuity.
+  assert.equal(keysOk.keys.length, exp.transitions.length + 1);
+  const bad0 = { keys: keysOk.keys.map((k: any, i: number) => (i === 0 ? { ...k, validFrom: 0.5 } : k)) };
   assert.equal(verifyAnchoredExport(obj as never, bad0 as never, exp as never).ok, false);
-  // Huge bounded validBefore (2^62) on the LAST key -> fail closed.
-  const last = keysOk.keys[keysOk.keys.length - 1];
-  const bad1 = { keys: [...keysOk.keys.slice(0, -1), { ...last, validBefore: 4611686018427387904 }] };
+  const lastIdx = keysOk.keys.length - 1;
+  const bad1 = { keys: keysOk.keys.map((k: any, i: number) => (i === lastIdx ? { ...k, validBefore: 4611686018427387904 } : k)) };
   assert.equal(verifyAnchoredExport(obj as never, bad1 as never, exp as never).ok, false);
 });
 

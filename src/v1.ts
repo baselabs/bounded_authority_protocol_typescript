@@ -1449,6 +1449,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // — a nested value that differs (or defaults to maximum when the top is tightened) is REJECTED.
     // The SDK previously preferred the outer bounds and silently discarded the nested value; pin them
     // explicitly so a mismatch fails closed, matching the reference.
+    // The count ceiling BEFORE any per-element walk (the Rust round-3 fix —
+    // cross-vendor: the pin walks ran unbounded caller input first).
+    if (expected.transitions.length > resolve(b, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
     requireBoundsEqual(expected.chain.bounds, b, "verify_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "verify_anchored_export: start anchor bounds");
     requireBoundsEqual(expected.endAnchor.bounds, b, "verify_anchored_export: end anchor bounds");
