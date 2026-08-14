@@ -820,3 +820,13 @@ test("encode-parity: a wrong-width transition signature rejects (gated parse)", 
   const rebuilt = segs[0]! + "." + segs[1]! + "." + b64e(SIG32T);
   expectEncodeErr({ ...input, transitions: [strUtf8(rebuilt)] }, expected);
 });
+
+test("encode-parity: a tightened outer bounds takes effect at the row re-check (F1)", () => {
+  const { input, expected } = conformantExportT();
+  // chain_row_bytes 156 < the 157-byte row: the row walk must run under the OUTER
+  // bounds (anchored_export_codec.ex:33-39) and reject, not under the chain's
+  // default-to-maximum nested resolution (correctness-lens F1).
+  const tight = boundsNew({ chain_row_bytes: 156 });
+  const r = encodeAnchoredExport(input, { ...expected, bounds: tight });
+  assert.equal(r.ok, false, "tightened outer bounds must reject the oversized row at encode");
+});

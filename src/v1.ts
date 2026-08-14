@@ -1168,10 +1168,16 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     validateExportInputs(input, expected, b);
     // Row chain re-check (anchored_export_codec.ex:37-39 — ConsumptionChain.check):
-    // the rows must verify against the expected boundaries before they are archived.
+    // the rows must verify against the expected boundaries BEFORE framing, under the
+    // caller's OUTER bounds (the reference threads the outer bounds into the row walk,
+    // %{expected.chain | bounds: bounds}) — and the chain's nested bounds, when present,
+    // must coerce-equal the outer (anchored_export_codec.ex:352-354). Correctness-lens F1:
+    // resolving only the chain's own bounds let a tightened outer wrong-ACCEPT rows the
+    // reference rejects.
+    requireBoundsEqual(expected.chain.bounds, b, "encode_anchored_export: chain bounds");
     const chainRes = checkChain(
       { rows: input.rows, chainId: expected.chain.chainId, firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence, rowCount: expected.chain.rowCount, previousHash: expected.chain.previousHash, lastHash: expected.chain.lastHash },
-      expected.chain,
+      { ...expected.chain, bounds: b },
     );
     if (!chainRes.ok) fail("encode_anchored_export: rows chain");
     // Gated parses + full signed-field matches (anchored_export_codec.ex:40-52): the
