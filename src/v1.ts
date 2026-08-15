@@ -1431,7 +1431,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     if (expected.transitions.length > resolve(vb0, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
     // Key-window validity BEFORE chunk processing/hashing (the reference validates
     // key shapes at :91 before validate_chunks).
-    if (keyChain.keys.length > expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
+    if (keyChain.keys.length !== expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
     {
       const mag0 = resolve(vb0, "integer_magnitude" as MaximaKey);
       for (const k of keyChain.keys) {
@@ -1477,7 +1477,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // happens after the shape is validated.
     // Version shape (UTF-8 BYTES via TextEncoder) + equality BEFORE the digest
     // (cross-vendor round 12: malformed metadata should not force hashing).
-    if (typeof archived.version !== "string" || archived.version.length === 0 || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || expected.objectVersion.length === 0 || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
+    if (typeof archived.version !== "string" || archived.version.length === 0 || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || typeof expected.objectVersion !== "string" || expected.objectVersion.length === 0 || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     validateChunks(archived.chunks, b);
     // Stream the digest over the chunks WITHOUT materializing/spreading them (reference hash_chunks,
