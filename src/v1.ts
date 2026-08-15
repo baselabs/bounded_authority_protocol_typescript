@@ -1475,6 +1475,10 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // Validate the chunk list BEFORE concatenation (mirrors anchored_export_codec.ex:101-102,333-342
     // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
     // happens after the shape is validated.
+    // Version shape (UTF-8 BYTES via TextEncoder) + equality BEFORE the digest
+    // (cross-vendor round 12: malformed metadata should not force hashing).
+    if (typeof archived.version !== "string" || archived.version.length === 0 || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || expected.objectVersion.length === 0 || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
+    if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     validateChunks(archived.chunks, b);
     // Stream the digest over the chunks WITHOUT materializing/spreading them (reference hash_chunks,
     // anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat). sha256Concat feeds
@@ -1483,9 +1487,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // digest compare before the parse materializes the bytes (BAP-15 Rust precedent, v1.rs:30-40).
     const digest = sha256Concat(archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
-    // Object version: exact equality (out-of-band context, not embedded).
-    if (typeof archived.version !== "string" || archived.version.length === 0 || archived.version.length > resolve(b, "object_version_bytes" as MaximaKey) || expected.objectVersion.length === 0 || expected.objectVersion.length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
-    if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
+    // (the version SHAPE + equality gates ran before the digest — round 12.)
     // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
     // Loop-build (no spread) for the same V8 arg-ceiling reason.
     let total = 0;
