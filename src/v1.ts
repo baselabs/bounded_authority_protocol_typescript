@@ -1782,6 +1782,13 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
 // Validate the chunk list BEFORE concatenation (anchored_export_codec.ex:333-342 validate_chunks):
 // at least one chunk, each chunk nonempty, count < archive_chunks, running total ≤ archive_bytes.
 function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
+  // Chunk elements must be Uint8Array (cross-vendor round 17 family symmetry:
+  // Python gates bytes-like; a runtime str chunk hashed as UTF-8 and coerced
+  // to zero bytes at materialization — fails closed downstream, but reject it
+  // at the shape gate).
+  for (const c of chunks) {
+    if (!(c instanceof Uint8Array)) fail("verify_anchored_export: chunk type");
+  }
   if (chunks.length === 0) fail("archive: no chunks");
   // Cross-vendor re-review Finding 2: the reference's validate_chunks guard is `count < archive_chunks`
   // on the recursive clause (start 0), accepting up to archive_chunks INCLUSIVE. Use `>` not `>=`.
