@@ -1432,6 +1432,11 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // Key-window validity BEFORE chunk processing/hashing (the reference validates
     // key shapes at :91 before validate_chunks).
     if (keyChain.keys.length !== expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
+    // Key ID/public-key shape before the digest (cross-vendor round 14).
+    for (const k of keyChain.keys) {
+      if (typeof k.keyId !== "string" || k.keyId.length === 0 || new TextEncoder().encode(k.keyId).length > resolve(vb0, "kid_bytes" as MaximaKey)) fail("verify_anchored_export: key id shape");
+      if (!(k.publicKey instanceof Uint8Array) || k.publicKey.length !== 32) fail("verify_anchored_export: key width");
+    }
     {
       const mag0 = resolve(vb0, "integer_magnitude" as MaximaKey);
       for (const k of keyChain.keys) {
