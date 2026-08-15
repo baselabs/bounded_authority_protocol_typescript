@@ -785,7 +785,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     // check_chain) and threads it into the row-count bound + every parse_row (chain_row_bytes). A
     // caller tightening via expected.bounds now takes effect.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-    if (expected.chainId !== chain.chainId) fail("check_chain: chain_id");
+    if (typeof chain.chainId !== "string" || !isStringOrUri(chain.chainId) || expected.chainId !== chain.chainId) fail("check_chain: chain_id");
     if (expected.firstSequence !== chain.firstSequence) fail("check_chain: first_sequence");
     if (expected.lastSequence !== chain.lastSequence) fail("check_chain: last_sequence");
     if (expected.rowCount !== chain.rowCount) fail("check_chain: row_count");
