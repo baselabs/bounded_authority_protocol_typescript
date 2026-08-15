@@ -1436,7 +1436,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     for (const k of keyChain.keys) {
       if (typeof k.keyId !== "string" || k.keyId.length === 0 || k.keyId.length > resolve(vb0, "kid_bytes" as MaximaKey) || new TextEncoder().encode(k.keyId).length > resolve(vb0, "kid_bytes" as MaximaKey)) fail("verify_anchored_export: key id shape");
       // the reference's ASCII-unreserved key_id class, pre-hash (round 15).
-      if (!/^[!-~]*$/.test(k.keyId) || !/^[A-Za-z0-9._~-]*$/.test(k.keyId)) fail("verify_anchored_export: key id charset");
+      if (!/^[A-Za-z0-9._~-]*$/.test(k.keyId)) fail("verify_anchored_export: key id charset"); // ASCII-unreserved class
       if (!(k.publicKey instanceof Uint8Array) || k.publicKey.length !== 32) fail("verify_anchored_export: key width");
     }
     {
