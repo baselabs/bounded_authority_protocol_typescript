@@ -1434,7 +1434,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     if (keyChain.keys.length !== expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
     // Key ID/public-key shape before the digest (cross-vendor round 14).
     for (const k of keyChain.keys) {
-      if (typeof k.keyId !== "string" || k.keyId.length === 0 || new TextEncoder().encode(k.keyId).length > resolve(vb0, "kid_bytes" as MaximaKey)) fail("verify_anchored_export: key id shape");
+      if (typeof k.keyId !== "string" || k.keyId.length === 0 || k.keyId.length > resolve(vb0, "kid_bytes" as MaximaKey) || new TextEncoder().encode(k.keyId).length > resolve(vb0, "kid_bytes" as MaximaKey)) fail("verify_anchored_export: key id shape");
+      // the reference's ASCII-unreserved key_id class, pre-hash (round 15).
+      if (!/^[!-~]*$/.test(k.keyId) || !/^[A-Za-z0-9._~-]*$/.test(k.keyId)) fail("verify_anchored_export: key id charset");
       if (!(k.publicKey instanceof Uint8Array) || k.publicKey.length !== 32) fail("verify_anchored_export: key width");
     }
     {
@@ -1482,7 +1484,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // happens after the shape is validated.
     // Version shape (UTF-8 BYTES via TextEncoder) + equality BEFORE the digest
     // (cross-vendor round 12: malformed metadata should not force hashing).
-    if (typeof archived.version !== "string" || archived.version.length === 0 || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || typeof expected.objectVersion !== "string" || expected.objectVersion.length === 0 || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
+    if (typeof archived.version !== "string" || archived.version.length === 0 || archived.version.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(archived.version) || typeof expected.objectVersion !== "string" || expected.objectVersion.length === 0 || expected.objectVersion.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(expected.objectVersion) || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     validateChunks(archived.chunks, b);
     // Stream the digest over the chunks WITHOUT materializing/spreading them (reference hash_chunks,
