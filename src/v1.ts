@@ -1336,6 +1336,7 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
     if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail("verify_historical_anchor: valid_before magnitude");
     if (key.validBefore !== null && key.validBefore <= key.validFrom) fail("verify_historical_anchor: valid_before ordering");
+    if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail("verify_historical_anchor: anchor_bytes");
     const seg = parseCompact(compact, b);
     const { kid } = parseAnchorHeader(seg, b);
     if (kid !== key.keyId) fail("verify_historical_anchor: kid");
@@ -1383,6 +1384,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     if (!Number.isInteger(oldKey.validFrom) || !Number.isInteger(newKey.validFrom) || Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
     if ((oldKey.validBefore !== null && (!Number.isInteger(oldKey.validBefore) || Math.abs(oldKey.validBefore) > mag)) || (newKey.validBefore !== null && (!Number.isInteger(newKey.validBefore) || Math.abs(newKey.validBefore) > mag))) fail("verify_key_transition: valid_before magnitude");
     if ((oldKey.validBefore !== null && oldKey.validBefore <= oldKey.validFrom) || (newKey.validBefore !== null && newKey.validBefore <= newKey.validFrom)) fail("verify_key_transition: valid_before ordering");
+    if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail("verify_key_transition: anchor_bytes");
     const seg = parseCompact(compact, b);
     const { kid } = parseTransitionHeader(seg, b);
     if (kid !== oldKey.keyId) fail("verify_key_transition: kid");
@@ -1429,6 +1431,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     if (expected.transitions.length > resolve(vb0, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
     // Key-window validity BEFORE chunk processing/hashing (the reference validates
     // key shapes at :91 before validate_chunks).
+    if (keyChain.keys.length > expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
     {
       const mag0 = resolve(vb0, "integer_magnitude" as MaximaKey);
       for (const k of keyChain.keys) {
@@ -1481,6 +1484,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     const digest = sha256Concat(archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
     // Object version: exact equality (out-of-band context, not embedded).
+    if (typeof archived.version !== "string" || archived.version.length === 0 || archived.version.length > resolve(b, "object_version_bytes" as MaximaKey) || expected.objectVersion.length === 0 || expected.objectVersion.length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
     // Loop-build (no spread) for the same V8 arg-ceiling reason.
