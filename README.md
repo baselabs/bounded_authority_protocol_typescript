@@ -3,13 +3,15 @@
 A provider-neutral, deterministic **verifier** SDK for bounded proof-of-possession authority — a
 typed TypeScript reimplementation of the BAP v1 verification profile.
 
-This is one of two cross-language verifier SDKs ([ADR 0014][adr14]) that reimplement the frozen v1
+This is one of three cross-language verifier SDKs ([ADR 0014][adr14] — TypeScript, Python, Rust)
+that reimplement the frozen v1
 profile from the published [spec][spec] and [conformance corpus][corpus] alone, with no code-level
 derivation from the Elixir reference. It is a **verification** library: a successful result proves
 only that caller-supplied bytes satisfy caller-supplied trusted inputs and expected context. It never
 selects trusted keys, reserves replay, grants execution, or overrides a host policy.
 
 [adr14]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md
+[adr15]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md
 [spec]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/protocol-v1.md
 [corpus]: https://github.com/baselabs/bounded_authority_protocol/blob/main/priv/conformance/v1/corpus/
 
@@ -40,11 +42,10 @@ mechanically removed ([ADR 0014 D6/D7][adr14]).
 
 ## Install
 
-```bash
-pnpm add @bounded-authority/verifier
-# or
-npm install @bounded-authority/verifier
-```
+Not yet published to npm. Per the [SDK graduation model][adr15], this SDK graduates to its own
+per-SDK repository (`bounded_authority_protocol_typescript`) on first publication — never from
+this monorepo. The package name `@bounded-authority/verifier` is a reserved identifier recorded
+for the graduated publish.
 
 ## Quickstart — verify a grant
 
