@@ -1211,3 +1211,49 @@ test("null/undefined arguments must fail closed, not throw TypeError", () => {
     assert.equal((r as { ok: boolean }).ok, false, `${label}: must be Err`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The pre-digest expected-struct validation hoist (ADR 0017 clause 3 / exception 2,
+// closed 2026-08-18). The reference validates the expected struct (chain + BOTH anchors'
+// identity/binding well-formedness + transitions) BEFORE validate_chunks/hash_chunks
+// (anchored_export_codec.ex:88-104 → ContextValidation); the SDK ran only the static
+// bindings pre-digest. VERDICT-INVARIANT by subsumption (post-digest equality rejects
+// every malformed expected) — the observable is the WORK. ESM bindings are immutable in
+// node:test, so the sha256-call-count channel (used by the Python leg, which carries the
+// behavioral proof for the inter-SDK clause) is unavailable here; the order pin below is
+// STRUCTURAL: the hoisted gate block must precede the digest call in v1.ts. Mutation
+// (revert the hoist): the marker comment disappears → this leg goes RED.
+// ----------------------------------------------------------------------------
+
+import { readFileSync } from "node:fs";
+
+test("expected-struct well-formedness gates sit BEFORE the archive digest (structural order pin)", () => {
+  const src = readFileSync(new URL("../src/v1.ts", import.meta.url), "utf8");
+  const hoist = src.indexOf("ADR 0017 clause-3 hoist: expected-struct well-formedness BEFORE the digest");
+  const digest = src.indexOf("const digest = sha256Concat(archived.chunks)");
+  assert.ok(hoist > 0, "the clause-3 hoist marker is missing from v1.ts — the expected-struct gates were dropped or moved");
+  assert.ok(digest > 0, "the digest call site moved — update this pin deliberately");
+  assert.ok(hoist < digest, "the expected-struct well-formedness gates must run BEFORE the archive digest (reference ordering)");
+});
+
+test("verifyAnchoredExport malformed-expected verdict matrix (hoist regression pins)", () => {
+  const f = sweepFixtures();
+  const built = buildArchive([freshKey(), freshKey()]);
+  const z31 = new Uint8Array(31);
+  const mutate = (fn: (e: typeof built.expected) => typeof built.expected) => fn(built.expected);
+  const malformed: Array<[string, typeof built.expected]> = [
+    ["anchor_id over identifier_bytes", mutate((e) => ({ ...e, startAnchor: { ...e.startAnchor, anchorId: "x".repeat(600) } }))],
+    ["anchor key_id charset", mutate((e) => ({ ...e, startAnchor: { ...e.startAnchor, keyId: "bad key!" } }))],
+    ["anchored_at over magnitude", mutate((e) => ({ ...e, startAnchor: { ...e.startAnchor, anchoredAt: 1e16 } }))],
+    ["anchor sequence negative", mutate((e) => ({ ...e, startAnchor: { ...e.startAnchor, sequence: -1 } }))],
+    ["key_fingerprint width", mutate((e) => ({ ...e, startAnchor: { ...e.startAnchor, keyFingerprint: z31 } }))],
+    ["chain row_count zero", mutate((e) => ({ ...e, chain: { ...e.chain, rowCount: 0 } }))],
+    ["transition_id over identifier_bytes", mutate((e) => ({ ...e, transitions: [{ ...e.transitions[0]!, transitionId: "x".repeat(600) }] }))],
+    ["effective_at over magnitude", mutate((e) => ({ ...e, transitions: [{ ...e.transitions[0]!, effectiveAt: 1e16 }] }))],
+  ];
+  for (const [label, expected] of malformed) {
+    const r = verifyAnchoredExport({ chunks: [built.archive], version: "v1" }, built.keyChain, expected);
+    assert.equal(r.ok, false, `${label}: must reject`);
+  }
+  void f;
+});

@@ -1508,6 +1508,44 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
         if (k.validBefore !== null && k.validBefore <= k.validFrom) fail("verify_anchored_export: key valid_before ordering");
       }
     }
+    // ADR 0017 clause-3 hoist: expected-struct well-formedness BEFORE the digest
+    // (2026-08-18, exception 2 closed). The reference validates chain + both anchors +
+    // transitions (ContextValidation.expected_chain/expected_anchor/expected_transition via
+    // validate_expected_export, anchored_export_codec.ex:88-98/:345-371) before key shapes,
+    // chunks, and hash_chunks; the SDK previously ran these gates only post-digest
+    // (verdict-invariant by subsumption — the WORK ordering is the contract; the Python
+    // battery's sha256-call-count leg carries the behavioral proof, this ordering is
+    // pinned structurally by the TS battery).
+    const bpre = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
+    const mpre = resolve(bpre, "integer_magnitude" as MaximaKey);
+    const preIdentifier = (v: unknown, label: string): void => {
+      if (typeof v !== "string" || v.length === 0 || new TextEncoder().encode(v).length > resolve(bpre, "identifier_bytes" as MaximaKey) || !isStringOrUri(v)) fail(label);
+    };
+    preIdentifier(expected.chain.chainId, "verify_anchored_export: chain chain_id");
+    if (expected.chain.firstSequence < 1 || expected.chain.firstSequence > mpre || expected.chain.lastSequence < 1 || expected.chain.lastSequence > mpre || expected.chain.firstSequence > expected.chain.lastSequence) fail("verify_anchored_export: chain range");
+    if (expected.chain.rowCount < 1 || expected.chain.rowCount > resolve(bpre, "chain_rows" as MaximaKey) || expected.chain.rowCount !== expected.chain.lastSequence - expected.chain.firstSequence + 1) fail("verify_anchored_export: chain count");
+    if (expected.chain.previousHash.length !== 32 || expected.chain.lastHash.length !== 32) fail("verify_anchored_export: chain hash width");
+    if (expected.chain.firstSequence === 1 && !bytesEqual(expected.chain.previousHash, DEFAULT_HASH)) fail("verify_anchored_export: chain genesis");
+    for (const [anch, which] of [[expected.startAnchor, "start"], [expected.endAnchor, "end"]] as const) {
+      preIdentifier(anch.anchorId, `verify_anchored_export: ${which} anchor_id`);
+      preIdentifier(anch.chainId, `verify_anchored_export: ${which} chain_id`);
+      if (!Number.isInteger(anch.anchoredAt) || Math.abs(anch.anchoredAt) > mpre) fail(`verify_anchored_export: ${which} anchored_at`);
+      if (!Number.isInteger(anch.sequence) || anch.sequence < 0 || anch.sequence > mpre) fail(`verify_anchored_export: ${which} sequence`);
+      if (typeof anch.keyId !== "string" || anch.keyId.length === 0 || new TextEncoder().encode(anch.keyId).length > resolve(bpre, "kid_bytes" as MaximaKey) || !/^[A-Za-z0-9._~-]+$/.test(anch.keyId)) fail(`verify_anchored_export: ${which} key_id`);
+      if (anch.chainHash.length !== 32 || anch.keyFingerprint.length !== 32) fail(`verify_anchored_export: ${which} hash width`);
+      if (anch.sequence === 0 && !bytesEqual(anch.chainHash, DEFAULT_HASH)) fail(`verify_anchored_export: ${which} genesis`);
+    }
+    if (expected.transitions.length > resolve(bpre, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
+    for (let i = 0; i < expected.transitions.length; i++) {
+      const t = expected.transitions[i]!;
+      preIdentifier(t.transitionId, `verify_anchored_export: transition ${i} id`);
+      preIdentifier(t.chainId, `verify_anchored_export: transition ${i} chain_id`);
+      if (!Number.isInteger(t.effectiveAt) || Math.abs(t.effectiveAt) > mpre) fail(`verify_anchored_export: transition ${i} effective_at`);
+      for (const kid of [t.currentKeyId, t.nextKeyId]) {
+        if (typeof kid !== "string" || kid.length === 0 || new TextEncoder().encode(kid).length > resolve(bpre, "kid_bytes" as MaximaKey) || !/^[A-Za-z0-9._~-]+$/.test(kid)) fail(`verify_anchored_export: transition ${i} key_id`);
+      }
+      if (t.currentKeyFingerprint.length !== 32 || t.nextKeyFingerprint.length !== 32 || bytesEqual(t.currentKeyFingerprint, t.nextKeyFingerprint)) fail(`verify_anchored_export: transition ${i} fingerprints`);
+    }
     // Static expected-side bindings (reference validate_expected_anchored_export →
     // validate_expected_export, anchored_export_codec.ex:362-371, reached at verify :92/:387):
     // the caller's expected anchors + transitions belong to the expected chain (cross-vendor
