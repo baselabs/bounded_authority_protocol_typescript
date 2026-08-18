@@ -480,9 +480,52 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 // --- the 17 façade functions ---
 
+
+// --- the closed-Result shape gate (ADR 0017 clauses 1-2) ---
+//
+// A wrong-typed caller value must return Err — never throw TypeError past trying() (JS
+// property derefs on null/undefined) and never be silently coerced (TextEncoder stringifies
+// non-strings: requestDigest(123) used to digest "123" and return Ok). The Python half's
+// family sweep (2026-08-18) found the class total there; the TS probe found 109 param-level
+// escapes + the coercion here, so every façade gates its arguments' SHAPES before the body
+// runs. Struct params are gated non-null-object plus the fields the body derefs before its
+// own semantic gates; deeper field semantics stay with the bodies' existing type checks.
+
+type Shape = "bytes" | "str" | "int" | "object" | "tagged" | { seq: Shape } | { fields: Record<string, Shape> } | { opt: Shape };
+
+const SHAPE_BOUNDS_OPT: Shape = { opt: "object" };
+
+const SHAPE_HIST_KEY: Shape = { fields: { keyId: "str", publicKey: "bytes", validFrom: "int", validBefore: { opt: "int" } } };
+const SHAPE_PROOF_PRODUCER: Shape = { fields: { holderPublicKey: "bytes", proofId: "str", method: "str", targetUri: "str", issuedAt: "int", invocationId: "str", operation: "str", grantCompact: "bytes", castArguments: "tagged", nonce: { opt: "str" } } };
+const SHAPE_TRANSITION_PRODUCER: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentPublicKey: "bytes", nextKeyId: "str", nextPublicKey: "bytes" } };
+const SHAPE_EXPORT_INPUT: Shape = { fields: { rows: { seq: "bytes" }, startAnchor: "bytes", endAnchor: "bytes", transitions: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } };
+const SHAPE_EXPECTED_EXPORT: Shape = { fields: { chain: "object", digest: "bytes", startAnchor: "object", endAnchor: "object", transitions: { seq: "object" }, objectVersion: "str", bounds: SHAPE_BOUNDS_OPT } };
+
+function shapeOk(value: unknown, shape: Shape): boolean {
+  if (shape === "bytes") return value instanceof Uint8Array;
+  if (shape === "str") return typeof value === "string";
+  if (shape === "int") return Number.isInteger(value); // rejects null/undefined/bool/float
+  if (shape === "object") return typeof value === "object" && value !== null;
+  if (shape === "tagged") return typeof value === "object" && value !== null && typeof (value as { t?: unknown }).t === "string";
+  if ("seq" in shape) return Array.isArray(value) && value.every((item) => shapeOk(item, shape.seq));
+  if ("opt" in shape) return value === undefined || value === null || shapeOk(value, shape.opt);
+  if (typeof value !== "object" || value === null) return false;
+  for (const [name, sub] of Object.entries(shape.fields)) {
+    if (!shapeOk((value as Record<string, unknown>)[name], sub)) return false;
+  }
+  return true;
+}
+
+function closedShape(args: unknown[], shapes: Shape[]): void {
+  for (let i = 0; i < shapes.length; i++) {
+    if (!shapeOk(args[i], shapes[i]!)) fail(`shape: argument ${i}`);
+  }
+}
+
 // 1. untrusted_key_locator (protocol-v1.md § Untrusted key locator).
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
+    closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
     // Cross-vendor #13: the reference (v1.ex:21-34) decodes ONLY the protected segment — payload and
     // signature are NOT decoded, interpreted, or independently size-checked. parseCompact decodes all
     // three, so a compact with a valid protected grant header but non-canonical payload/signature
@@ -522,6 +565,7 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
 // 2. decode_grant (REQ1-VERIFY-decode-not-evaluated).
 export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
   return trying(() => {
+    closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const seg = parseCompact(compact, b);
     const { kid } = parseGrantHeader(seg, b);
@@ -550,6 +594,7 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
 // 3. decode_proof.
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
   return trying(() => {
+    closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const seg = parseCompact(compact, b);
     const { holderThumbprint } = parseProofHeader(seg, b);
@@ -563,6 +608,7 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
 // 4. verify_grant (REQ1-VERIFY-grant-exact, grant-times, no-iat-nbf-order).
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
+    closedShape([compact, trusted, expected], ["bytes", "object", "object"]);
     // Cross-vendor #22 (fail-closed shallow): the reference pattern-matches %TrustedIssuer{} and
     // returns {:error, :invalid} for any malformed context struct (runtime.ex:181,196). A null OR a
     // struct missing publicKey/keyId must fail closed — not throw a native TypeError that escapes the
@@ -613,6 +659,7 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
 // 5. check_envelope (REQ1-VERIFY-envelope-binding).
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
   return trying(() => {
+    closedShape([grantCompact, proofCompact, expected], ["bytes", "bytes", "object"]);
     const t = expected.trustedIssuer;
     // Cross-vendor #22 (fail-closed shallow): a null/wrong-typed trustedIssuer (or any structured-
     // input field) must fail closed as InvalidError, not propagate a native TypeError from the deref
@@ -735,13 +782,17 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
 // 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — cross-vendor #21: mirror
 // the Elixir {:ok, binary} | {:error, :invalid} and the other 15 façade functions).
 export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Result<Uint8Array> {
-  return trying(() => computeRequestDigest(operation, castArguments, bounds ?? MAXIMUM_BOUNDS));
+  return trying(() => {
+    closedShape([operation, castArguments, bounds], ["str", "tagged", SHAPE_BOUNDS_OPT]);
+    return computeRequestDigest(operation, castArguments, bounds ?? MAXIMUM_BOUNDS);
+  });
 }
 
 // 7. encode_consumption_entry (ADR 0004 § Consumption rows). Returns canonical row bytes + hash.
 export interface EncodedConsumptionEntry { readonly bytes: Uint8Array; readonly hash: Uint8Array; }
 export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds): Result<EncodedConsumptionEntry> {
   return trying(() => {
+    closedShape([entry, bounds], [{ fields: { chainId: "str", sequence: "int", previousHash: "bytes", commitment: "bytes" } }, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     if (!Number.isInteger(entry.sequence) || entry.sequence < 1) fail("encode_consumption_entry: positive sequence");
     assert(entry.previousHash.length === 32, "encode_consumption_entry: previous_hash width");
@@ -781,6 +832,7 @@ function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint
 // 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
+    closedShape([chain, expected], [{ fields: { rows: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } }, { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } }]);
     // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (consumption_chain.ex
     // check_chain) and threads it into the row-count bound + every parse_row (chain_row_bytes). A
     // caller tightening via expected.bounds now takes effect.
@@ -847,6 +899,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
 // 9. grant_signing_input (the deterministic producer; REQ1-SIGNING-deterministic-produce).
 export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
+    closedShape([grant, bounds], ["object", SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const keyIdBytes = strUtf8(grant.keyId);
     if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("grant_signing_input: key_id bytes");
@@ -979,6 +1032,7 @@ function checkNode(v: Tagged, depth: number, b: Bounds): void {
 // 10. proof_signing_input (REQ1-SIGNING-deterministic-produce).
 export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
+    closedShape([proof, bounds], [SHAPE_PROOF_PRODUCER, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     assert(proof.holderPublicKey.length === 32, "proof_signing_input: holder key width");
     if (!isStringOrUri(proof.proofId)) fail("proof_signing_input: proof_id");
@@ -1050,6 +1104,7 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
 // closed — the producer must not mint bytes its own consumer (verify) would reject.
 export function assembleCompact(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
+    closedShape([input, signature], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes"]);
     const b = MAXIMUM_BOUNDS;
     const assembled = assembleSegments(input, signature);
     if (!assembled.ok) fail("assemble_compact: signing input");
@@ -1080,6 +1135,7 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array): Res
 // 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
+    closedShape([anchor, bounds], ["object", SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const keyIdBytes = strUtf8(anchor.keyId);
     if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("anchor_signing_input: key_id bytes");
@@ -1120,6 +1176,7 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
 // 13. key_transition_signing_input (ADR 0004 § Authenticated key transitions).
 export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
+    closedShape([t, bounds], [SHAPE_TRANSITION_PRODUCER, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     assert(t.currentPublicKey.length === 32 && t.nextPublicKey.length === 32, "transition_signing_input: key width");
     if (bytesEqual(t.currentPublicKey, t.nextPublicKey)) fail("transition_signing_input: distinct keys");
@@ -1160,6 +1217,7 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
 export interface EncodedAnchoredExport { readonly archive: Uint8Array; readonly digest: Uint8Array; }
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
   return trying(() => {
+    closedShape([input, expected], [SHAPE_EXPORT_INPUT, SHAPE_EXPECTED_EXPORT]);
     // Validate inputs BEFORE framing (mirrors anchored_export_codec.ex:33-57 encode →
     // validate_expected_export + parse_expected_transitions + validate_expected_key_path). The
     // parser would reject the bytes a too-large input would produce; the producer rejects earlier.
@@ -1322,6 +1380,7 @@ function frame(bytes: Uint8Array): Uint8Array {
 // 15. verify_historical_anchor (ADR 0004 § Boundary anchors; protocol-v1.md § Historical anchor).
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
+    closedShape([compact, key, expected], ["bytes", SHAPE_HIST_KEY, "object"]);
     assert(key.publicKey.length === 32, "verify_historical_anchor: key width");
     // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check, as
     // the reference does (boundary_anchor_codec.ex parses the compact + payload under bounds).
@@ -1375,6 +1434,7 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
 // 16. verify_key_transition (ADR 0004 § Authenticated key transitions).
 export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPublicKey, newKey: HistoricalPublicKey, expected: ExpectedKeyTransition): Result<KeyTransitionFacts> {
   return trying(() => {
+    closedShape([compact, oldKey, newKey, expected], ["bytes", SHAPE_HIST_KEY, SHAPE_HIST_KEY, "object"]);
     assert(oldKey.publicKey.length === 32 && newKey.publicKey.length === 32, "verify_key_transition: key width");
     if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
     // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
@@ -1425,6 +1485,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
+    closedShape([archived, keyChain, expected], ["object", { fields: { keys: { seq: SHAPE_HIST_KEY } } }, SHAPE_EXPECTED_EXPORT]);
     // The count ceiling FIRST (cross-vendor: even the static-bindings walk ran
     // unbounded caller input before it).
     const vb0 = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);

@@ -1006,3 +1006,208 @@ test("permissiveness: checkChain rejects genesis chain.previousHash != expected.
   assert.equal(checkChain(forgedChain, expected).ok, false,
     "genesis chain.previousHash != expected.previousHash must reject (F4)");
 });
+// ---------------------------------------------------------------------------
+// The closed-Result family sweep, TS half (ADR 0017 clauses 1-2; the 2026-08-18
+// alignment-audit §1 defect, swept across the whole façade surface).
+//
+// The Python half's sibling sweep found the escape family total on the Python side; the TS
+// probe (2026-08-18) found the JS-specific variants: (a) TextEncoder COERCES non-string
+// operations — requestDigest(123/true/null/{}) silently digested "123"/"true"/"null"/
+// "[object Object]" and returned Ok (a clause-2 silent-coercion breach, worse than an
+// escape); (b) null/undefined arguments hit property derefs (entry.previousHash.length,
+// expected.evaluationTime, compact.length) and throw TypeError PAST trying() — the #22
+// guard class, but only verifyGrant.trusted ever got it. The fix is the closedShape gate on
+// all 17 façades (v1.ts): every caller-supplied argument is shape-checked (bytes = real
+// Uint8Array, struct = non-null object with the consumed fields' shapes, str = typeof
+// string) BEFORE the body runs.
+//
+// RED-CAPABILITY: every "must be Err" case below was Ok (the coercions) or a thrown
+// TypeError (the null derefs) at the pre-fix tree — this section IS the red run.
+// Remove the closedShape gate from any single façade → exactly that façade's cases go RED.
+// ----------------------------------------------------------------------------
+
+import * as v1 from "../src/v1.js";
+import {
+  assembleCompact, decodeProof, requestDigest, verifyHistoricalAnchor, verifyKeyTransition,
+} from "../src/v1.js";
+import { thumbprintRaw, jwkFromPublicKey } from "../src/jwk.js";
+
+function sweepFixtures() {
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintRaw(jwkFromPublicKey(holder.publicKey));
+  const holderThumb = new TextDecoder().decode(base64urlEncode(holderFp));
+  const gsi = grantSigningInput({
+    keyId: "issuer-123456", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: holderThumb,
+    operations: [{ name: "read", selectors: ["all"] }],
+  });
+  if (!gsi.ok) throw new Error("grant signing input failed");
+  const gmsg = `${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`;
+  const gc = mustAssemble(gsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(gmsg), issuer.privateKey)));
+  const psi = proofSigningInput({
+    holderPublicKey: holder.publicKey, proofId: "urn:example:proof:1", method: "POST",
+    targetUri: "https://resource.example.test/invoke", issuedAt: 1400,
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    grantCompact: gc, castArguments: { t: "null" } as Tagged,
+  });
+  if (!psi.ok) throw new Error("proof signing input failed");
+  const pmsg = `${new TextDecoder().decode(psi.value.protectedSegment)}.${new TextDecoder().decode(psi.value.payloadSegment)}`;
+  const pc = mustAssemble(psi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(pmsg), holder.privateKey)));
+  const baseReq = {
+    trustedIssuer: { keyId: "issuer-123456", publicKey: issuer.publicKey },
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    method: "POST", targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
+    castArguments: { t: "null" } as Tagged, evaluationTime: 1500, clockSkew: 60,
+    proofMaxAge: 300, nonce: { kind: "not_required" } as const,
+  };
+  const Z32 = new Uint8Array(32);
+  const enc = encodeConsumptionEntry({ chainId: "urn:example:chain", sequence: 1, previousHash: Z32, commitment: new Uint8Array(32).fill(7) });
+  if (!enc.ok) throw new Error("row encode failed");
+  const goodChain = {
+    rows: [enc.value.bytes], chainId: "urn:example:chain", firstSequence: 1, lastSequence: 1,
+    rowCount: 1, previousHash: Z32, lastHash: enc.value.hash,
+  };
+  const expectedChain = { ...goodChain };
+  const ka = freshKey();
+  const kb = freshKey();
+  const fpA = thumbprintRaw(jwkFromPublicKey(ka.publicKey));
+  const fpB = thumbprintRaw(jwkFromPublicKey(kb.publicKey));
+  const anchorProd = {
+    anchorId: "a0", anchoredAt: 1000, chainId: "chain-x", sequence: 0,
+    chainHash: Z32, keyId: "ka", publicKey: ka.publicKey,
+  };
+  const asi = boundaryAnchorSigningInput(anchorProd);
+  if (!asi.ok) throw new Error("anchor signing input failed");
+  const amsg = `${new TextDecoder().decode(asi.value.protectedSegment)}.${new TextDecoder().decode(asi.value.payloadSegment)}`;
+  const startCompact = mustAssemble(asi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(amsg), ka.privateKey)));
+  const tProd = {
+    transitionId: "t1", chainId: "chain-x", effectiveAt: 1500,
+    currentKeyId: "ka", currentPublicKey: ka.publicKey, nextKeyId: "kb", nextPublicKey: kb.publicKey,
+  };
+  const tsi = keyTransitionSigningInput(tProd);
+  if (!tsi.ok) throw new Error("transition signing input failed");
+  const tmsg = `${new TextDecoder().decode(tsi.value.protectedSegment)}.${new TextDecoder().decode(tsi.value.payloadSegment)}`;
+  const tCompact = mustAssemble(tsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(tmsg), ka.privateKey)));
+  const built = buildArchive([ka, kb]);
+  return { gc, pc, baseReq, goodChain, expectedChain, anchorProd, startCompact, tProd, tCompact, built, Z32, fpA, fpB, gsi: gsi.value, ka, kb };
+}
+
+// The sweep's dispatch table: façade name → positional-args invoker. Substitution happens
+// positionally so each sentinel lands in exactly one parameter.
+const SWEEP_TABLE: Record<string, (...a: unknown[]) => { ok: boolean }> = {
+  untrustedKeyLocator: (...a) => untrustedKeyLocator(a[0] as never),
+  decodeGrant: (...a) => v1.decodeGrant(a[0] as never),
+  decodeProof: (...a) => decodeProof(a[0] as never),
+  verifyGrant: (...a) => v1.verifyGrant(a[0] as never, a[1] as never, a[2] as never),
+  checkEnvelope: (...a) => checkEnvelope(a[0] as never, a[1] as never, a[2] as never),
+  requestDigest: (...a) => requestDigest(a[0] as never, a[1] as never),
+  encodeConsumptionEntry: (...a) => encodeConsumptionEntry(a[0] as never),
+  checkChain: (...a) => checkChain(a[0] as never, a[1] as never),
+  grantSigningInput: (...a) => grantSigningInput(a[0] as never),
+  proofSigningInput: (...a) => proofSigningInput(a[0] as never),
+  assembleCompact: (...a) => assembleCompact(a[0] as never, a[1] as never),
+  boundaryAnchorSigningInput: (...a) => boundaryAnchorSigningInput(a[0] as never),
+  keyTransitionSigningInput: (...a) => keyTransitionSigningInput(a[0] as never),
+  encodeAnchoredExport: (...a) => encodeAnchoredExport(a[0] as never, a[1] as never),
+  verifyHistoricalAnchor: (...a) => verifyHistoricalAnchor(a[0] as never, a[1] as never, a[2] as never),
+  verifyKeyTransition: (...a) => verifyKeyTransition(a[0] as never, a[1] as never, a[2] as never, a[3] as never),
+  verifyAnchoredExport: (...a) => verifyAnchoredExport(a[0] as never, a[1] as never, a[2] as never),
+};
+
+test("closed-Result family param sweep (all 17 façades)", () => {
+  const f = sweepFixtures();
+  const nullTag: Tagged = { t: "null" };
+  const expectedGrant = { issuer: "https://issuer.example.test", audience: "https://resource.example.test", evaluationTime: 1500, clockSkew: 60 };
+  const histKeyA = { keyId: "ka", publicKey: f.ka.publicKey, validFrom: 0, validBefore: null };
+  const histKeyB = { keyId: "kb", publicKey: f.kb.publicKey, validFrom: 1500, validBefore: null };
+  const expAnchor = { anchorId: "a0", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: f.Z32, keyId: "ka", keyFingerprint: f.fpA };
+  const expTransition = { transitionId: "t1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "ka", currentKeyFingerprint: f.fpA, nextKeyId: "kb", nextKeyFingerprint: f.fpB };
+  const archiveObj = { chunks: [f.built.archive], version: "v1" };
+  // Valid positional args per façade, with per-position kinds for the expectation matrix.
+  const okThumb = new TextDecoder().decode(base64urlEncode(f.fpA));
+  const entries: Array<[string, unknown[], string[]]> = [
+    ["untrustedKeyLocator", [f.gc], ["bytes"]],
+    ["decodeGrant", [f.gc], ["bytes"]],
+    ["decodeProof", [f.pc], ["bytes"]],
+    ["verifyGrant", [f.gc, f.baseReq.trustedIssuer, expectedGrant], ["bytes", "struct", "struct"]],
+    ["checkEnvelope", [f.gc, f.pc, f.baseReq], ["bytes", "bytes", "struct"]],
+    ["requestDigest", ["read", nullTag], ["str", "tagged"]],
+    ["encodeConsumptionEntry", [{ chainId: "chain-x", sequence: 1, previousHash: f.Z32, commitment: f.Z32 }], ["struct"]],
+    ["checkChain", [f.goodChain, f.expectedChain], ["struct", "struct"]],
+    ["grantSigningInput", [{ keyId: "k1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1", audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000, holderThumbprint: okThumb, operations: [{ name: "read", selectors: ["all"] }] }], ["struct"]],
+    ["proofSigningInput", [{ holderPublicKey: f.ka.publicKey, proofId: "urn:example:proof:1", method: "POST", targetUri: "https://resource.example.test/invoke", issuedAt: 1400, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read", grantCompact: f.gc, castArguments: nullTag }], ["struct"]],
+    ["assembleCompact", [f.gsi, new Uint8Array(64).fill(5)], ["struct", "bytes"]],
+    ["boundaryAnchorSigningInput", [f.anchorProd], ["struct"]],
+    ["keyTransitionSigningInput", [f.tProd], ["struct"]],
+    ["encodeAnchoredExport", [f.built.input, f.built.expected], ["struct", "struct"]],
+    ["verifyHistoricalAnchor", [f.startCompact, histKeyA, expAnchor], ["bytes", "struct", "struct"]],
+    ["verifyKeyTransition", [f.tCompact, histKeyA, histKeyB, expTransition], ["bytes", "struct", "struct", "struct"]],
+    ["verifyAnchoredExport", [archiveObj, f.built.keyChain, f.built.expected], ["struct", "struct", "struct"]],
+  ];
+  // Controls: every valid call must be Ok (proves the fixtures, prevents vacuous sweeps).
+  for (const [name, args] of entries) {
+    const r = SWEEP_TABLE[name]!(...args);
+    assert.equal(r.ok, true, `control failed: ${name}`);
+  }
+  const SENTINELS: Array<[unknown, string]> = [
+    [null, "null"], [undefined, "undefined"], [123, "123"], [true, "true"],
+    ["s", "s"], [[1, 2, 3], "array"], [{}, "object"],
+  ];
+  const failures: string[] = [];
+  for (const [name, args, kinds] of entries) {
+    for (let i = 0; i < kinds.length; i++) {
+      const kind = kinds[i]!;
+      for (const [sentinel, slabel] of SENTINELS) {
+        const probe = args.slice();
+        probe[i] = sentinel;
+        let r: { ok: boolean } | "THROWN" = "THROWN";
+        try {
+          r = SWEEP_TABLE[name]!(...probe);
+        } catch {
+          r = "THROWN";
+        }
+        const mayOk = kind === "str" && slabel === "s";
+        if (r === "THROWN") {
+          failures.push(`${name}[${i}]=${slabel}: THREW past the closed Result`);
+        } else if (!mayOk && r.ok) {
+          failures.push(`${name}[${i}]=${slabel}: wrong-typed input returned Ok`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(failures, [], `closed-Result family escapes (${failures.length}): ${failures.slice(0, 12).join("; ")}`);
+});
+
+test("requestDigest non-string operation must fail closed (the coercion defect)", () => {
+  const nullTag: Tagged = { t: "null" };
+  for (const bad of [123, true, null, {}, [1], 3.5]) {
+    const r = requestDigest(bad as never, nullTag);
+    assert.equal(r.ok, false, `operation=${String(bad)} must not be silently coerced and digested`);
+  }
+});
+
+test("null/undefined arguments must fail closed, not throw TypeError", () => {
+  const f = sweepFixtures();
+  const cases: Array<[string, () => unknown]> = [
+    ["encodeConsumptionEntry(null)", () => encodeConsumptionEntry(null as never)],
+    ["encodeConsumptionEntry(undefined)", () => encodeConsumptionEntry(undefined as never)],
+    ["encodeConsumptionEntry(chainId=null)", () => encodeConsumptionEntry({ chainId: null, sequence: 1, previousHash: f.Z32, commitment: f.Z32 } as never)],
+    ["encodeConsumptionEntry(previousHash=null)", () => encodeConsumptionEntry({ chainId: "c", sequence: 1, previousHash: null, commitment: f.Z32 } as never)],
+    ["verifyGrant(expected=null)", () => v1.verifyGrant(f.gc, f.baseReq.trustedIssuer, null as never)],
+    ["decodeGrant(null)", () => v1.decodeGrant(null as never)],
+    ["checkEnvelope(expected=null)", () => checkEnvelope(f.gc, f.pc, null as never)],
+    ["verifyAnchoredExport(archived=null)", () => verifyAnchoredExport(null as never, f.built.keyChain, f.built.expected)],
+  ];
+  for (const [label, call] of cases) {
+    let r: unknown;
+    try {
+      r = call();
+    } catch (e) {
+      assert.fail(`${label}: threw ${(e as object).constructor.name} past the closed Result`);
+    }
+    assert.equal((r as { ok: boolean }).ok, false, `${label}: must be Err`);
+  }
+});
