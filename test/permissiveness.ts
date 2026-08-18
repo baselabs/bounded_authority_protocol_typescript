@@ -1257,3 +1257,73 @@ test("verifyAnchoredExport malformed-expected verdict matrix (hoist regression p
   }
   void f;
 });
+
+// ---------------------------------------------------------------------------
+// The assembleCompact caller-bounds threading (ADR 0018's named divergence,
+// closed 2026-08-18). The reference takes limits at assemble (runtime.ex:147-155 →
+// CompactJws.assemble:34-48 — encoded segment bounds, signature width ≤ signature_bytes,
+// compact_bytes, and the kind re-parse, all against Bounds.coerce(limits)); the SDK
+// hardcoded maximum. Maintainer direction 2026-08-18: thread caller-tightenable bounds.
+//
+// RED-CAPABILITY: pre-fix, the third argument was silently IGNORED by JS — every
+// tightened case below returned Ok (the red run); with the parameter present but
+// unthreaded, the same cases return Ok again.
+// ---------------------------------------------------------------------------
+
+test("assembleCompact threads caller bounds", () => {
+  const f = sweepFixtures();
+  const sig = new Uint8Array(64).fill(5);
+  // Control: absent bounds = maximum → assembly succeeds.
+  const control = assembleCompact(f.gsi, sig);
+  assert.ok(control.ok, "control: maximum-bounds assembly must succeed");
+  if (!control.ok) return;
+  const n = control.value.length;
+  assert.equal(
+    assembleCompact(f.gsi, sig, boundsNew({ compact_bytes: n - 1 })).ok,
+    false,
+    "tightened compact_bytes must reject the assembly",
+  );
+  // (signature_bytes is a FIXED-WIDTH bound — untightenable by design; no leg can
+  // exercise it below 64.)
+  assert.equal(
+    assembleCompact(f.gsi, sig, boundsNew({ encoded_segment_bytes: f.gsi.protectedSegment.length - 1 })).ok,
+    false,
+    "tightened encoded_segment_bytes must reject the protected segment",
+  );
+  assert.equal(
+    assembleCompact(f.gsi, sig, boundsNew({ kid_bytes: 1 })).ok,
+    false,
+    "tightened kid_bytes must reject at the kind re-parse (the produced kid is 13 bytes)",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// The round-12..14 pre-digest export gates — verdict-matrix regression pins (the
+// TS half of the 2026-08-18 pin-debt payment). The red-capable WORK form of these
+// pins lives in the Python battery (verdict-subsumed gates; ESM gives TS no
+// sha256-count channel — the established convention from the exception-2 hoist).
+// ---------------------------------------------------------------------------
+
+test("round-12..14 pre-digest export gates: verdict matrix", () => {
+  const built = buildArchive([freshKey(), freshKey()]);
+  const z = new Uint8Array(32);
+  const base = { chunks: [built.archive], version: "v1" };
+  const extraKey = { keyId: "k-x", publicKey: freshKey().publicKey, validFrom: 0, validBefore: null };
+  const badCharset = { ...built.keyChain.keys[0]!, keyId: "bad key!" };
+  const huge = { ...built.keyChain.keys[1]!, validBefore: 1e16 };
+  const longVersion = "x".repeat(600);
+  const cases: Array<[string, () => { ok: boolean }]> = [
+    ["control", () => verifyAnchoredExport(base, built.keyChain, built.expected)],
+    ["version shape", () => verifyAnchoredExport({ chunks: [built.archive], version: longVersion }, built.keyChain, { ...built.expected, objectVersion: longVersion })],
+    ["version equality", () => verifyAnchoredExport({ chunks: [built.archive], version: "v2" }, built.keyChain, built.expected)],
+    ["key count", () => verifyAnchoredExport(base, { keys: [...built.keyChain.keys, extraKey] }, built.expected)],
+    ["key charset", () => verifyAnchoredExport(base, { keys: [badCharset, built.keyChain.keys[1]!] }, built.expected)],
+    ["key magnitude", () => verifyAnchoredExport(base, { keys: [built.keyChain.keys[0]!, huge] }, built.expected)],
+  ];
+  for (const [label, run] of cases) {
+    const r = run();
+    if (label === "control") assert.ok(r.ok, "control must verify");
+    else assert.equal(r.ok, false, `${label}: must reject`);
+  }
+  void z;
+});

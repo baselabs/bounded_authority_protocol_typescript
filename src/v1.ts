@@ -1102,10 +1102,17 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
 // carries no caller bounds, so the profile maximum (MAXIMUM_BOUNDS) is used. A mislabeled kind
 // (typ ≠ kind), oversized segment, non-base64url payload, or malformed payload content fails
 // closed — the producer must not mint bytes its own consumer (verify) would reject.
-export function assembleCompact(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
+export function assembleCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
-    closedShape([input, signature], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes"]);
-    const b = MAXIMUM_BOUNDS;
+    closedShape([input, signature, bounds], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes", SHAPE_BOUNDS_OPT]);
+    // ADR 0018 divergence closed (2026-08-18): the reference takes limits at assemble
+    // (runtime.ex:147-155 → CompactJws.assemble:34-48 — encoded segment bounds, signature
+    // width ≤ signature_bytes, compact_bytes, all against Bounds.coerce(limits)); the SDK
+    // previously hardcoded maximum. Absent bounds = maximum (backward compatible).
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
+    if (input.protectedSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey) || input.payloadSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("assemble_compact: segment bound");
+    // (signature_bytes needs no gate: it is a FIXED-WIDTH key rejected at boundsNew
+    // unless 64 — the reference's assemble-time check is subsumed.)
     const assembled = assembleSegments(input, signature);
     if (!assembled.ok) fail("assemble_compact: signing input");
     const compact = assembled.value;
