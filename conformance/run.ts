@@ -2,7 +2,7 @@
 // Conformance runner for @bounded-authority/verifier (BAP-09 T5). Loads the published corpus from
 // priv/conformance/v1/corpus/, recomputes EVERY verdict from scratch by calling the SDK façade
 // (sdks/typescript/src/v1.ts), and asserts agreement on all 283 cases. Asserts the index.json
-// SHA-256 at startup (ADR 0014 D8: the SDK binds to the exact corpus it was certified against).
+// SHA-256 at startup (ADR 0014 D4: the SDK binds to the exact corpus it was certified against).
 // Runs the two-boundary key census (discovery == verify-import == index public_key_fingerprints).
 //
 // This is the independent conformance proof: the SDK is the implementation under test, the corpus
