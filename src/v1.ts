@@ -499,7 +499,13 @@ const SHAPE_HIST_KEY: Shape = { fields: { keyId: "str", publicKey: "bytes", vali
 const SHAPE_PROOF_PRODUCER: Shape = { fields: { holderPublicKey: "bytes", proofId: "str", method: "str", targetUri: "str", issuedAt: "int", invocationId: "str", operation: "str", grantCompact: "bytes", castArguments: "tagged", nonce: { opt: "str" } } };
 const SHAPE_TRANSITION_PRODUCER: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentPublicKey: "bytes", nextKeyId: "str", nextPublicKey: "bytes" } };
 const SHAPE_EXPORT_INPUT: Shape = { fields: { rows: { seq: "bytes" }, startAnchor: "bytes", endAnchor: "bytes", transitions: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } };
-const SHAPE_EXPECTED_EXPORT: Shape = { fields: { chain: "object", digest: "bytes", startAnchor: "object", endAnchor: "object", transitions: { seq: "object" }, objectVersion: "str", bounds: SHAPE_BOUNDS_OPT } };
+const SHAPE_EXPECTED_CHAIN: Shape = { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } };
+const SHAPE_EXPECTED_ANCHOR: Shape = { fields: { anchorId: "str", anchoredAt: "int", chainId: "str", sequence: "int", chainHash: "bytes", keyId: "str", keyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
+const SHAPE_EXPECTED_TRANSITION: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentKeyFingerprint: "bytes", nextKeyId: "str", nextKeyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
+// Cross-vendor round 18 (codex, blocking): the nested members are FULLY specified, not
+// opaque "object" — a malformed nested struct (missing field, wrong type) must reject at
+// the gate, never reach a deref inside the hoist or body.
+const SHAPE_EXPECTED_EXPORT: Shape = { fields: { chain: SHAPE_EXPECTED_CHAIN, digest: "bytes", startAnchor: SHAPE_EXPECTED_ANCHOR, endAnchor: SHAPE_EXPECTED_ANCHOR, transitions: { seq: SHAPE_EXPECTED_TRANSITION }, objectVersion: "str", bounds: SHAPE_BOUNDS_OPT } };
 
 function shapeOk(value: unknown, shape: Shape): boolean {
   if (shape === "bytes") return value instanceof Uint8Array;
@@ -516,6 +522,10 @@ function shapeOk(value: unknown, shape: Shape): boolean {
   return true;
 }
 
+// Accepted margin (cross-vendor round 18, claude note): the gate walks caller sequences
+// element-by-element BEFORE the bodies' count ceilings run — inherent to entry-position
+// gating; the per-element cost is a typeof check only, and constructing an oversized
+// caller list costs the caller more than the walk costs us.
 function closedShape(args: unknown[], shapes: Shape[]): void {
   for (let i = 0; i < shapes.length; i++) {
     if (!shapeOk(args[i], shapes[i]!)) fail(`shape: argument ${i}`);
@@ -1492,7 +1502,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
-    closedShape([archived, keyChain, expected], ["object", { fields: { keys: { seq: SHAPE_HIST_KEY } } }, SHAPE_EXPECTED_EXPORT]);
+    closedShape([archived, keyChain, expected], [{ fields: { chunks: { seq: "bytes" }, version: "str" } }, { fields: { keys: { seq: SHAPE_HIST_KEY } } }, SHAPE_EXPECTED_EXPORT]);
     // The count ceiling FIRST (cross-vendor: even the static-bindings walk ran
     // unbounded caller input before it).
     const vb0 = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);

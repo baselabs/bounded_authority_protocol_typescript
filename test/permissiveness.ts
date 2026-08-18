@@ -1327,3 +1327,41 @@ test("round-12..14 pre-digest export gates: verdict matrix", () => {
   }
   void z;
 });
+
+// ---------------------------------------------------------------------------
+// Cross-vendor review round 18 (codex, blocking): the TS shape gate's NESTED
+// "object" specs let a malformed ExpectedExport through (e.g. chain missing
+// previousHash, empty anchor objects), and the clause-3 hoist then derefs the
+// missing fields — a TypeError escape past trying(). RED-CAPABILITY: pre-fix this
+// leg THREW TypeError; the fix deepens the nested shape specs so the gate
+// rejects the malformed struct before any deref.
+// ---------------------------------------------------------------------------
+
+test("shape gate rejects malformed nested expected-export structs (no deref escapes)", () => {
+  const built = buildArchive([freshKey(), freshKey()]);
+  const z = new Uint8Array(32);
+  const obj = { chunks: [built.archive], version: "v1" };
+  const malformed: Array<[string, unknown]> = [
+    ["chain missing previousHash", { ...built.expected, chain: { chainId: "c", firstSequence: 1, lastSequence: 1, rowCount: 1, lastHash: z } }],
+    ["startAnchor empty object", { ...built.expected, startAnchor: {} }],
+    ["endAnchor missing chainHash", { ...built.expected, endAnchor: { anchorId: "a", anchoredAt: 1600, chainId: "c", sequence: 1, keyId: "k", keyFingerprint: z } }],
+    ["transition missing effectiveAt", { ...built.expected, transitions: [{ ...built.expected.transitions[0]!, effectiveAt: undefined }] }],
+  ];
+  for (const [label, expected] of malformed) {
+    let r: unknown;
+    try {
+      r = verifyAnchoredExport(obj, built.keyChain, expected as never);
+    } catch (e) {
+      assert.fail(`${label}: threw ${(e as object).constructor.name} past the closed Result — the nested shape spec is too shallow`);
+    }
+    assert.equal((r as { ok: boolean }).ok, false, `${label}: must be Err`);
+    // The encode path shares the spec — same guarantee.
+    let re: unknown;
+    try {
+      re = encodeAnchoredExport(built.input, expected as never);
+    } catch (e) {
+      assert.fail(`${label} (encode): threw ${(e as object).constructor.name} past the closed Result`);
+    }
+    assert.equal((re as { ok: boolean }).ok, false, `${label} (encode): must be Err`);
+  }
+});
