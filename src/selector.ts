@@ -5,8 +5,9 @@ import { typedProject } from "./digest.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
 // Closed selector algebra (protocol-v1.md § Selectors, L179-199; REQ1-SELECTOR-closed-set).
-// Three kinds, exact member sets:
-//   all      → {kind:"all"}
+// Three recognized member sets. `all` may use any of them and ignores the
+// other members; equals and one_of use their matching three-member set:
+//   all      → {kind} | {kind,path,value} | {kind,path,values}
 //   equals   → {kind:"equals", path:[names], value:<JSON>}
 //   one_of   → {kind:"one_of", path:[names], values:[<JSON>...]}
 // path is an array of object-member names (1..32, each 1..128 bytes) traversing OBJECTS only.
@@ -19,6 +20,7 @@ export type Selector =
   | { readonly kind: "one_of"; readonly path: string[]; readonly values: Tagged[] };
 
 const SELECTOR_KINDS = new Set(["all", "equals", "one_of"]);
+const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,values"]);
 
 // Validate + parse a selector from a decoded tagged object. Rejects unknown members, bad shapes.
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
@@ -27,9 +29,10 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
   if (!kindV || kindV.t !== "string") fail("selector: kind");
   const kind = utf8Str(kindV.v);
   if (!SELECTOR_KINDS.has(kind)) fail("selector: kind closed set");
-  // The reference accepts kind:"all" on ANY of the three closed member sets (kind / kind,path,value
-  // / kind,path,values) — verified by the corpus case check-envelope-valid-selector-all-with-extra-
-  // members, which the Elixir reference accepts (conformance reports agreed=259 including it).
+  const memberSet = [...obj.v.keys()].sort().join(",");
+  if (!SELECTOR_MEMBER_SETS.has(memberSet)) fail("selector: member set");
+  // The reference accepts kind:"all" on any recognized member set. The
+  // path/value(s) are inert and need not satisfy the active-kind shapes.
   if (kind === "all") return { kind: "all" };
   // equals / one_of need path + value/values.
   if (kind === "equals") {

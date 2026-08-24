@@ -3,7 +3,7 @@
 A provider-neutral, deterministic **verifier** SDK for bounded proof-of-possession authority — a
 typed TypeScript reimplementation of the BAP v1 verification profile.
 
-This is one of three cross-language verifier SDKs ([ADR 0014][adr14] — TypeScript, Python, Rust)
+This is one of four cross-language verifier SDKs ([ADR 0014][adr14] — TypeScript, Python, Rust, Go)
 that reimplement the frozen v1
 profile from the published [spec][spec] and [conformance corpus][corpus] alone, with no code-level
 derivation from the Elixir reference. It is a **verification** library: a successful result proves

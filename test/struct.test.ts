@@ -54,6 +54,24 @@ test("selector all matches any root", () => {
   const sel = parseSelector(jsonDecode(strUtf8('{"kind":"all"}')));
   assert.equal(selectorMatches(sel, jsonDecode(strUtf8('{"x":1}'))), true);
 });
+test("selector all accepts only the three recognized member sets", () => {
+  for (const json of [
+    '{"kind":"all"}',
+    '{"kind":"all","path":false,"value":null}',
+    '{"kind":"all","path":7,"values":"inert"}',
+  ]) {
+    assert.equal(parseSelector(jsonDecode(strUtf8(json))).kind, "all");
+  }
+  for (const json of [
+    '{"kind":"all","path":[]}',
+    '{"kind":"all","value":null}',
+    '{"kind":"all","values":[]}',
+    '{"kind":"all","path":[],"value":null,"values":[]}',
+    '{"kind":"all","extra":null}',
+  ]) {
+    assert.throws(() => parseSelector(jsonDecode(strUtf8(json))));
+  }
+});
 test("selector equals matches present path", () => {
   const sel = parseSelector(jsonDecode(strUtf8('{"kind":"equals","path":["id"],"value":"rec-1"}')));
   assert.equal(selectorMatches(sel, jsonDecode(strUtf8('{"id":"rec-1"}'))), true);
