@@ -5,7 +5,7 @@ import { base64urlEncode } from "./base64url.js";
 import { strUtf8, type Tagged } from "./json.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// The request digest (protocol-v1.md § Signing and digest inputs, L238-264):
+// The request digest (spec/bap-v1.md § Signing and digest inputs, L238-264):
 //   base64url(SHA-256("BAP1-REQUEST\0" || JCS([operation, typed(cast_arguments)])))
 // The prefix is exact ASCII including its final zero byte (REQ1-SIGNING-digest-prefix). typed()
 // projects the tagged JSON algebra to the closed ["tag", value] JSON form before JCS, preserving the
@@ -14,7 +14,7 @@ export const REQUEST_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x31, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00, // "BAP1-REQUEST\0"
 ]);
 
-// typed() projection: tagged value → ["tag", value] JSON array (protocol-v1.md:247-256).
+// typed() projection: tagged value → ["tag", value] JSON array (spec/bap-v1.md).
 //   :null → ["null"]; bool → ["boolean",v]; int → ["integer",v]; float → ["float",v];
 //   string → ["string",v]; array → ["array", [typed(v)...]]; object → ["object", {k: typed(v)...}]
 export function typedProject(value: Tagged): Tagged {

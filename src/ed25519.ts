@@ -2,7 +2,7 @@ import { createPublicKey, verify as verifySig } from "node:crypto";
 import { assert, fail } from "./error.js";
 
 // Ed25519 verification via node:crypto (the crypto import boundary the two-boundary census tracks).
-// Per protocol-v1.md § Signing and digest inputs + RFC 8032. The verifier validates the fixed 32-byte
+// Per spec/bap-v1.md § Signing and digest inputs + RFC 8032. The verifier validates the fixed 32-byte
 // public-key and 64-byte signature encodings, then delegates Ed25519 verification to the backend. A
 // backend rejection or exception returns exactly Invalid (REQ1-SIGNING-backend-reject).
 

@@ -14,10 +14,10 @@ import type {
   AnchoredExportFacts, GrantDecoded, ProofDecoded, KeyLocator,
 } from "./facts.js";
 
-// The v1 verification façade (protocol-v1.md § Public verification contract, L270-290). 17 public
+// The v1 verification façade (spec/bap-v1.md § Public verification contract, L270-290). 17 public
 // functions, each returning Result<T> = Ok|Err (the {:ok,value}|{:error,:invalid} mirror). No
 // authorized/decision surface (rule 1). All claims revalidated at every public entry
-// (REQ1-VERIFY-revalidate). Wire formats derived from docs/protocol-v1.md + ADR 0004 + the corpus;
+// (REQ1-VERIFY-revalidate). Wire formats derived from spec/bap-v1.md + ADR 0004 + the corpus;
 // the corpus is the byte-level arbiter.
 
 const ALG = "EdDSA";
@@ -161,7 +161,7 @@ export interface HistoricalKeyChain {
   readonly keys: HistoricalPublicKey[]; // ordered: keys[0]=start, last=end, transitions advance positionally
 }
 
-// --- shared closed-header / claim validators (derived from protocol-v1.md + RFCs) ---
+// --- shared closed-header / claim validators (derived from spec/bap-v1.md + RFCs) ---
 
 // Parse a protected header object; validate the closed member set + alg + typ + kid.
 function parseGrantHeader(seg: CompactSegments, bounds: Bounds): { kid: string } {
@@ -532,7 +532,7 @@ function closedShape(args: unknown[], shapes: Shape[]): void {
   }
 }
 
-// 1. untrusted_key_locator (protocol-v1.md § Untrusted key locator).
+// 1. untrusted_key_locator (spec/bap-v1.md § Untrusted key locator).
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
@@ -1104,7 +1104,7 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
   return { t: "object", v: members };
 }
 
-// 11. assemble_compact (REQ1-VERIFY-no-signer-callback; public /2 contract, protocol-v1.md:299,319).
+// 11. assemble_compact (REQ1-VERIFY-no-signer-callback; public /2 contract, spec/bap-v1.md § Public verification contract).
 // Mirrors runtime.ex:147-155 assemble_compact: assemble via the low-level assembler, then
 // validate_assembled_compact (runtime.ex:754-780) re-parses the composed compact per kind. The
 // signing-input gates (kind↔typ, segment bounds, base64url payload, compact_bytes) come from
@@ -1394,7 +1394,7 @@ function frame(bytes: Uint8Array): Uint8Array {
   return out;
 }
 
-// 15. verify_historical_anchor (ADR 0004 § Boundary anchors; protocol-v1.md § Historical anchor).
+// 15. verify_historical_anchor (ADR 0004 § Boundary anchors; spec/bap-v1.md § Historical anchor).
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
     closedShape([compact, key, expected], ["bytes", SHAPE_HIST_KEY, "object"]);
@@ -1944,7 +1944,7 @@ function requireBoundsEqual(nested: Bounds | undefined, top: Bounds, ctx: string
   }
 }
 
-// Re-export the primitives the public index exposes (protocol-v1.md L299-309).
+// Re-export the primitives the public index exposes (spec/bap-v1.md L299-309).
 export { jwkEncodePublic, jwkDecodePublic, thumbprint, sha256, base64urlDecode, base64urlEncode };
 export { boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA };
 export { uriNormalize, parseSelector, selectorMatches, typedProject, REQUEST_PREFIX };

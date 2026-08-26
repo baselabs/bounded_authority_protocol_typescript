@@ -1,6 +1,6 @@
 // The public surface of @bounded-authority/verifier (the v1 protocol verification façade +
 // versioned primitives). Re-exports the 17 façade functions + the dispatch structs + the primitives
-// the public contract names (protocol-v1.md § Public verification contract, L266-309).
+// the public contract names (spec/bap-v1.md § Public verification contract, L266-309).
 //
 // No `authorized`/`decision` surface (AGENTS rule 1); every function returns Result<T> =
 // Ok | Err, mirroring {:ok,value}|{:error,:invalid}. Facts are value-bearing, redacted, and
@@ -25,7 +25,7 @@ export {
   verifyHistoricalAnchor,
   verifyKeyTransition,
   verifyAnchoredExport,
-  // Versioned primitives the public contract names (protocol-v1.md L299-309).
+  // Versioned primitives the public contract names (spec/bap-v1.md L299-309).
   jwkEncodePublic,
   jwkDecodePublic,
   thumbprint,

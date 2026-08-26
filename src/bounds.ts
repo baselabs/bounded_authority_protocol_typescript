@@ -1,6 +1,6 @@
 import { fail } from "./error.js";
 
-// The fixed v1 profile maxima — the 38-row Hard maxima table (protocol-v1.md:352-390).
+// The fixed v1 profile maxima — the 38-row Hard maxima table (spec/bap-v1.md).
 // Pinned by the corpus bounds.new cases so any mistyped constant fails. Fixed-width keys
 // (REQ1-BOUNDS-fixed-widths, L395): digest_bytes, public_key_bytes, signature_bytes are the immutable
 // cryptographic constants of suite BAP1-Ed25519-SHA256 — they MUST equal the maximum exactly (widening

@@ -1,9 +1,9 @@
-// Value-bearing, redacted, non-authorizing facts (protocol-v1.md § Public verification contract,
+// Value-bearing, redacted, non-authorizing facts (spec/bap-v1.md § Public verification contract,
 // REQ1-VERIFY-facts-redacted, REQ1-VERIFY-facts-not-credentials). No generic encoder, no `toJSON`,
 // no authorization/decision method (AGENTS rule 1). Grant/Envelope/Export carry
 // `authorization: "not_evaluated"`; Chain/Anchor/Transition carry `trust: "not_evaluated"`.
 
-// GrantFacts (protocol-v1.md:322-324): version, issuer, grant_id, issuer-key fingerprint (raw 32),
+// GrantFacts (spec/bap-v1.md): version, issuer, grant_id, issuer-key fingerprint (raw 32),
 // holder thumbprint (raw 32), matched audience, grant times, authorization:not_evaluated.
 export interface GrantFacts {
   readonly version: number;
@@ -18,7 +18,7 @@ export interface GrantFacts {
   readonly authorization: "not_evaluated";
 }
 
-// EnvelopeFacts (protocol-v1.md:342-348): GrantFacts + proof_id, invocation_id, operation, uri,
+// EnvelopeFacts (spec/bap-v1.md): GrantFacts + proof_id, invocation_id, operation, uri,
 // grant hash (ath raw 32), request hash (ba_req raw 32), proof issued_at.
 export interface EnvelopeFacts {
   readonly version: number;
@@ -54,7 +54,7 @@ export interface ChainFacts {
   readonly trust: "not_evaluated";
 }
 
-// AnchorFacts (protocol-v1.md § Historical anchor verify): trust:not_evaluated.
+// AnchorFacts (spec/bap-v1.md § Historical anchor verify): trust:not_evaluated.
 // Field set mirrors the Elixir reference AnchorFacts (anchor_facts.ex) exactly. The reference
 // carries NO key_id (only the key_fingerprint); the SDK matches — keyFingerprint is the only key
 // identifier on this fact.
@@ -85,7 +85,7 @@ export interface KeyTransitionFacts {
   readonly trust: "not_evaluated";
 }
 
-// AnchoredExportFacts (protocol-v1.md:437-440): the ONLY facts type with an authorization field.
+// AnchoredExportFacts (spec/bap-v1.md): the ONLY facts type with an authorization field.
 // Field set mirrors the Elixir reference AnchoredExportFacts (anchored_export_facts.ex) exactly.
 export interface AnchoredExportFacts {
   readonly version: 1;

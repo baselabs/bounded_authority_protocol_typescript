@@ -5,7 +5,7 @@ import { jcsEncode } from "./jcs.js";
 import { jsonDecode, strUtf8, utf8Str } from "./json.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// RFC 7638 JWK thumbprint for OKP Ed25519 public keys (protocol-v1.md § Public verification contract).
+// RFC 7638 JWK thumbprint for OKP Ed25519 public keys (spec/bap-v1.md § Public verification contract).
 // The public OKP JWK has exactly three members — crv="Ed25519", kty="OKP", x=<base64url raw 32 bytes>
 // — in RFC 7638 lexicographic order (crv, kty, x). The thumbprint preimage is the JCS of that object;
 // the thumbprint is SHA-256 of the preimage (base64url); the raw thumbprint is the 32-byte digest.

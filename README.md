@@ -12,7 +12,7 @@ selects trusted keys, reserves replay, grants execution, or overrides a host pol
 
 [adr14]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md
 [adr15]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md
-[spec]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/protocol-v1.md
+[spec]: https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md
 [corpus]: https://github.com/baselabs/bounded_authority_protocol/blob/main/priv/conformance/v1/corpus/
 
 ## Status
@@ -26,7 +26,7 @@ via `node:crypto`; SHA-256, base64url, and JSON canonicalization hand-rolled fro
 This SDK is certified against the published corpus (`priv/conformance/v1/corpus/`) and passes every
 one of its **283** valid + invalid vectors, recomputed from scratch — not cached verdicts. The
 conformance runner asserts the corpus `index.json` SHA-256 at startup
-(`a5ac7361c508d2bb55c6ca3045a5cc06ec4a3f64f65904214108c6f10c704dcc`), so a consumer who vendors a
+(`4cb5072ab40ffd4b111659e6d4ab20209202380505f1f8424b96d22e533cb91b`), so a consumer who vendors a
 mismatched corpus snapshot gets a hard failure rather than a silent drift ([ADR 0014 D4][adr14]).
 
 ```bash
@@ -96,7 +96,7 @@ credentials.
 
 ## The public façade
 
-The 17 frozen v1 functions ([protocol-v1.md § Public verification contract][spec]):
+The 17 frozen v1 functions ([spec/bap-v1.md § Public verification contract][spec]):
 
 | Function | Returns | Purpose |
 |---|---|---|

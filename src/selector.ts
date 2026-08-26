@@ -4,7 +4,7 @@ import { utf8Str, type Tagged } from "./json.js";
 import { typedProject } from "./digest.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// Closed selector algebra (protocol-v1.md § Selectors, L179-199; REQ1-SELECTOR-closed-set).
+// Closed selector algebra (spec/bap-v1.md § Selectors, L179-199; REQ1-SELECTOR-closed-set).
 // Three recognized member sets. `all` may use any of them and ignores the
 // other members; equals and one_of use their matching three-member set:
 //   all      → {kind} | {kind,path,value} | {kind,path,values}

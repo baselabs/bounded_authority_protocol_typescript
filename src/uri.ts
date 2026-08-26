@@ -2,7 +2,7 @@ import { fail, type Result, ok, err } from "./error.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import { utf8Str, strUtf8 } from "./json.js";
 
-// Bounded HTTPS URI normalization (protocol-v1.md § URI normalization, L201-219; RFC 3986 §6).
+// Bounded HTTPS URI normalization (spec/bap-v1.md § URI normalization, L201-219; RFC 3986 §6).
 // No DNS, IDNA, or network work (REQ1-URI-no-network). Both expected and proof URIs MUST already
 // equal the normal form (REQ1-URI-pre-normalized). Reject-list: HTTP, other scheme, authority-less
 // form, malformed percent escapes, ambiguous authority/port, control/non-ASCII, out-of-range ports

@@ -9,7 +9,7 @@
 // is the arbiter. A disagreement aborts nonzero with the case id + the expected/actual verdict.
 //
 // Derivation: the corpus is the published normative artifact (BAP-05); the runner is a consumer.
-// The SDK façade was derived from protocol-v1.md + ADR 0004 + RFCs; this runner exercises it.
+// The SDK façade was derived from spec/bap-v1.md + ADR 0004 + RFCs; this runner exercises it.
 import { readFileSync } from "node:fs";
 import { join, resolve as pathResolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,8 +65,9 @@ interface Raws extends Map<string, Uint8Array> {}
 
 // The certified index.json SHA-256 (base64url of the SHA-256 digest). ADR 0014 D4: the SDK binds to
 // the exact corpus it was certified against; a mismatched vendored corpus fails closed rather than
-// drifting silently. This MUST match the Python runner's hex SHA (a5ac7361...04dcc → base64url).
-const CERTIFIED_INDEX_SHA = "paxzYcUI0rtVxsowRaXMBuxKP2T2WQQhQQjG8QxwTcw";
+// drifting silently. Same digest as the Python and Rust runners' hex pins — rotate every pin with
+// scripts/regen_corpus_digests.exs in the same change.
+const CERTIFIED_INDEX_SHA = "TLUHKrQP_UsRFlnm1KsgIJICOAUF8fhCS5bSLlM8uRs";
 
 function loadCorpus(): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
   const indexPath = join(CORPUS_DIR, "index.json");
@@ -83,12 +84,42 @@ function loadCorpus(): { index: Record<string, unknown>; cases: CorpusCase[]; ra
   const cases: CorpusCase[] = [];
   const raws: Raws = new Map();
   // Load every case file named in the index.
-  for (const entry of index.files as Array<{ path: string; cases: number }>) {
+  for (const entry of index.files as Array<{
+    path: string;
+    cases: number;
+    sha256_base64url?: string;
+  }>) {
     if (entry.path.endsWith(".raw")) {
       // Raw sidecar: load bytes + verify the recorded SHA.
       const rawPath = join(CORPUS_DIR, entry.path);
       const bytes = readFileSync(rawPath);
       raws.set(entry.path, new Uint8Array(bytes));
+      continue;
+    }
+    // The revision sidecar occupies the one reserved non-case JSON path: verify its SHA (it has
+    // no agreement backstop) and its closed shape, then carry nothing — it declares zero cases.
+    if (entry.path === "revision.json") {
+      const bytes = readFileSync(join(CORPUS_DIR, entry.path));
+      if (!entry.sha256_base64url || b64e(sha256(bytes)) !== entry.sha256_base64url) {
+        abort(`revision.json: hash mismatch`);
+      }
+      const sidecar = JSON.parse(bytes.toString("utf8"));
+      const keys = Object.keys(sidecar).sort().join(",");
+      if (keys !== "format,generated_from,revision") abort("revision.json: closed member set");
+      if (entry.cases !== 0) abort("revision.json: case-free declaration");
+      if (sidecar.format !== "bounded-authority-protocol-v1-conformance-corpus-revision") {
+        abort("revision.json: format");
+      }
+      if (!Number.isSafeInteger(sidecar.revision) || sidecar.revision < 1) {
+        abort("revision.json: monotone integer revision");
+      }
+      if (
+        typeof sidecar.generated_from !== "string" ||
+        sidecar.generated_from.length < 1 ||
+        sidecar.generated_from.length > 256
+      ) {
+        abort("revision.json: generated_from provenance string");
+      }
       continue;
     }
     const fileText = readFileSync(join(CORPUS_DIR, entry.path), "utf8");

@@ -2,7 +2,7 @@ import { fail } from "./error.js";
 import { resolve, coerceBounds, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
 import { strUtf8, utf8Str, type Tagged } from "./json.js";
 
-// RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (protocol-v1.md:91-95,
+// RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (spec/bap-v1.md,
 // REQ1-JSON-jcs-exact). Accepts only the tagged algebra. Enforces every JSON + output bound while
 // emitting RFC 8785 bytes: exact string escaping, invalid-Unicode rejection, unsigned UTF-16 object-
 // name sorting at every depth, preserved array order, and ECMAScript binary64 number text
