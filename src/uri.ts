@@ -108,7 +108,7 @@ function normalize(input: Uint8Array, bounds: Bounds): string {
     port = portNumber === 443 ? "" : `:${portNumber}`;
   }
 
-  return `https://${host}${port}${normalizePath(match[3]!)}`;
+  return `https://${host}${port}${normalizePath(match[3]!, true)}`;
 }
 
 function normalizePath(path: string, enforcePchar = false): string {

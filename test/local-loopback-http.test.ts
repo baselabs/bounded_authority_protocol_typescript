@@ -58,11 +58,17 @@ test("local loopback HTTP URI profile accepts only exact loopback literals", () 
   const forged = { maximum: MAXIMA, overrides: new Map([["uri_bytes", 9000]]) } as Bounds;
   assert.equal(localLoopbackHttpUriNormalize(strUtf8("http://127.0.0.1/"), forged).ok, false);
 
-  assert.equal(
-    uriNormalize(strUtf8("https://resource.example.test/[]")).ok,
-    true,
-    "the sibling profile must not change the existing standard URI verdict",
-  );
+  for (const invalidStandardPath of [
+    "https://resource.example.test/[]",
+    "https://resource.example.test/a|b",
+    'https://resource.example.test/a"b',
+  ]) {
+    assert.equal(
+      uriNormalize(strUtf8(invalidStandardPath)).ok,
+      false,
+      `standard RFC 3986 path must reject ${invalidStandardPath}`,
+    );
+  }
 });
 
 test("certified local-loopback corpus drives TypeScript verdicts", () => {
