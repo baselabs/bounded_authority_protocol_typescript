@@ -11,14 +11,18 @@ export {
   untrustedKeyLocator,
   decodeGrant,
   decodeProof,
+  decodeLocalLoopbackHttpProof,
   verifyGrant,
   checkEnvelope,
+  checkLocalLoopbackHttpEnvelope,
   requestDigest,
   encodeConsumptionEntry,
   checkChain,
   grantSigningInput,
   proofSigningInput,
+  localLoopbackHttpProofSigningInput,
   assembleCompact,
+  assembleLocalLoopbackHttpCompact,
   boundaryAnchorSigningInput,
   keyTransitionSigningInput,
   encodeAnchoredExport,
@@ -38,6 +42,8 @@ export {
   ROW_PREFIX,
   ARCHIVE_PREFIX,
 } from "./v1.js";
+
+export { localLoopbackHttpUriNormalize } from "./uri.js";
 
 export type {
   TrustedIssuer,

@@ -91,7 +91,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
 // assemble_compact: SigningInput (protected + payload segments as text) + 64-byte signature → compact.
 // REQ1-VERIFY-no-signer-callback: takes a signature, never a key. kind ∈ {grant, proof,
 // boundary_anchor, key_transition} (the runner's accepted signing-input kinds).
-export type SigningInputKind = "grant" | "proof" | "boundary_anchor" | "key_transition";
+export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition";
 
 export interface SigningInput {
   readonly kind: SigningInputKind;
@@ -107,7 +107,7 @@ export interface SigningInput {
 // compacts freely; the public contract is the façade (assembleCompact in v1.ts).
 export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
-    const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
+    const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition"];
     if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
     assert(signature.length === 64, "assemble_segments: signature width 64");
     // compact = protected "." payload "." base64url(signature).

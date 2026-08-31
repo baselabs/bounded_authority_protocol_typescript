@@ -6,7 +6,7 @@ import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thum
 import { importPublicKey, ed25519Verify, sha256, sha256Concat, _resetCensus } from "./ed25519.js";
 import { requestDigest as computeRequestDigest, REQUEST_PREFIX, typedProject } from "./digest.js";
 import { parseSelector, selectorMatches, type Selector } from "./selector.js";
-import { uriNormalize } from "./uri.js";
+import { localLoopbackHttpUriNormalize, uriNormalize } from "./uri.js";
 import { jcsEncode } from "./jcs.js";
 import { resolve, coerceBounds, boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA, type Bounds, type MaximaKey } from "./bounds.js";
 import type {
@@ -23,6 +23,7 @@ import type {
 const ALG = "EdDSA";
 const GRANT_TYP = "ba+cap";
 const PROOF_TYP = "dpop+jwt";
+const LOCAL_LOOPBACK_PROOF_TYP = "ba+loopback-proof";
 const ANCHOR_TYP = "ba+chain-anchor";
 const TRANSITION_TYP = "ba+key-transition";
 const VERSION = 1;
@@ -173,11 +174,17 @@ function parseGrantHeader(seg: CompactSegments, bounds: Bounds): { kid: string }
   return { kid };
 }
 
-function parseProofHeader(seg: CompactSegments, bounds: Bounds): { holderThumbprint: Uint8Array; holderKey: Uint8Array } {
+type ProofProfile = "standard" | "local_loopback_http";
+
+function proofTyp(profile: ProofProfile): string {
+  return profile === "standard" ? PROOF_TYP : LOCAL_LOOPBACK_PROOF_TYP;
+}
+
+function parseProofHeader(seg: CompactSegments, bounds: Bounds, profile: ProofProfile = "standard"): { holderThumbprint: Uint8Array; holderKey: Uint8Array } {
   const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "typ", "jwk"], "proof header");
   requireStringLit(h, "alg", ALG, "proof header alg");
-  requireStringLit(h, "typ", PROOF_TYP, "proof header typ");
+  requireStringLit(h, "typ", proofTyp(profile), "proof header typ");
   const jwkV = h.v.get("jwk")!;
   if (jwkV.t !== "object") fail("proof header: jwk object");
   // Closed OKP members {crv, kty, x}; reject any extra member (incl. private d) — REQ1-HEADER-no-private-jwk.
@@ -340,14 +347,14 @@ function requireMethod(v: Tagged | undefined, key: string, bounds: Bounds): stri
 }
 
 // Normalized HTTPS URI claim (≤ uri_bytes; must already equal Uri.normalize — checked by re-normalizing).
-function requireNormalizedUri(v: Tagged | undefined, key: string, bounds: Bounds): string {
+function requireNormalizedUri(v: Tagged | undefined, key: string, bounds: Bounds, profile: ProofProfile = "standard"): string {
   if (!v || v.t !== "string") fail(`claim: ${key} uri string`);
   const b = v.v;
   if (b.length < 1 || b.length > resolve(bounds, "uri_bytes" as MaximaKey)) fail(`claim: ${key} uri bytes`);
   const s = utf8Str(b);
-  if (!s.toLowerCase().startsWith("https://")) fail(`claim: ${key} https scheme`);
-  // REQ1-URI-pre-normalized: re-normalize and require equality.
-  const norm = uriNormalize(b);
+  const norm = profile === "standard"
+    ? uriNormalize(b, bounds)
+    : localLoopbackHttpUriNormalize(b, bounds);
   if (!norm.ok) fail(`claim: ${key} uri normalized`);
   if (utf8Str(norm.value) !== s) fail(`claim: ${key} uri pre-normalized`);
   return s;
@@ -404,9 +411,10 @@ function extractAudience(v: Tagged | undefined, bounds: Bounds): string[] {
   fail("claim: aud shape");
 }
 
-function validateProofPayload(p: Tagged, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
+function validateProofPayload(p: Tagged, bounds: Bounds, profile: ProofProfile = "standard"): asserts p is Extract<Tagged, { t: "object" }> {
   if (p.t !== "object") fail("proof payload: object");
   const hasNonce = p.v.has("nonce");
+  if (profile === "local_loopback_http" && !hasNonce) fail("proof: nonce required");
   const keys = hasNonce
     ? ["v", "jti", "htm", "htu", "iat", "ba_inv", "ba_op", "ath", "ba_req", "nonce"]
     : ["v", "jti", "htm", "htu", "iat", "ba_inv", "ba_op", "ath", "ba_req"];
@@ -415,7 +423,7 @@ function validateProofPayload(p: Tagged, bounds: Bounds): asserts p is Extract<T
   if (vV.t !== "int" || vV.v !== VERSION) fail("proof: v=1");
   requireStringOrUri(p.v.get("jti"), "jti", bounds);
   requireMethod(p.v.get("htm"), "htm", bounds);
-  requireNormalizedUri(p.v.get("htu"), "htu", bounds);
+  requireNormalizedUri(p.v.get("htu"), "htu", bounds, profile);
   requireInt(p.v.get("iat"), "iat");
   requireUuid(p.v.get("ba_inv"), "ba_inv");
   requireOperation(p.v.get("ba_op"), "ba_op", bounds);
@@ -603,13 +611,21 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
 
 // 3. decode_proof.
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
+  return decodeProofFor(compact, bounds, "standard");
+}
+
+export function decodeLocalLoopbackHttpProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
+  return decodeProofFor(compact, bounds, "local_loopback_http");
+}
+
+function decodeProofFor(compact: Uint8Array, bounds: Bounds | undefined, profile: ProofProfile): Result<ProofDecoded> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const seg = parseCompact(compact, b);
-    const { holderThumbprint } = parseProofHeader(seg, b);
+    const { holderThumbprint } = parseProofHeader(seg, b, profile);
     const p = jsonDecode(seg.payloadBytes, b);
-    validateProofPayload(p, b);
+    validateProofPayload(p, b, profile);
     const jti = requireStringOrUri(p.v.get("jti"), "jti", b);
     return { proofId: jti, holderThumbprint, verification: "not_evaluated" as const };
   });
@@ -668,6 +684,14 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
 
 // 5. check_envelope (REQ1-VERIFY-envelope-binding).
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
+  return checkEnvelopeFor(grantCompact, proofCompact, expected, "standard");
+}
+
+export function checkLocalLoopbackHttpEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
+  return checkEnvelopeFor(grantCompact, proofCompact, expected, "local_loopback_http");
+}
+
+function checkEnvelopeFor(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest, profile: ProofProfile): Result<EnvelopeFacts> {
   return trying(() => {
     closedShape([grantCompact, proofCompact, expected], ["bytes", "bytes", "object"]);
     const t = expected.trustedIssuer;
@@ -689,6 +713,18 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(b, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
     if (!Number.isInteger(expected.proofMaxAge) || expected.proofMaxAge <= 0 || expected.proofMaxAge > resolve(b, "proof_max_age" as MaximaKey)) fail("check_envelope: proof_max_age");
+    const expectedNonce = expected.nonce as unknown;
+    if (typeof expectedNonce !== "object" || expectedNonce === null) fail("check_envelope: nonce shape");
+    const nonceKind = (expectedNonce as { kind?: unknown }).kind;
+    if (nonceKind !== "not_required" && nonceKind !== "required") fail("check_envelope: nonce kind");
+    if (nonceKind === "required" && typeof (expectedNonce as { value?: unknown }).value !== "string") {
+      fail("check_envelope: nonce value");
+    }
+    if (profile === "local_loopback_http" && nonceKind !== "required") fail("check_envelope: nonce required");
+    const expectedUri = profile === "standard"
+      ? uriNormalize(strUtf8(expected.targetUri), b)
+      : localLoopbackHttpUriNormalize(strUtf8(expected.targetUri), b);
+    if (!expectedUri.ok || utf8Str(expectedUri.value) !== expected.targetUri) fail("check_envelope: expected target_uri");
     // --- verify grant (issuer signature + context) ---
     const gseg = parseCompact(grantCompact, b);
     const { kid: gkid } = parseGrantHeader(gseg, b);
@@ -716,9 +752,9 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     if (!ed25519Verify(gseg.signingInput, gseg.signature, gkey)) fail("check_envelope: grant signature");
     // --- verify proof (holder signature) ---
     const pseg = parseCompact(proofCompact, b);
-    const { holderThumbprint, holderKey } = parseProofHeader(pseg, b);
+    const { holderThumbprint, holderKey } = parseProofHeader(pseg, b, profile);
     const pp = jsonDecode(pseg.payloadBytes, b);
-    validateProofPayload(pp, b);
+    validateProofPayload(pp, b, profile);
     const hkey = importPublicKey(holderKey, utf8Str(base64urlEncode(holderThumbprint)));
     if (!ed25519Verify(pseg.signingInput, pseg.signature, hkey)) fail("check_envelope: proof signature");
     if (pp.t !== "object") fail("check_envelope: proof payload");
@@ -733,7 +769,7 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     // Method / URI / invocation / operation bindings.
     const htm = requireMethod(pp.v.get("htm"), "htm", b);
     if (htm !== expected.method) fail("check_envelope: method");
-    const htu = requireNormalizedUri(pp.v.get("htu"), "htu", b);
+    const htu = requireNormalizedUri(pp.v.get("htu"), "htu", b, profile);
     if (htu !== expected.targetUri) fail("check_envelope: target_uri");
     const baInv = requireUuid(pp.v.get("ba_inv"), "ba_inv");
     if (baInv !== expected.invocationId) fail("check_envelope: invocation_id");
@@ -1041,16 +1077,32 @@ function checkNode(v: Tagged, depth: number, b: Bounds): void {
 
 // 10. proof_signing_input (REQ1-SIGNING-deterministic-produce).
 export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
+  return proofSigningInputFor(proof, bounds, "standard");
+}
+
+export function localLoopbackHttpProofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
+  return proofSigningInputFor(proof, bounds, "local_loopback_http");
+}
+
+function proofSigningInputFor(proof: ProofProducer, bounds: Bounds | undefined, profile: ProofProfile): Result<SigningInput> {
   return trying(() => {
     closedShape([proof, bounds], [SHAPE_PROOF_PRODUCER, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     assert(proof.holderPublicKey.length === 32, "proof_signing_input: holder key width");
-    if (!isStringOrUri(proof.proofId)) fail("proof_signing_input: proof_id");
+    const proofIdBytes = strUtf8(proof.proofId);
+    if (
+      !isStringOrUri(proof.proofId) ||
+      (profile === "local_loopback_http" &&
+        (proofIdBytes.length < 1 ||
+          proofIdBytes.length > resolve(b, "identifier_bytes" as MaximaKey)))
+    ) fail("proof_signing_input: proof_id");
     const methodBytes = strUtf8(proof.method);
     if (methodBytes.length < 1 || methodBytes.length > resolve(b, "method_bytes" as MaximaKey)) fail("proof_signing_input: method bytes");
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(proof.method)) fail("proof_signing_input: method token");
     // htu normalized + pre-normalized.
-    const htuNorm = uriNormalize(strUtf8(proof.targetUri), b);
+    const htuNorm = profile === "standard"
+      ? uriNormalize(strUtf8(proof.targetUri), b)
+      : localLoopbackHttpUriNormalize(strUtf8(proof.targetUri), b);
     if (!htuNorm.ok) fail("proof_signing_input: htu");
     if (utf8Str(htuNorm.value) !== proof.targetUri) fail("proof_signing_input: htu pre-normalized");
     if (!Number.isInteger(proof.issuedAt)) fail("proof_signing_input: integer iat");
@@ -1063,11 +1115,12 @@ export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result
       const nb = strUtf8(proof.nonce);
       if (nb.length < 1 || nb.length > resolve(b, "nonce_bytes" as MaximaKey)) fail("proof_signing_input: nonce bytes");
     }
+    if (profile === "local_loopback_http" && proof.nonce === undefined) fail("proof_signing_input: nonce required");
     const jwk = jwkFromPublicKey(proof.holderPublicKey);
     const headerMembers = new Map<string, Tagged>([
       ["alg", { t: "string", v: strUtf8(ALG) }],
       ["jwk", jwkToTagged(jwk)],
-      ["typ", { t: "string", v: strUtf8(PROOF_TYP) }],
+      ["typ", { t: "string", v: strUtf8(proofTyp(profile)) }],
     ]);
     // Producer ath: gate the grant compact by scan (shape+size, NOT base64url canonicity) before
     // hashing it into `ath` — mirrors CompactJws.ath (compact_jws.ex:53-58 scan then hash). A
@@ -1083,12 +1136,12 @@ export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result
       ["htm", { t: "string", v: methodBytes }],
       ["htu", { t: "string", v: strUtf8(proof.targetUri) }],
       ["iat", { t: "int", v: proof.issuedAt }],
-      ["jti", { t: "string", v: strUtf8(proof.proofId) }],
+      ["jti", { t: "string", v: proofIdBytes }],
       ["v", { t: "int", v: VERSION }],
     ]);
     if (proof.nonce !== undefined) payloadMembers.set("nonce", { t: "string", v: strUtf8(proof.nonce) });
     return {
-      kind: "proof",
+      kind: profile === "standard" ? "proof" : "local_loopback_http_proof",
       protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: headerMembers }, b)))),
       payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: payloadMembers }, b)))),
     };
@@ -1145,6 +1198,23 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
       case "key_transition": parseTransitionHeader(seg, b); validateTransitionPayload(payload, seg.payloadBytes, b); break;
       default: fail("assemble_compact: kind");
     }
+    return compact;
+  });
+}
+
+export function assembleLocalLoopbackHttpCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
+  return trying(() => {
+    closedShape([input, signature, bounds], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes", SHAPE_BOUNDS_OPT]);
+    if (input.kind !== "local_loopback_http_proof") fail("assemble_compact: kind");
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
+    if (input.protectedSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey) || input.payloadSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("assemble_compact: segment bound");
+    const assembled = assembleSegments(input, signature);
+    if (!assembled.ok) fail("assemble_compact: signing input");
+    const compact = assembled.value;
+    if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("assemble_compact: compact_bytes");
+    const seg = parseCompact(compact, b);
+    parseProofHeader(seg, b, "local_loopback_http");
+    validateProofPayload(jsonDecode(seg.payloadBytes, b), b, "local_loopback_http");
     return compact;
   });
 }

@@ -1,5 +1,5 @@
 import { fail, type Result, ok, err } from "./error.js";
-import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
+import { coerceBounds, resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import { utf8Str, strUtf8 } from "./json.js";
 
 // Bounded HTTPS URI normalization (spec/bap-v1.md § URI normalization, L201-219; RFC 3986 §6).
@@ -14,11 +14,46 @@ import { utf8Str, strUtf8 } from "./json.js";
 
 export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   try {
-    return ok(strUtf8(normalize(input, bounds)));
+    return ok(strUtf8(normalize(input, coerceBounds(bounds))));
   } catch (e) {
     if (e instanceof Error && e.name === "InvalidError") return err();
     throw e;
   }
+}
+
+export function localLoopbackHttpUriNormalize(
+  input: Uint8Array,
+  bounds: Bounds = MAXIMUM_BOUNDS,
+): Result<Uint8Array> {
+  try {
+    return ok(strUtf8(normalizeLocalLoopbackHttp(input, coerceBounds(bounds))));
+  } catch (e) {
+    if (e instanceof Error && e.name === "InvalidError") return err();
+    throw e;
+  }
+}
+
+function normalizeLocalLoopbackHttp(input: Uint8Array, bounds: Bounds): string {
+  if (input.length > resolve(bounds, "uri_bytes" as MaximaKey)) fail("uri: byte bound");
+  const uri = utf8Str(input);
+  if (!bytesEqualUtf8(input, uri) || !/^[\x21-\x7E]+$/.test(uri)) fail("uri: ASCII");
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)$/.exec(uri);
+  if (match === null || match[1]!.toLowerCase() !== "http") fail("uri: scheme");
+
+  const authorityMatch = /^(127\.0\.0\.1|\[::1\])(?::([0-9]+))?$/.exec(match[2]!);
+  if (authorityMatch === null) fail("uri: loopback authority");
+
+  const host = authorityMatch[1]!;
+  let port = "";
+  if (authorityMatch[2] !== undefined) {
+    const value = Number(authorityMatch[2]);
+    if (!Number.isSafeInteger(value) || value < 1 || value > 65535) fail("uri: port");
+    if (value !== 80) port = `:${value}`;
+  }
+
+  const normalized = `http://${host}${port}${normalizePath(match[3]!, true)}`;
+  if (strUtf8(normalized).length > resolve(bounds, "uri_bytes" as MaximaKey)) fail("uri: byte bound");
+  return normalized;
 }
 
 function normalize(input: Uint8Array, bounds: Bounds): string {
@@ -73,10 +108,19 @@ function normalize(input: Uint8Array, bounds: Bounds): string {
     port = portNumber === 443 ? "" : `:${portNumber}`;
   }
 
-  const path = match[3] === "" ? "/" : match[3]!;
-  const normalizedPath = removeDotSegments(normalizePercentEncoding(path));
-  if (!normalizedPath.startsWith("/")) fail("uri: absolute path");
-  return `https://${host}${port}${normalizedPath}`;
+  return `https://${host}${port}${normalizePath(match[3]!)}`;
+}
+
+function normalizePath(path: string, enforcePchar = false): string {
+  const raw = path === "" ? "/" : path;
+  if (enforcePchar) {
+    for (const ch of raw) {
+      if (ch !== "%" && !/[A-Za-z0-9\-._~!$&'()*+,;=:@/]/.test(ch)) fail("uri: path character");
+    }
+  }
+  const normalized = removeDotSegments(normalizePercentEncoding(raw));
+  if (!normalized.startsWith("/")) fail("uri: absolute path");
+  return normalized;
 }
 
 function bytesEqualUtf8(bytes: Uint8Array, s: string): boolean {
