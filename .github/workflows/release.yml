@@ -1,4 +1,4 @@
-# First and subsequent npm publications of @bounded-authority/verifier.
+# First and subsequent npm publications of @bounded-authority-protocol/verifier.
 # Publishing is bound to THIS repository's workflow identity: npm trusted
 # publishing (GitHub Actions OIDC, no long-lived token) plus npm provenance,
 # per the ADR 0008/0015 provenance discipline the SDK inherits. The trusted
@@ -44,7 +44,20 @@ jobs:
           pnpm typecheck && pnpm lint && pnpm license-check && pnpm test && \
           pnpm test:permissiveness && pnpm conformance && pnpm conformance:v2
 
+      # Idempotent releases: a version already on the registry (e.g. seeded from
+      # the repository checkout under the owner's session, as 0.1.0 and the 0.2.0
+      # rename seed were) verifies only — the full matrix above still gates the tag.
+      - name: Check registry for existing version
+        id: existing
+        run: |
+          if npm view "@bounded-authority-protocol/verifier@${GITHUB_REF_NAME#v}" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Trusted publishing: npm exchanges this workflow's OIDC token for a
       # one-time publish grant. No NPM_TOKEN secret exists anywhere.
       - name: Publish to npm with provenance
+        if: steps.existing.outputs.published == 'false'
         run: npm publish --provenance

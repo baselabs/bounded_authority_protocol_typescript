@@ -1,6 +1,6 @@
-# @bounded-authority/verifier
+# @bounded-authority-protocol/verifier
 
-[![npm](https://img.shields.io/npm/v/@bounded-authority/verifier)](https://www.npmjs.com/package/@bounded-authority/verifier)
+[![npm](https://img.shields.io/npm/v/@bounded-authority-protocol/verifier)](https://www.npmjs.com/package/@bounded-authority-protocol/verifier)
 [![CI](https://github.com/baselabs/bounded_authority_protocol_typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/baselabs/bounded_authority_protocol_typescript/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -21,7 +21,7 @@ redacted facts, and every failure is a single closed rejection.
 ## Install
 
 ```bash
-npm install @bounded-authority/verifier
+npm install @bounded-authority-protocol/verifier
 ```
 
 Requires Node.js `>= 22`. Zero runtime dependencies.
@@ -29,7 +29,7 @@ Requires Node.js `>= 22`. Zero runtime dependencies.
 ## Quickstart — verify a grant
 
 ```ts
-import { verifyGrant } from "@bounded-authority/verifier";
+import { verifyGrant } from "@bounded-authority-protocol/verifier";
 
 // The raw compact-JWS grant bytes (ASCII), produced out-of-band by an issuer.
 const grantCompact = Buffer.from(
@@ -74,14 +74,14 @@ direction.
 | Major | Import | Selector kinds | Notes |
 |---|---|---|---|
 | 1 | `import { verifyGrant, ... }` | `all`, `equals`, `one_of` | The original profile |
-| 2 | `import { v2 } from "@bounded-authority/verifier"` | `+ lte`, `gte` | Adds inclusive same-tag range selectors (intervals compose conjunctively) |
+| 2 | `import { v2 } from "@bounded-authority-protocol/verifier"` | `+ lte`, `gte` | Adds inclusive same-tag range selectors (intervals compose conjunctively) |
 
 The `v2` namespace mirrors the full v1 surface — `v2.verifyGrant`, `v2.checkEnvelope`,
 `v2.grantSigningInput`, and so on — under the major-2 separators, suite name, and `v: 2`
 payloads.
 
 ```ts
-import { v2 } from "@bounded-authority/verifier";
+import { v2 } from "@bounded-authority-protocol/verifier";
 
 const result = v2.checkEnvelope(grantV2, proofV2, {
   trustedIssuer: { keyId: "issuer-key", publicKey: issuerPublicKey32 },

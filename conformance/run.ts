@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Conformance runner for @bounded-authority/verifier (BAP-09 T5). Loads the published corpus from
+// Conformance runner for @bounded-authority-protocol/verifier (BAP-09 T5). Loads the published corpus from
 // priv/conformance/v1/corpus/, recomputes EVERY verdict from scratch by calling the SDK façade
 // (sdks/typescript/src/v1.ts), and asserts agreement on all 283 cases. Asserts the index.json
 // SHA-256 at startup (ADR 0014 D4: the SDK binds to the exact corpus it was certified against).

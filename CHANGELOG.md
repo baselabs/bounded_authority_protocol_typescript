@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@bounded-authority/verifier` are documented here.
+All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
 ## [0.2.0] — 2026-09-14
 
@@ -15,6 +15,10 @@ All notable changes to `@bounded-authority/verifier` are documented here.
 
 ### Changed
 
+- **Package renamed `@bounded-authority/verifier` → `@bounded-authority-protocol/verifier`**
+  before the second publication (the scope now matches the protocol repository naming). The
+  `@bounded-authority/verifier` 0.1.0 seed stays on the registry permanently and is
+  deprecated with a pointer to this package.
 - README rewritten as the package landing page (wire contract-majors section, tagged-algebra
   quickstart for `v2.checkEnvelope`, consumer-oriented conformance and versioning sections).
 - `dist/` now ships only the compiled library (`src/`); conformance runners and tests are no

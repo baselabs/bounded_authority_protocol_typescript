@@ -1,4 +1,4 @@
-// The public surface of @bounded-authority/verifier (the v1 protocol verification façade +
+// The public surface of @bounded-authority-protocol/verifier (the v1 protocol verification façade +
 // versioned primitives). Re-exports the 17 façade functions + the dispatch structs + the primitives
 // the public contract names (spec/bap-v1.md § Public verification contract, L266-309).
 //

@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Standalone two-boundary key census for @bounded-authority/verifier (BAP-09 T5). Runs ONLY the
+// Standalone two-boundary key census for @bounded-authority-protocol/verifier (BAP-09 T5). Runs ONLY the
 // census (no verdict recompute): loads the corpus, dispatches every case so the verify surfaces
 // import their keys at the Ed25519 boundary, then asserts discovery == verify-import ⊇ expected-
 // verify-keys == index public_key_fingerprints (ADR 0005 § Census evolution; ADR 0014 Decision 9).

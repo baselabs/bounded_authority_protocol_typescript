@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Conformance runner for the v2 contract-major profile of @bounded-authority/verifier. Mirrors
+// Conformance runner for the v2 contract-major profile of @bounded-authority-protocol/verifier. Mirrors
 // conformance/run.ts (the v1 runner): loads the published v2 corpus from
 // priv/conformance/v2/corpus/, recomputes EVERY verdict from scratch by calling the v2 façade
 // (sdks/typescript/src/v2.ts), and asserts agreement on all 268 cases. Asserts the index.json
