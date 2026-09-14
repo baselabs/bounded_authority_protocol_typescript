@@ -40,8 +40,7 @@
   "homepage": "https://github.com/baselabs/bounded_authority_protocol_typescript#readme",
   "bugs": "https://github.com/baselabs/bounded_authority_protocol_typescript/issues",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "packageManager": "pnpm@10.20.0"
 }
