@@ -1561,3 +1561,72 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
   const over = v2.checkEnvelope(grantCompact, proofCompact, { ...expected, castArguments: amountArgs(5001) });
   assert.equal(over.ok, false, "amount 5001 > the lte bound must reject (the proof's ba_req also mismatches)");
 });
+
+// (e) ASSEMBLY REVALIDATION: assembleCompact must re-parse the composed compact per kind — a
+// well-formed signing input whose payload violates the profile must NOT assemble, exactly as
+// the reference's validate_assembled_compact (v2/runtime.ex). Defect injections, each
+// red-proven at authoring (2026-09-14, the 0.2.0 register item):
+//   e1. remove the decodeGrant call in assembleCompact's grant arm → the {"aud":"a"} grant leg
+//       goes RED (the forged payload then assembles).
+//   e2. remove the canonical check in validateAnchorPayload / validateTransitionPayload
+//       (bytesEqual(jcsEncode(p), payloadBytes)) → the whitespace leg goes RED.
+//   e3. remove the genesis binding in validateAnchorPayload (sequence 0 ⇒ all-zero chain hash)
+//       → the sequence-0/non-zero-hash leg goes RED.
+// Corpus compacts come from the vendored v2 snapshot (the same fixtures the conformance
+// runner certifies), so the header/kind pairing is real; only the payload is forged.
+{
+  const readCase = (file: string, id: string): { compact: string } => {
+    const doc = JSON.parse(readFileSync(new URL(`../conformance/corpus-v2/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: { compact: string } }> };
+    const c = doc.cases.find((x) => x.id === id);
+    if (!c) throw new Error(`case ${id} not found in ${file}`);
+    return c.input;
+  };
+  type Si = Parameters<typeof v2.assembleCompact>[0];
+  const grantCompact = readCase("grant-decode/decode.json", "grant-decode-v2-valid").compact;
+  const anchorCompact = readCase("boundary-anchor/verify.json", "verify-historical-anchor-v2-valid").compact;
+  const transitionCompact = readCase("key-transition/verify.json", "verify-key-transition-v2-valid").compact;
+  const sig = new Uint8Array(64);
+  const seg = (c: string) => c.split(".");
+  // payloadSegment is base64url TEXT: the raw payload bytes are b64url-encoded first.
+  const si = (kind: "grant" | "boundary_anchor" | "key_transition", c: string, payloadBytes: Uint8Array): Si => ({
+    kind, protectedSegment: new TextEncoder().encode(seg(c)[0]!),
+    payloadSegment: base64urlEncode(payloadBytes), // the b64url text bytes of the payload
+  });
+  const forged = (raw: string) => new TextEncoder().encode(raw);
+  const decodeUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
+
+  test("permissiveness: v2 assembly revalidation — member set (mutation e1)", () => {
+    // {"aud":"a"} decodes as JSON but is no grant/anchor/transition payload.
+    const bad = forged('{"aud":"a"}');
+    for (const [kind, compact] of [["grant", grantCompact], ["boundary_anchor", anchorCompact], ["key_transition", transitionCompact]] as const) {
+      const r = v2.assembleCompact(si(kind, compact, bad), sig);
+      assert.equal(r.ok, false, `kind ${kind}: assembly must reject a well-formed input with invalid payload members`);
+    }
+  });
+
+  test("permissiveness: v2 assembly revalidation — canonical payload (mutation e2)", () => {
+    // The identical closed member set with one inserted whitespace byte decodes and passes the
+    // member-set/genesis checks but is not the JCS encoding — anchor/transition payloads are
+    // canonical-bound.
+    const nonCanon = (c: string) => {
+      const payloadJson = decodeUtf8(base64urlDecode(strUtf8(seg(c)[1]!)));
+      return new TextEncoder().encode("{ " + payloadJson.slice(1));
+    };
+    for (const [kind, compact] of [["boundary_anchor", anchorCompact], ["key_transition", transitionCompact]] as const) {
+      const r = v2.assembleCompact(si(kind, compact, nonCanon(compact)), sig);
+      assert.equal(r.ok, false, `kind ${kind}: assembly must reject a non-canonical payload segment`);
+    }
+  });
+
+  test("permissiveness: v2 assembly revalidation — anchor genesis binding (mutation e3)", () => {
+    // A JCS-canonical, closed-member anchor payload with sequence 0 and a NON-zero chain hash
+    // (the reference's BoundaryAnchorCodec.parse genesis binding).
+    const payload = jsonDecode(base64urlDecode(strUtf8(seg(anchorCompact)[1]!)));
+    if (payload.t !== "object") throw new Error("anchor payload must be an object");
+    const members: Array<[string, Tagged]> = [];
+    for (const [k, v] of payload.v) members.push([k, k === "chain_hash" ? { t: "string", v: new TextEncoder().encode("Q".repeat(42) + "A") } : v]);
+    const genesis = jcsEncode({ t: "object", v: new Map(members) });
+    const r = v2.assembleCompact(si("boundary_anchor", anchorCompact, genesis), sig);
+    assert.equal(r.ok, false, "assembly must reject a sequence-0 anchor with a non-zero chain hash");
+  });
+}
