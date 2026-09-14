@@ -35,7 +35,21 @@ export function typedProject(value: Tagged): Tagged {
 }
 
 // request_digest(operation, cast_arguments, bounds?). operation is validated printable ASCII 1..128.
+// Pins the v1 domain separator (BAP1-REQUEST\0); the v2 façade calls digestWithPrefix with the
+// BAP2-REQUEST\0 separator — everything else in the digest is major-independent.
 export function requestDigest(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
+  return digestWithPrefix(REQUEST_PREFIX, operation, castArguments, bounds);
+}
+
+// The major-independent digest core: SHA-256(prefix || JCS([operation, typed(cast_arguments)])).
+// The domain separator is the only per-major input (REQ1-SIGNING-digest-prefix; the v2 profile
+// carries BAP2-REQUEST\0 per ADR 0028's contract-major activation).
+export function digestWithPrefix(
+  prefix: Uint8Array,
+  operation: string,
+  castArguments: Tagged,
+  bounds: Bounds = MAXIMUM_BOUNDS,
+): Uint8Array {
   // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is a structural interface; a caller
   // can hand-craft widening overrides that bypass boundsNew). Mirrors the reference's Bounds.coerce.
   const b = coerceBounds(bounds);
@@ -59,7 +73,7 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds: 
   // JCS over the projection, enforcing jcs_bytes bound.
   const jcs = jcsEncode(array, b);
   if (jcs.length > resolve(b, "jcs_bytes" as MaximaKey)) fail("request_digest: jcs_bytes bound");
-  const digest = sha256(REQUEST_PREFIX, jcs);
+  const digest = sha256(prefix, jcs);
   return digest; // raw 32 bytes
 }
 

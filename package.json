@@ -23,6 +23,7 @@
     "test": "node --test --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
     "conformance": "tsx conformance/run.ts",
+    "conformance:v2": "tsx conformance/run_v2.ts",
     "census": "tsx conformance/census.ts"
   },
   "devDependencies": {

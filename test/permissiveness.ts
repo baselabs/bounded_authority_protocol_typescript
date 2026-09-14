@@ -1365,3 +1365,199 @@ test("shape gate rejects malformed nested expected-export structs (no deref esca
     assert.equal((re as { ok: boolean }).ok, false, `${label} (encode): must be Err`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The v2 range-selector kinds (ADR 0028) — red-capable mutation entries. The v2 façade
+// (src/v2.ts) extends the selector algebra to {all, equals, one_of, lte, gte} with SAME-TAG
+// INCLUSIVE numeric comparison; the v1 algebra above stays closed at its three kinds.
+//
+// DEFECT-INJECTION BATTERY (4 items — same discipline as the authoring battery at the top).
+// Each entry was defect-injected at authoring: the named mutation was made locally, the named
+// test (and the named conformance case) went RED, and the change was reverted. The record:
+//   a. inclusive boundary: mutate rangeMatches in src/v2.ts `<=` → `<` (and `>=` → `>`) →
+//      "v2 lte/gte are inclusive at the boundary" goes RED (both the direct selector match and
+//      the full envelope at amount == bound); the corpus boundary cases
+//      check-envelope-v2-valid-lte-boundary-equal, check-envelope-v2-valid-gte-boundary-equal,
+//      and check-envelope-v2-valid-interval-endpoint-low/-high go red under `pnpm conformance:v2`.
+//   b. same-tag domain: remove the tag pairing in rangeMatches (compare numerically across
+//      tags) → "v2 cross-tag range operands never match" goes RED; the corpus case
+//      check-envelope-v2-invalid-selector-cross-tag-float-bound flips invalid→valid (red).
+//   c. decode dispatch: swap the lte/gte arms in the v2 parseSelector dispatch → "v2 range-kind
+//      decode dispatch is distinct" goes RED; the corpus cases
+//      check-envelope-v2-invalid-selector-lte-exceeded / check-envelope-v2-invalid-selector-gte-unmet
+//      flip accept/reject (red).
+//   d. cross-major gate: widen the v check in the v2 payload validators to accept v:1 → "v2
+//      rejects v1 bytes cross-major" goes RED; the corpus cases
+//      verify-grant-v2-invalid-cross-major-v1-bytes and
+//      check-envelope-v2-invalid-cross-major-v1-grant / -proof flip (red).
+// ----------------------------------------------------------------------------
+
+import * as v2 from "../src/v2.js";
+import { parseSelector as parseSelectorV1, selectorMatches as selectorMatchesV1 } from "../src/selector.js";
+
+// A tagged {amount: N} cast-arguments object (the int/float tag is the load-bearing dimension).
+function amountArgs(n: number, float = false): Tagged {
+  return { t: "object", v: new Map<string, Tagged>([["amount", float ? { t: "float", v: n } : { t: "int", v: n }]]) };
+}
+
+const decSel = (s: string) => jsonDecode(strUtf8(s));
+
+// (a) INCLUSIVE: the boundary-equal pair must match. A `<`/`>` mutation flips exactly this.
+test("permissiveness: v2 lte/gte are inclusive at the boundary (mutation a)", () => {
+  const lte = v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"value":5000}'));
+  const gte = v2.parseSelector(decSel('{"kind":"gte","path":["amount"],"value":50}'));
+  assert.equal(v2.selectorMatches(lte, amountArgs(5000)), true, "lte must match value == bound");
+  assert.equal(v2.selectorMatches(gte, amountArgs(50)), true, "gte must match value == bound");
+  assert.equal(v2.selectorMatches(lte, amountArgs(5001)), false, "lte must reject value > bound");
+  assert.equal(v2.selectorMatches(gte, amountArgs(49)), false, "gte must reject value < bound");
+  // The float-tagged domain is inclusive too (same-tag arms).
+  const lteF = v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"value":10.5}'));
+  assert.equal(v2.selectorMatches(lteF, amountArgs(10.5, true)), true, "float lte must match at the bound");
+});
+
+// (b) SAME-TAG ONLY: a cross-tag pair never matches, fail closed; a non-numeric operand at the
+// path never matches; a missing path fails closed exactly as equals/one_of. Removing the tag
+// pairing flips exactly this.
+test("permissiveness: v2 cross-tag range operands never match (mutation b)", () => {
+  const lteFloat = v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"value":10.5}'));
+  const gteInt = v2.parseSelector(decSel('{"kind":"gte","path":["amount"],"value":50}'));
+  assert.equal(v2.selectorMatches(lteFloat, amountArgs(5)), false, "int 5 never satisfies a float 10.5 bound");
+  assert.equal(v2.selectorMatches(gteInt, amountArgs(50.0, true)), false, "float 50.0 never satisfies an int 50 bound");
+  // Non-numeric operands: string/boolean/null/array/object at the path never match.
+  const strArgs: Tagged = { t: "object", v: new Map<string, Tagged>([["amount", { t: "string", v: strUtf8("75") }]]) };
+  assert.equal(v2.selectorMatches(gteInt, strArgs), false, "a string operand never satisfies a range bound");
+  // Missing path: fail closed (REQ1-SELECTOR-path-required).
+  const otherArgs: Tagged = { t: "object", v: new Map<string, Tagged>([["other", { t: "int", v: 75 }]]) };
+  assert.equal(v2.selectorMatches(gteInt, otherArgs), false, "a missing path never matches");
+});
+
+// (c) DECODE DISPATCH: lte and gte are distinct kinds with distinct closed member shapes; a
+// non-numeric bound is rejected at DECODE (the reference numeric_bound? gate); swapping the
+// dispatch arms flips exactly this.
+test("permissiveness: v2 range-kind decode dispatch is distinct (mutation c)", () => {
+  const lte = v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"value":5000}'));
+  const gte = v2.parseSelector(decSel('{"kind":"gte","path":["amount"],"value":50}'));
+  assert.equal(lte.kind, "lte");
+  assert.equal(gte.kind, "gte");
+  // A non-numeric bound rejects at decode, not at match time.
+  assert.throws(() => v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"value":"5000"}')), InvalidError,
+    "a string bound must reject at decode");
+  assert.throws(() => v2.parseSelector(decSel('{"kind":"gte","path":["amount"], "value": null}')), InvalidError,
+    "a null bound must reject at decode");
+  // The member-set discipline is unchanged: {kind, path, value} exactly.
+  assert.throws(() => v2.parseSelector(decSel('{"kind":"lte","path":["amount"],"values":[5000]}')), InvalidError);
+  // The producer rejects a non-numeric bound pre-signing.
+  const badProducer = v2.grantSigningInput({
+    keyId: "k1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(new Uint8Array(32))),
+    operations: [{ name: "transfer", selectors: [{ kind: "lte", path: ["amount"], value: { t: "string", v: strUtf8("5000") } }] }],
+  });
+  assert.equal(badProducer.ok, false, "the producer must reject a non-numeric bound");
+});
+
+// (d) CROSS-MAJOR: v2 rejects v1 bytes and v1 rejects v2 bytes (the v payload gate). Widening
+// the v2 gate to accept v:1 flips exactly this. Also pins that the v1 selector algebra stays
+// CLOSED at {all, equals, one_of} — an lte-bearing grant is Err on v1 (REQ1-EVO-no-verdict-flip).
+test("permissiveness: v2 rejects v1 bytes cross-major; v1 stays closed to the range kinds (mutation d)", () => {
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintOf(holder.publicKey);
+  const baseGrant = {
+    keyId: "k1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:1",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+  };
+  // A v1 grant (payload v:1, "all" selector — v1-legal bytes) must be Err on the v2 façade.
+  const firstMajorSi = v1.grantSigningInput({ ...baseGrant, operations: [{ name: "read", selectors: ["all"] }] });
+  if (!firstMajorSi.ok) throw new Error("v1 grant signing input failed");
+  const firstMajorCompact = mustAssemble(firstMajorSi.value, new Uint8Array(nodeCrypto.sign(null,
+    Buffer.from(`${new TextDecoder().decode(firstMajorSi.value.protectedSegment)}.${new TextDecoder().decode(firstMajorSi.value.payloadSegment)}`),
+    issuer.privateKey)));
+  assert.equal(v2.decodeGrant(firstMajorCompact).ok, false, "v2 must reject a v:1 grant payload");
+  // A v2 grant (payload v:2, lte selector) must be Err on the v1 façade — twice over: the kind
+  // closed set and the version gate.
+  const secondMajorSi = v2.grantSigningInput({ ...baseGrant, operations: [{ name: "read", selectors: [{ kind: "lte", path: ["amount"], value: { t: "int", v: 100 } }] }] });
+  if (!secondMajorSi.ok) throw new Error("v2 grant signing input failed");
+  const secondMajorCompact = mustAssemble(secondMajorSi.value, new Uint8Array(nodeCrypto.sign(null,
+    Buffer.from(`${new TextDecoder().decode(secondMajorSi.value.protectedSegment)}.${new TextDecoder().decode(secondMajorSi.value.payloadSegment)}`),
+    issuer.privateKey)));
+  assert.equal(v1.decodeGrant(secondMajorCompact).ok, false, "v1 must reject a v:2 payload");
+  // The v1 selector algebra stays closed: lte/gte reject at the v1 parseSelector gate.
+  assert.throws(() => parseSelectorV1(decSel('{"kind":"lte","path":["amount"],"value":1}')), InvalidError,
+    "v1 must keep rejecting the lte kind");
+  assert.throws(() => parseSelectorV1(decSel('{"kind":"gte","path":["amount"],"value":1}')), InvalidError,
+    "v1 must keep rejecting the gte kind");
+  assert.equal(selectorMatchesV1(parseSelectorV1(decSel('{"kind":"equals","path":["amount"],"value":1}')), amountArgs(1)), true,
+    "control: the v1 equals kind still matches");
+  assert.equal(v2.decodeGrant(secondMajorCompact).ok, true, "control: the v2 façade accepts its own bytes");
+});
+
+// Supporting pins: the v2 domain separators are the BAP2- forms — the request digest over
+// identical arguments differs from v1's, and the row/archive prefixes are the BAP2 bytes.
+test("permissiveness: v2 domain separators are the BAP2 forms (not v1's BAP1 prefixes)", () => {
+  const args: Tagged = { t: "object", v: new Map<string, Tagged>([["n", { t: "int", v: 1 }]]) };
+  const d1 = v1.requestDigest("read", args);
+  const d2 = v2.requestDigest("read", args);
+  assert.equal(d1.ok && d2.ok, true);
+  if (!d1.ok || !d2.ok) return;
+  assert.notEqual(Buffer.from(d1.value).toString("hex"), Buffer.from(d2.value).toString("hex"),
+    "the BAP1-REQUEST and BAP2-REQUEST separators must produce distinct digests");
+  // BAP2-CHAIN\0 = 42 41 50 32 2d 43 48 41 49 4e 00 (the v1 form carries 0x31, not 0x32).
+  assert.deepEqual(Array.from(v2.ROW_PREFIX), [0x42, 0x41, 0x50, 0x32, 0x2d, 0x43, 0x48, 0x41, 0x49, 0x4e, 0x00]);
+  assert.deepEqual(Array.from(v2.REQUEST_PREFIX), [0x42, 0x41, 0x50, 0x32, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00]);
+  assert.deepEqual(Array.from(v2.ARCHIVE_PREFIX), Array.from(strUtf8("BAP2-ARCHIVE\0EXPORT\0")));
+  // A consumption row hash differs across majors for identical entries (the row prefix feeds the hash).
+  const entry = { chainId: "urn:example:chain", sequence: 1, previousHash: new Uint8Array(32), commitment: new Uint8Array(32).fill(7) };
+  const r1 = v1.encodeConsumptionEntry(entry);
+  const r2 = v2.encodeConsumptionEntry(entry);
+  assert.equal(r1.ok && r2.ok, true);
+  if (!r1.ok || !r2.ok) return;
+  assert.notEqual(Buffer.from(r1.value.hash).toString("hex"), Buffer.from(r2.value.hash).toString("hex"),
+    "the BAP1-CHAIN and BAP2-CHAIN row prefixes must produce distinct row hashes");
+});
+
+// The full-envelope leg of (a): a boundary-equal amount must VERIFY end-to-end through
+// checkEnvelope — the signed-artifact form of the inclusive comparison (mirrors the corpus
+// boundary cases).
+test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a, signed)", () => {
+  _resetCensus();
+  const issuer = freshKey();
+  const holder = freshKey();
+  const holderFp = thumbprintOf(holder.publicKey);
+  const gsi = v2.grantSigningInput({
+    keyId: "issuer-1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:2",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+    operations: [{ name: "transfer", selectors: [
+      { kind: "gte", path: ["amount"], value: { t: "int", v: 50 } },
+      { kind: "lte", path: ["amount"], value: { t: "int", v: 5000 } },
+    ] }],
+  });
+  if (!gsi.ok) throw new Error("grant signing input failed");
+  const gmsg = `${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`;
+  const grantCompact = mustAssemble(gsi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(gmsg), issuer.privateKey)));
+  const castArguments = amountArgs(5000); // boundary-equal: amount == the lte bound
+  const psi = v2.proofSigningInput({
+    holderPublicKey: holder.publicKey, proofId: "urn:example:proof:2", method: "POST",
+    targetUri: "https://resource.example.test/invoke", issuedAt: 1400,
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "transfer",
+    grantCompact, castArguments,
+  });
+  if (!psi.ok) throw new Error("proof signing input failed");
+  const pmsg = `${new TextDecoder().decode(psi.value.protectedSegment)}.${new TextDecoder().decode(psi.value.payloadSegment)}`;
+  const proofCompact = mustAssemble(psi.value, new Uint8Array(nodeCrypto.sign(null, Buffer.from(pmsg), holder.privateKey)));
+  const expected = {
+    trustedIssuer: { keyId: "issuer-1", publicKey: issuer.publicKey },
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    method: "POST", targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "transfer",
+    castArguments, evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300,
+    nonce: { kind: "not_required" } as const,
+  };
+  const at = v2.checkEnvelope(grantCompact, proofCompact, expected);
+  assert.equal(at.ok, true, "boundary-equal amount (5000 == lte bound) must verify — inclusive comparison");
+  // One past the bound rejects (the gte/lte envelope closes at exactly the bound).
+  const over = v2.checkEnvelope(grantCompact, proofCompact, { ...expected, castArguments: amountArgs(5001) });
+  assert.equal(over.ok, false, "amount 5001 > the lte bound must reject (the proof's ba_req also mismatches)");
+});

@@ -45,6 +45,13 @@ export {
 
 export { localLoopbackHttpUriNormalize } from "./uri.js";
 
+// The v2 contract-major profile façade (v:2 payloads, BAP2-* domain separators, lte/gte range
+// selectors per ADR 0028). Exported as a namespace: its surface intentionally mirrors the v1
+// façade's names, so the module path (v2) carries the major — v2.checkEnvelope,
+// v2.grantSigningInput, v2.Selector, and so on. It rejects v1 bytes exactly as v1 rejects v2
+// bytes; the two majors share no wire form.
+export * as v2 from "./v2.js";
+
 export type {
   TrustedIssuer,
   ExpectedGrant,
