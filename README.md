@@ -1,11 +1,12 @@
 # `@bounded-authority/verifier`
 
 A provider-neutral, deterministic **verifier** SDK for bounded proof-of-possession authority — a
-typed TypeScript reimplementation of the BAP v1 verification profile.
+typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles
+(wire contract-majors 1 and 2).
 
 This is one of four cross-language verifier SDKs ([ADR 0014][adr14] — TypeScript, Python, Rust, Go)
-that reimplement the frozen v1
-profile from the published [spec][spec] and [conformance corpus][corpus] alone, with no code-level
+that reimplement the frozen
+profiles from the published [specs][spec] and [conformance corpora][corpus] alone, with no code-level
 derivation from the Elixir reference. It is a **verification** library: a successful result proves
 only that caller-supplied bytes satisfy caller-supplied trusted inputs and expected context. It never
 selects trusted keys, reserves replay, grants execution, or overrides a host policy.
@@ -19,7 +20,8 @@ mandatory nonce; standard `dpop+jwt` APIs reject its bytes.
 [adr14]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md
 [adr15]: https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md
 [spec]: https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md
-[corpus]: https://github.com/baselabs/bounded_authority_protocol/blob/main/priv/conformance/v1/corpus/
+[corpus]: https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/v1/corpus/
+[npm]: https://www.npmjs.com/package/@bounded-authority/verifier
 
 ## Status
 
@@ -37,7 +39,8 @@ mismatched corpus snapshot gets a hard failure rather than a silent drift ([ADR 
 
 ```bash
 pnpm install
-pnpm conformance   # 283/283 + two-boundary key census
+pnpm conformance     # 283/283 + two-boundary key census (vendored v1 snapshot)
+pnpm conformance:v2  # 268/268 + curated two-way census (vendored v2 snapshot)
 ```
 
 Permissiveness is invisible to corpus agreement by construction, so each parser-layer closure is
@@ -48,10 +51,15 @@ mechanically removed ([ADR 0014 D6/D7][adr14]).
 
 ## Install
 
-Not yet published to npm. Per the [SDK graduation model][adr15], this SDK graduates to its own
-per-SDK repository (`bounded_authority_protocol_typescript`) on first publication — never from
-this monorepo. The package name `@bounded-authority/verifier` is a reserved identifier recorded
-for the graduated publish.
+Published to npm as [`@bounded-authority/verifier`][npm]. This repository is the SDK's graduated
+publish surface per the [SDK graduation model][adr15] — authored under the protocol monorepo,
+graduated to this per-SDK repository on first publication, and published only from this
+repository's release workflow (npm trusted publishing via GitHub Actions; every release carries
+npm provenance).
+
+```bash
+npm install @bounded-authority/verifier
+```
 
 ## Quickstart — verify a grant
 
@@ -140,7 +148,8 @@ pnpm typecheck       # tsc --noEmit, strict (noUncheckedIndexedAccess + exactOpt
 pnpm lint            # eslint . — includes the library-path purity rule (no I/O/clock/RNG/network in src/)
 pnpm license-check   # dependency-license gate (zero runtime deps expected)
 pnpm test            # unit + struct + façade corpus-vector tests
-pnpm conformance     # 283/283 + two-boundary key census
+pnpm conformance     # 283/283 + two-boundary key census (vendored v1 snapshot)
+pnpm conformance:v2  # 268/268 + curated two-way census (vendored v2 snapshot)
 pnpm test:permissiveness   # the per-language mutation-gate
 ```
 

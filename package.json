@@ -32,5 +32,16 @@
     "tsx": "^4.23.12",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baselabs/bounded_authority_protocol_typescript.git"
+  },
+  "homepage": "https://github.com/baselabs/bounded_authority_protocol_typescript#readme",
+  "bugs": "https://github.com/baselabs/bounded_authority_protocol_typescript/issues",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "packageManager": "pnpm@10.20.0"
 }

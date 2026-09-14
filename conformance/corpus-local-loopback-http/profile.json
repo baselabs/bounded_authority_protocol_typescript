@@ -1,0 +1,73 @@
+{
+  "grant_compact": "eyJhbGciOiJFZERTQSIsImtpZCI6Imlzc3Vlci1sb2NhbC0xIiwidHlwIjoiYmErY2FwIn0.eyJhdWQiOlsidXJuOmV4YW1wbGU6YXVkaWVuY2U6bG9jYWwiXSwiY25mIjp7ImprdCI6IlB2VXRlalhpZ0xjSS1odEwzYWRTSHVmYW81RGhWMjZMZkpmMlBsNWNkaEkifSwiZXhwIjoxNzM1NjkwMjAwLCJpYXQiOjE3MzU2ODk2MDAsImlzcyI6InVybjpleGFtcGxlOmlzc3Vlcjpsb2NhbCIsImp0aSI6InVybjpleGFtcGxlOmdyYW50OmxvY2FsIiwibmJmIjoxNzM1Njg5NjAwLCJvcGVyYXRpb25zIjpbeyJuYW1lIjoicmVhZF9yZWNvcmQiLCJzZWxlY3RvcnMiOlt7ImtpbmQiOiJhbGwifV19XSwidiI6MX0.d6AMgfxXjqCZUPiZIpzGzo30fLHuAxwfPbGa94KLSUiWeNyHPzMtxmpXWhAHQXoDHGo16CWGxjT0JotlDo_ZBA",
+  "holder_public_key": "eKV0BzrIMMzl6LviCGr5RGzT6bs8BNeOiaKedxp2xCk",
+  "issuer": {
+    "audience": "urn:example:audience:local",
+    "issuer": "urn:example:issuer:local",
+    "key_id": "issuer-local-1",
+    "public_key": "0VRH3EaCRTiA-QBBYRcJ6JMPI5aNrmEOEiRhrUI0nZE"
+  },
+  "profile": "bap-application-proof/local-loopback-http/1",
+  "proofs": {
+    "ipv4": {
+      "compact": "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6ImVLVjBCenJJTU16bDZMdmlDR3I1Ukd6VDZiczhCTmVPaWFLZWR4cDJ4Q2sifSwidHlwIjoiYmErbG9vcGJhY2stcHJvb2YifQ.eyJhdGgiOiJac09UZkF1cWwwWHRRXzdDaThPRGZWRUNqU1lWZUVDRTlLaGRUMDh1ZGtrIiwiYmFfaW52IjoiMTIzZTQ1NjctZTg5Yi00MmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwiYmFfb3AiOiJyZWFkX3JlY29yZCIsImJhX3JlcSI6IjJDQWtlMlJGY1lhUl9fMzJVRnhES0JDbHpkZGFuZFFvdnFTa1hNaFV0T1kiLCJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cDovLzEyNy4wLjAuMTo0MDAwL2ludm9rZSIsImlhdCI6MTczNTY4OTY2MCwianRpIjoidXJuOmV4YW1wbGU6cHJvb2Y6aXB2NCIsIm5vbmNlIjoiY2hhbGxlbmdlLWxvY2FsLWlwdjQiLCJ2IjoxfQ.agsPJ_uUdaxByJPhmrHsaTofyl6EJNmvpGdOiwvtLgqusvOkNmX6SLkyOcWmrEriSsz9yYDYM7tLElteIvQuAw",
+      "nonce": "challenge-local-ipv4",
+      "proof_id": "urn:example:proof:ipv4",
+      "target_uri": "http://127.0.0.1:4000/invoke"
+    },
+    "ipv6": {
+      "compact": "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6ImVLVjBCenJJTU16bDZMdmlDR3I1Ukd6VDZiczhCTmVPaWFLZWR4cDJ4Q2sifSwidHlwIjoiYmErbG9vcGJhY2stcHJvb2YifQ.eyJhdGgiOiJac09UZkF1cWwwWHRRXzdDaThPRGZWRUNqU1lWZUVDRTlLaGRUMDh1ZGtrIiwiYmFfaW52IjoiMTIzZTQ1NjctZTg5Yi00MmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwiYmFfb3AiOiJyZWFkX3JlY29yZCIsImJhX3JlcSI6IjJDQWtlMlJGY1lhUl9fMzJVRnhES0JDbHpkZGFuZFFvdnFTa1hNaFV0T1kiLCJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cDovL1s6OjFdOjQwMDEvaW52b2tlIiwiaWF0IjoxNzM1Njg5NjYwLCJqdGkiOiJ1cm46ZXhhbXBsZTpwcm9vZjppcHY2Iiwibm9uY2UiOiJjaGFsbGVuZ2UtbG9jYWwtaXB2NiIsInYiOjF9.y2Qcz5cSunkxGTe6lZ1eDLEG7Ko5GxvNviJIZnG71pMYyqyIK6chGn1jXGU7kvog96g6QiGa1AfRb8TANT2yDA",
+      "nonce": "challenge-local-ipv6",
+      "proof_id": "urn:example:proof:ipv6",
+      "target_uri": "http://[::1]:4001/invoke"
+    }
+  },
+  "request": {
+    "cast_arguments": {"record_id": "record-1"},
+    "clock_skew": 60,
+    "evaluation_time": 1735689660,
+    "invocation_id": "123e4567-e89b-42d3-a456-426614174000",
+    "method": "POST",
+    "operation": "read_record",
+    "proof_max_age": 300
+  },
+  "revision": 1,
+  "uri_cases": [
+    {"id": "ipv4-default-port-dot", "input": "HTTP://127.0.0.1:80/a/../invoke", "normalized": "http://127.0.0.1/invoke", "valid": true},
+    {"id": "ipv4-nondefault", "input": "http://127.0.0.1:4000/invoke", "normalized": "http://127.0.0.1:4000/invoke", "valid": true},
+    {"id": "ipv6-default-port", "input": "HTTP://[::1]:80/invoke", "normalized": "http://[::1]/invoke", "valid": true},
+    {"id": "ipv4-implicit-port-empty-path", "input": "http://127.0.0.1", "normalized": "http://127.0.0.1/", "valid": true},
+    {"id": "ipv6-implicit-port-empty-path", "input": "http://[::1]", "normalized": "http://[::1]/", "valid": true},
+    {"id": "ipv4-leading-zero-port", "input": "http://127.0.0.1:04000/invoke", "normalized": "http://127.0.0.1:4000/invoke", "valid": true},
+    {"id": "ipv4-https-default-port-is-nondefault", "input": "http://127.0.0.1:443/invoke", "normalized": "http://127.0.0.1:443/invoke", "valid": true},
+    {"id": "path-percent-normalization", "input": "http://127.0.0.1/a/%7e/%2f", "normalized": "http://127.0.0.1/a/~/%2F", "valid": true},
+    {"id": "invalid-empty", "input": "", "valid": false},
+    {"id": "invalid-scheme-separator", "input": "127.0.0.1/invoke", "valid": false},
+    {"id": "invalid-empty-authority", "input": "http:///invoke", "valid": false},
+    {"id": "invalid-https", "input": "https://127.0.0.1/invoke", "valid": false},
+    {"id": "invalid-localhost", "input": "http://localhost/invoke", "valid": false},
+    {"id": "invalid-other-127", "input": "http://127.0.0.2/invoke", "valid": false},
+    {"id": "invalid-short-ipv4", "input": "http://127.1/invoke", "valid": false},
+    {"id": "invalid-integer-ipv4", "input": "http://2130706433/invoke", "valid": false},
+    {"id": "invalid-hex-ipv4", "input": "http://0x7f000001/invoke", "valid": false},
+    {"id": "invalid-octal-ipv4", "input": "http://0177.0.0.1/invoke", "valid": false},
+    {"id": "invalid-leading-zero-ipv4", "input": "http://127.000.000.001/invoke", "valid": false},
+    {"id": "invalid-percent-host", "input": "http://127%2E0%2E0%2E1/invoke", "valid": false},
+    {"id": "invalid-trailing-dot-host", "input": "http://127.0.0.1./invoke", "valid": false},
+    {"id": "invalid-mapped-ipv6", "input": "http://[::ffff:127.0.0.1]/invoke", "valid": false},
+    {"id": "invalid-expanded-ipv6", "input": "http://[0:0:0:0:0:0:0:1]/invoke", "valid": false},
+    {"id": "invalid-ipvfuture", "input": "http://[v1.a:b]/invoke", "valid": false},
+    {"id": "invalid-zone", "input": "http://[::1%25lo0]/invoke", "valid": false},
+    {"id": "invalid-userinfo", "input": "http://user@127.0.0.1/invoke", "valid": false},
+    {"id": "invalid-empty-port", "input": "http://127.0.0.1:/invoke", "valid": false},
+    {"id": "invalid-alpha-port", "input": "http://127.0.0.1:http/invoke", "valid": false},
+    {"id": "invalid-zero-port", "input": "http://127.0.0.1:0/invoke", "valid": false},
+    {"id": "invalid-port-above-maximum", "input": "http://127.0.0.1:65536/invoke", "valid": false},
+    {"id": "invalid-malformed-percent-path", "input": "http://127.0.0.1/invoke%2", "valid": false},
+    {"id": "invalid-raw-non-pchar-path", "input": "http://127.0.0.1/[]", "valid": false},
+    {"id": "invalid-control-byte", "input": "http://127.0.0.1/invoke\n", "valid": false},
+    {"id": "invalid-non-ascii", "input": "http://127.0.0.1/café", "valid": false},
+    {"id": "invalid-query", "input": "http://127.0.0.1/invoke?query=true", "valid": false},
+    {"id": "invalid-fragment", "input": "http://127.0.0.1/invoke#fragment", "valid": false}
+  ]
+}

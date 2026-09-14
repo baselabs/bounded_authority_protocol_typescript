@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: typecheck, lint, license, unit, conformance (283 + 268 + census)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Set up Node
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180f025e08 # v4.0.2
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (strict)
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint (incl. library-path purity rule)
+        run: pnpm lint
+
+      - name: License check (zero runtime deps expected)
+        run: pnpm license-check
+
+      - name: Unit + struct + facade corpus-vector tests
+        run: pnpm test
+
+      - name: Permissiveness mutation-gate
+        run: pnpm test:permissiveness
+
+      - name: Conformance — vendored v1 snapshot (283 + two-boundary census)
+        run: pnpm conformance
+
+      - name: Conformance — vendored v2 snapshot (268 + curated census)
+        run: pnpm conformance:v2

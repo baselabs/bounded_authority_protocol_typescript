@@ -1,0 +1,50 @@
+# First and subsequent npm publications of @bounded-authority/verifier.
+# Publishing is bound to THIS repository's workflow identity: npm trusted
+# publishing (GitHub Actions OIDC, no long-lived token) plus npm provenance,
+# per the ADR 0008/0015 provenance discipline the SDK inherits. The trusted
+# publisher registered on npm names exactly this repository and this workflow
+# file; a publish attempted anywhere else fails.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Verify then publish to npm (provenance-bound)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+
+      - name: Set up Node (24 bundles npm >= 11.5 — required for OIDC trusted publishing)
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180f025e08 # v4.0.2
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Full verification gate (typecheck, lint, license, unit, permissiveness, both conformance corpora)
+        run: |
+          pnpm typecheck && pnpm lint && pnpm license-check && pnpm test && \
+          pnpm test:permissiveness && pnpm conformance && pnpm conformance:v2
+
+      # Trusted publishing: npm exchanges this workflow's OIDC token for a
+      # one-time publish grant. No NPM_TOKEN secret exists anywhere.
+      - name: Publish to npm with provenance
+        run: npm publish --provenance

@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "profile.json",
+      "sha256": "4bc91f690dcd43a5a8069620fbcdea699052c80bb1c747833b2c32e116b7b4c5"
+    },
+    {
+      "path": "proof-cases.json",
+      "sha256": "feeddd4f86d016e2e2e761aefda4022f26d7c56d9cd99d4c2ceccbbd1a380910"
+    }
+  ],
+  "profile": "bap-application-proof/local-loopback-http/1",
+  "proof_cases": 8,
+  "revision": 1,
+  "uri_cases": 36
+}
