@@ -1,9 +1,12 @@
-# First and subsequent npm publications of @bounded-authority-protocol/verifier.
-# Publishing is bound to THIS repository's workflow identity: npm trusted
-# publishing (GitHub Actions OIDC, no long-lived token) plus npm provenance,
-# per the ADR 0008/0015 provenance discipline the SDK inherits. The trusted
-# publisher registered on npm names exactly this repository and this workflow
-# file; a publish attempted anywhere else fails.
+# npm releases of @bounded-authority-protocol/verifier. Publishing is bound to
+# THIS repository's workflow identity (GitHub Actions OIDC, no long-lived
+# token) and runs in TWO STAGES per the npm trusted-publisher configuration:
+# the workflow STAGES the artifact (`npm stage publish`, provenance attached),
+# and a human approves the staged release on npmjs.com under the org's 2FA —
+# CI can never make a version live alone. The trusted publisher names exactly
+# this repository and this workflow file; a publish attempted anywhere else
+# fails. (Known edge: re-running a tag whose version is staged but not yet
+# approved conflicts in staging — approve or discard the staged version first.)
 name: Release
 
 on:
@@ -58,6 +61,6 @@ jobs:
 
       # Trusted publishing: npm exchanges this workflow's OIDC token for a
       # one-time publish grant. No NPM_TOKEN secret exists anywhere.
-      - name: Publish to npm with provenance
+      - name: Stage publish to npm with provenance (human approval required)
         if: steps.existing.outputs.published == 'false'
-        run: npm publish --provenance
+        run: npm stage publish --provenance
