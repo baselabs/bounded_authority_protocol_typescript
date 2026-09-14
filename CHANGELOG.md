@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1] — 2026-09-14
+
+- The first provenance-bound release of this package: identical library content to 0.2.0
+  (which was terminal-seeded during the graduation rename and carries no registry
+  attestation), published through this repository's release workflow under npm trusted
+  publishing — the workflow stages with a signed provenance statement and a human approves
+  under 2FA.
+
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
 ## [0.2.0] — 2026-09-14
