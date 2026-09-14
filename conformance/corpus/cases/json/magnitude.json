@@ -1,0 +1,1 @@
+{"cases":[{"class":"maximum_plus_one","expected":{"verdict":"invalid"},"id":"json-decode-maximum-plus-one-magnitude","input":{"raw_file":"cases/json/magnitude-plus-one.raw","sha256_base64url":"xoHaOdcnOmokwVycrDp1Um_y7Pi6TuYDRqDHDIFjvbI"},"surface":"json.decode"}],"format":"bounded-authority-protocol-v1-conformance-cases","provenance":{"private_material_tracked":false}}

@@ -28,10 +28,10 @@ const utf8 = (b: Uint8Array) => utf8Str(b);
 const b64d = (s: string): Uint8Array => base64urlDecode(strUtf8(s));
 const b64e = (b: Uint8Array): string => utf8(base64urlEncode(b));
 
-// Locate the corpus: repo-relative priv/conformance/v1/corpus/ (dev mode). The runner is invoked
-// from sdks/typescript/, so the repo root is two levels up.
-const REPO_ROOT = pathResolve(fileURLToPath(import.meta.url), "..", "..", "..", "..");
-const CORPUS_DIR = join(REPO_ROOT, "priv", "conformance", "v1", "corpus");
+// Locate the corpus: the vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3
+// graduation discipline — no monorepo-relative path). The snapshot is byte-synced to the
+// certified priv/conformance/v1/corpus by the monorepo corpus-sync gate.
+const CORPUS_DIR = join(pathResolve(fileURLToPath(import.meta.url), ".."), "corpus");
 
 // The INVALID sentinel: any genuine protocol rejection maps to this; a thrown non-InvalidError is a
 // runner/SDK bug and MUST abort (the InvalidError whitelist discipline, ADR 0014 Decision 6).

@@ -32,8 +32,10 @@ const b64e = (b: Uint8Array): string => utf8(base64urlEncode(b));
 
 // Locate the corpus: repo-relative priv/conformance/v2/corpus/ (dev mode). The runner is invoked
 // from sdks/typescript/, so the repo root is two levels up.
-const REPO_ROOT = pathResolve(fileURLToPath(import.meta.url), "..", "..", "..", "..");
-const CORPUS_DIR = join(REPO_ROOT, "priv", "conformance", "v2", "corpus");
+// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation
+// discipline — no monorepo-relative path), byte-synced to the certified corpus by the
+// monorepo corpus-sync gate.
+const CORPUS_DIR = join(pathResolve(fileURLToPath(import.meta.url), ".."), "corpus-v2");
 
 // The INVALID sentinel: any genuine protocol rejection maps to this; a thrown non-InvalidError is a
 // runner/SDK bug and MUST abort (the InvalidError whitelist discipline, ADR 0014 Decision 6).
@@ -782,7 +784,7 @@ function canonicalJson(v: unknown): string {
 // verify-import boundary leg unchanged from v1 (every key a valid verification case declares must
 // be imported at the Ed25519 verify boundary).
 
-const CURATED_CENSUS_PATH = join(REPO_ROOT, "conformance", "generators", "curated-inputs-v2.json");
+const CURATED_CENSUS_PATH = join(pathResolve(fileURLToPath(import.meta.url), ".."), "curated-inputs-v2.json");
 
 const PUBLIC_KEY_LABEL = /public.*key|key.*public|verification.*key|holder.*key|issuer.*key/i;
 const PUBLIC_KEY_DENY = /fingerprint|thumbprint|digest|hash/i;
