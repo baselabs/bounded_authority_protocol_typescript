@@ -1,3 +1,6 @@
 node_modules/
 dist/
 /.forge/
+
+# Kimosabe local process state (family convention: never tracked)
+.kimosabe/

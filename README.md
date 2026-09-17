@@ -167,6 +167,18 @@ the host — a facts value is evidence, never a credential.
 - [ADR 0014 — cross-language verifier SDKs](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md) ·
   [ADR 0015 — graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md)
 
+## Related packages
+
+- [bounded_authority_protocol (monorepo)](https://github.com/baselabs/bounded_authority_protocol) —
+  the protocol source: specifications, ADRs, the certified conformance corpora this
+  package vendors, and the reference Elixir implementation.
+- [@bounded-authority-protocol/signer](https://www.npmjs.com/package/@bounded-authority-protocol/signer) —
+  the holder/issuer companion: signs proofs, grants, boundary anchors, and key
+  transitions through a caller-owned key handle. This verifier holds no private keys;
+  the signer produces the bytes it checks.
+- This package on npm:
+  [@bounded-authority-protocol/verifier](https://www.npmjs.com/package/@bounded-authority-protocol/verifier).
+
 ## Development
 
 ```bash

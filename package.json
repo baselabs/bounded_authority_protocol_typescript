@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "license-check": "node tools/license-check.mjs",
+    "check:currency": "node tools/check-currency.mjs",
     "test": "node --test --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
     "conformance": "tsx conformance/run.ts",
@@ -27,11 +28,11 @@
     "census": "tsx conformance/census.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "eslint": "^10.9.1",
-    "tsx": "^4.23.12",
+    "@types/node": "^26.6.1",
+    "eslint": "^10.10.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.68.0"
+    "typescript-eslint": "^8.70.0"
   },
   "repository": {
     "type": "git",

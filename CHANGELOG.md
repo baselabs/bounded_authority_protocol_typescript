@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased]
+
+- Aligned with BAP 0.4.1 (published 2026-09-17; no wire-format or public-API change):
+  the vendored v1, v2, and local-loopback conformance snapshots were compared
+  byte-for-byte against the monorepo's `priv/conformance` at `main` — no delta, so no
+  corpus rotation is required.
+- Tri-platform CI (the family build bar): the verify battery now runs on ubuntu-24.04,
+  macos-latest, and windows-latest, and a `.gitattributes` eol policy keeps the
+  byte-exact corpora conversion-free on any clone.
+- Dependency-currency gate (latest-first, the family ADR 0032 shape):
+  `tools/check-currency.mjs` classifies `pnpm outdated` data — resolvable drift fails,
+  deliberate pins carry inline reasons (typescript stays on 6.x pending the 7.x
+  native-compiler review), and an unverifiable currency state fails closed. Dev
+  dependencies refreshed to latest: tsx 4.23.13, @types/node 26.6.1, eslint 10.10.0,
+  typescript-eslint 8.70.0.
+- Node toolchain pinned in lockstep: `.tool-versions` (asdf, 22.23.1 — the family pin)
+  and CI's `node-version` now agree; `engines.node >= 22` stays the consumer-facing
+  floor.
+- README: related-packages cross-links (the protocol monorepo, this package's npm page,
+  and the `@bounded-authority-protocol/signer` sibling).
+
 ## [0.2.1] — 2026-09-14
 
 - The first provenance-bound release of this package: identical library content to 0.2.0

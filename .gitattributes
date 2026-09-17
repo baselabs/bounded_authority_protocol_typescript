@@ -1,0 +1,7 @@
+# Tri-platform eol policy (family build bar, BAP ADR 0031): text files normalize to LF
+# so a Windows clone under core.autocrlf=true cannot rewire line endings; the
+# digest-pinned conformance corpora are byte-exact and carry no conversion at all.
+* text=auto eol=lf
+conformance/corpus/** -text
+conformance/corpus-v2/** -text
+conformance/corpus-local-loopback-http/** -text
