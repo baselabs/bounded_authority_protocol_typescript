@@ -230,3 +230,9 @@ details.decode pre { margin: 0; padding: 12px; max-height: 240px; overflow: auto
 /* bench: demo-identity strip above the lanes */
 .id-strip { display: flex; gap: 10px; margin: 18px 0 0; flex-wrap: wrap; }
 .keychip.grow { flex: 1 1 280px; }
+
+/* bench: TWO lanes span the full row (the playground's 3-column grid does not apply here).
+   minmax(0,1fr): a no-wrap <code> inside a lane must not inflate its min-content width
+   and steal column width from its neighbor. */
+.lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.props code { white-space: normal; overflow-wrap: anywhere; }
