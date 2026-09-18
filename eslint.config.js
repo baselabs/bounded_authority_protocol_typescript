@@ -11,7 +11,9 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "conformance/**", "test/**"],
+    ignores: ["dist/**", "node_modules/**", "conformance/**", "test/**", "web/**", "site-dist/**"],
+  // web/** is the GitHub Pages site: DOM-context code, linted by its own tsc
+  // typecheck (pnpm typecheck:web) — outside the library purity gate above.
   },
   ...tseslint.configs.recommended,
   {

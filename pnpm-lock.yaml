@@ -8,9 +8,24 @@ importers:
 
   .:
     devDependencies:
+      '@bounded-authority-protocol/signer':
+        specifier: ^0.1.2
+        version: 0.1.2
+      '@noble/ed25519':
+        specifier: ^3.2.0
+        version: 3.2.0
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@types/node':
         specifier: ^26.6.1
         version: 26.6.1
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       eslint:
         specifier: ^10.10.0
         version: 10.10.0
@@ -28,6 +43,14 @@ importers:
         version: 8.70.0(eslint@10.10.0)(typescript@6.0.3)
 
 packages:
+
+  '@bounded-authority-protocol/signer@0.1.2':
+    resolution: {integrity: sha512-6FqbDRNW3Qq0RhN3dt6PH9K1wb2iQnuWcImgs8JfBkZzrjSjVyLnitfxkKWrXTdWQ5Tqtfk+2j3MPxDLQJVnFQ==}
+    engines: {node: '>=22'}
+
+  '@bounded-authority-protocol/verifier@0.2.2':
+    resolution: {integrity: sha512-2GEhe+xIh1nZMKRMs8RtgeYTQfChA1qLt/lWJAGpE5KwajR1spvk8cyvkrSEDWmT4HyNzDhFmbtelaMrzClfpA==}
+    engines: {node: '>=22'}
 
   '@cacheable/memory@2.2.0':
     resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
@@ -250,6 +273,13 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
+  '@noble/ed25519@3.2.0':
+    resolution: {integrity: sha512-criDgRlnUA09hchYrTy/JUWPIEap5rZxQe6wDWzRx51oWWpDRcUpuNzlgPxDJaOK6AsW9c0wKcj3rKRv6t+bPQ==}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
+
   '@types/esrecurse@4.3.1':
     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
 
@@ -338,9 +368,15 @@ packages:
     resolution: {integrity: sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==}
     engines: {node: 18 || 20 || >=22}
 
+  base64-js@1.5.1:
+    resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
+
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
     engines: {node: 20 || >=22}
+
+  buffer@6.0.3:
+    resolution: {integrity: sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==}
 
   cacheable@2.5.0:
     resolution: {integrity: sha512-60cyAOytib/OzBw1JNSoSV/boK1AtHryDIjvVBk7XbN4ugfkM3+Sry7fEjNgPMGgOjuaZPAp8ruZ0Cxafwyq9g==}
@@ -461,6 +497,9 @@ packages:
 
   hookified@2.2.0:
     resolution: {integrity: sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==}
+
+  ieee754@1.2.1:
+    resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -613,6 +652,12 @@ packages:
 
 snapshots:
 
+  '@bounded-authority-protocol/signer@0.1.2':
+    dependencies:
+      '@bounded-authority-protocol/verifier': 0.2.2
+
+  '@bounded-authority-protocol/verifier@0.2.2': {}
+
   '@cacheable/memory@2.2.0':
     dependencies:
       '@cacheable/utils': 2.5.0
@@ -757,6 +802,10 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
+  '@noble/ed25519@3.2.0': {}
+
+  '@noble/hashes@2.4.0': {}
+
   '@types/esrecurse@4.3.1': {}
 
   '@types/estree@1.0.9': {}
@@ -873,9 +922,16 @@ snapshots:
 
   balanced-match@4.0.4: {}
 
+  base64-js@1.5.1: {}
+
   brace-expansion@5.0.12:
     dependencies:
       balanced-match: 4.0.4
+
+  buffer@6.0.3:
+    dependencies:
+      base64-js: 1.5.1
+      ieee754: 1.2.1
 
   cacheable@2.5.0:
     dependencies:
@@ -1033,6 +1089,8 @@ snapshots:
   hookified@1.15.1: {}
 
   hookified@2.2.0: {}
+
+  ieee754@1.2.1: {}
 
   ignore@5.3.2: {}
 

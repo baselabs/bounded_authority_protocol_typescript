@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAP verifier — the resource's side, in your browser</title>
+<meta name="description" content="The verify side of the Bounded Authority Protocol: check envelopes, decode grants and proofs, get cryptographic facts — deterministically, with no reason codes for attackers. Runs the real verifier package in your browser.">
+<link rel="stylesheet" href="./styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%230f172a'/%3E%3Ctext x='24' y='32' font-family='Arial,sans-serif' font-size='19' font-weight='800' text-anchor='middle' fill='%2334d399'%3E[BAP]%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-key"><path d="M10.6 13.4L21 3"/><path d="M18 4l2 2"/><path d="M15 7l2 2"/><circle cx="7.2" cy="16.8" r="3.8"/></g>
+    <g id="i-seal"><path d="M6 21h12"/><path d="M8 21v-2c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2v2"/><path d="M12 3a3.2 3.2 0 0 1 3.2 3.2c0 2.2-3.2 3.3-3.2 5.8 0-2.5-3.2-3.6-3.2-5.8A3.2 3.2 0 0 1 12 3z"/></g>
+    <g id="i-person"><circle cx="12" cy="8" r="3.3"/><path d="M5.2 20.5a6.8 6.8 0 0 1 13.6 0"/></g>
+    <g id="i-shield"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M8.8 12l2.2 2.2 4.2-4.2"/></g>
+    <g id="i-doc"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M10 12h5"/><path d="M10 16h5"/></g>
+    <g id="i-lock"><rect x="6" y="11" width="12" height="9" rx="2"/><path d="M9 11V8a3 3 0 0 1 6 0v3"/></g>
+    <g id="i-ban"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></g>
+    <g id="i-alert"><path d="M12 4l9 16H3z"/><path d="M12 10.5v4"/><path d="M12 17.5h.01"/></g>
+    <g id="i-x"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/></g>
+    <g id="i-check"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.3l2.4 2.4 4.6-4.9"/></g>
+    <g id="i-terminal"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 10l2.6 2-2.6 2"/><path d="M12.5 14h4"/></g>
+    <g id="i-wire"><path d="M4 12c2.5-4.5 5.5-4.5 8 0s5.5 4.5 8 0"/></g>
+  </defs>
+</svg>
+
+<header class="familynav">
+  <nav>
+    <span class="brand"><span class="wordmark"><i>[</i>BAP<i>]</i></span></span>
+    <span class="fam">
+      <a href="https://baselabs.github.io/bounded_authority_protocol/" title="The protocol hub">Protocol</a>
+      <a href="https://baselabs.github.io/bounded_authority_signer_typescript/" title="The signer package — with the live envelope playground">Signer</a>
+      <a href="#" class="here" title="You are here">Verifier</a>
+      <a href="https://github.com/baselabs/bounded_authority_report_adapter" title="The Elixir reference implementation">Elixir&nbsp;reference</a>
+    </span>
+    <a class="gh" href="https://github.com/baselabs/bounded_authority_protocol_typescript">GitHub&nbsp;↗</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <p class="kicker"><span class="wordmark hero-mark"><i>[</i>BAP<i>]</i></span> Bounded Authority Protocol · the verifier package</p>
+    <h1>The resource’s side of BAP:<br><em>check the envelope, keep the facts</em>.</h1>
+    <p class="lede">Somewhere between your MCP server and the caller, a question has to be answered
+    without trusting anyone: <strong>is this request authorized — provably?</strong> The verifier
+    package answers it deterministically: issuer signature, holder binding, operation match, time
+    window — cryptographic facts, no reason codes, no oracles. This page runs the real package.</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#bench"><svg class="ic"><use href="#i-terminal"/></svg> Open the bench</a>
+      <a class="btn ghost" href="#install">npm i @bounded-authority-protocol/verifier</a>
+    </div>
+    <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier never sees keys — only bytes. The demo envelope below is minted
+    in your browser by the signer package; this package just judges it.</p>
+    <ul class="badges">
+      <li>npm 0.2.2</li><li>CI: green on macOS · Linux · Windows</li><li>pure, deterministic verify path</li>
+    </ul>
+  </div>
+</section>
+
+<main>
+<section id="why" class="wrap why">
+  <div class="why-head">
+    <h2>What verification owes you</h2>
+    <p>Authorization decisions get audited, disputed, and attacked. A verifier that explains
+    itself becomes an oracle. This one doesn’t.</p>
+  </div>
+  <div class="grid3">
+    <article class="whycard">
+      <h3>Facts, not feelings.</h3>
+      <p class="pain">“The token looked valid” is not an answer your auditors, or your incident
+      review, can use.</p>
+      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> checkEnvelope returns the binding facts — issuer identity, holder key
+      fingerprint, operation, window — <strong>or exactly {"ok":false}</strong>. Never a maybe.</p>
+    </article>
+    <article class="whycard">
+      <h3>No oracle for attackers.</h3>
+      <p class="pain">Verbose verifiers leak which check failed — free reconnaissance for anyone
+      probing your boundary.</p>
+      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The result is closed: one invalid, <strong>no reason, no partial</strong>.
+      Your logs record what YOU choose; the caller learns nothing.</p>
+    </article>
+    <article class="whycard">
+      <h3>Pure and deterministic.</h3>
+      <p class="pain">A verifier that reads the clock, the network, or the environment decides
+      differently on Tuesday.</p>
+      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The verify path is pure — no I/O, no clock, no RNG —
+      <strong>enforced by its own lint gate</strong>, and proven against certified conformance corpora.</p>
+    </article>
+  </div>
+</section>
+
+<section id="bench" class="wrap">
+  <div class="sec-head">
+    <h2>The bench</h2>
+    <p>Everything is live: this page bundles the real verifier and signer packages. Step 1 mints a
+    genuine envelope in your browser — then judge it, decode it, and try to sneak one past.</p>
+    <button id="reset" class="btn subtle"><svg class="ic"><use href="#i-key"/></svg> New keys · reset</button>
+  </div>
+
+  <div class="lanes">
+    <article class="lane issuer" id="lane-mint">
+      <header><svg class="ic"><use href="#i-seal"/></svg> An envelope arrives <span class="role-badge">demo issuance</span></header>
+      <div class="keychip" id="chip-issuer"></div>
+      <div class="keychip" id="chip-holder"></div>
+      <dl class="props">
+        <div><dt>claimed</dt><dd><code>transfer</code> · <code>POST /invoke</code> · <code>amount 5000</code></dd></div>
+        <div><dt>window</dt><dd>t=1000 → 2000 <span class="dim">(evaluated at 1500)</span></dd></div>
+      </dl>
+      <button id="btn-mint" class="btn actorbtn issuer"><svg class="ic"><use href="#i-seal"/></svg> Mint the demo envelope</button>
+      <div class="card-slot" id="slot-grant" data-empty="the issuer-signed grant appears here"></div>
+      <div class="card-slot" id="slot-proof" data-empty="the holder proof appears here"></div>
+    </article>
+
+    <article class="lane verifier" id="lane-verifier">
+      <header><svg class="ic"><use href="#i-shield"/></svg> Your resource <span class="role-badge">the verifier</span></header>
+      <dl class="props">
+        <div><dt>trusts issuer key</dt><dd><code id="trust-key">—</code></dd></div>
+        <div><dt>expects</dt><dd>the request as minted — nothing more</dd></div>
+      </dl>
+      <button id="btn-verify" class="btn actorbtn verifier" disabled><svg class="ic"><use href="#i-shield"/></svg> checkEnvelope</button>
+      <div class="verdict" id="verdict" data-state="idle">
+        <span class="verdict-mark"><svg class="ic"><use href="#i-terminal"/></svg></span>
+        <span class="verdict-text">verify an envelope to see the fact sheet</span>
+      </div>
+      <details id="facts" open><summary>fact sheet</summary><pre id="facts-body">—</pre></details>
+    </article>
+
+    <article class="lane holder" id="lane-decode">
+      <header><svg class="ic"><use href="#i-doc"/></svg> Decode <span class="role-badge">no trust needed</span></header>
+      <p class="dim" style="font-size:.85rem;margin:0">decodeGrant / decodeProof read the envelope’s own
+      bytes — signatures checked, contents listed.</p>
+      <details class="decode" open><summary>grant (decodeGrant)</summary><pre id="decode-grant">—</pre></details>
+      <details class="decode" open><summary>proof (decodeProof)</summary><pre id="decode-proof">—</pre></details>
+    </article>
+  </div>
+
+  <div class="tamper">
+    <h3><svg class="ic"><use href="#i-wire"/></svg> Tamper deck <small>— five real attempts, five real INVALIDs</small></h3>
+    <div class="tamper-btns">
+      <button class="btn danger" data-tamper="payload" disabled>Replay against a modified request → amount 9000</button>
+      <button class="btn danger" data-tamper="operation" disabled>Claim a different operation</button>
+      <button class="btn danger" data-tamper="expiry" disabled>Evaluate after expiry</button>
+      <button class="btn danger" data-tamper="impostor" disabled>Steal the grant with another key</button>
+      <button class="btn danger" data-tamper="issuer" disabled>Wrong issuer trusted</button>
+    </div>
+    <p class="hint" id="tamper-hint">Mint and verify first — then try to sneak one past.</p>
+  </div>
+
+  <div class="wireviewer">
+    <h3><svg class="ic"><use href="#i-terminal"/></svg> Wire viewer <small>— click an artifact to inspect the real bytes</small></h3>
+    <div class="seg-tabs" id="seg-tabs"></div>
+    <pre class="wire" id="wire-body">nothing selected yet</pre>
+  </div>
+</section>
+
+<section class="props-band">
+  <div class="wrap grid4">
+    <article><svg class="ic big"><use href="#i-lock"/></svg><h3>Verify-only</h3>
+      <p>The package produces no signatures and holds no keys — it consumes bytes and returns facts. The signing side lives in the signer package.</p></article>
+    <article><svg class="ic big"><use href="#i-ban"/></svg><h3>Closed results</h3>
+      <p>Ok&lt;Facts&gt; or {"ok":false}. No error taxonomy to leak, no partial acceptance to abuse.</p></article>
+    <article><svg class="ic big"><use href="#i-alert"/></svg><h3>Profile separation</h3>
+      <p>Standard and local-loopback proofs never mix: each family verifies through its own check function and rejects the other.</p></article>
+    <article><svg class="ic big"><use href="#i-x"/></svg><h3>Conformance-proven</h3>
+      <p>Certified corpora from the protocol monorepo run in CI — the bytes this page verifies are the bytes the spec froze.</p></article>
+  </div>
+</section>
+
+<section class="wrap" id="surface">
+  <div class="sec-head"><h2>The verification surface</h2></div>
+  <table class="signers">
+    <thead><tr><th>Function</th><th>Answers</th></tr></thead>
+    <tbody>
+      <tr><td><code>checkEnvelope</code></td><td>grant + proof against an expected request — the resource’s entry point</td></tr>
+      <tr><td><code>checkLocalLoopbackHttpEnvelope</code></td><td>same, for the <code>ba+loopback-proof</code> profile (canonical loopback targets only)</td></tr>
+      <tr><td><code>verifyGrant</code></td><td>a grant standalone against one trusted issuer</td></tr>
+      <tr><td><code>decodeGrant</code> / <code>decodeProof</code></td><td>signature-checked contents of either compact — what the bench shows</td></tr>
+      <tr><td><code>verifyHistoricalAnchor</code> / <code>verifyKeyTransition</code></td><td>the historical surfaces — boundary anchors and key rotations</td></tr>
+      <tr><td><code>checkChain</code> / <code>verifyAnchoredExport</code></td><td>consumption chains and anchored exports</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="wrap" id="install">
+  <div class="sec-head"><h2>Install</h2></div>
+  <pre class="code slim">npm i @bounded-authority-protocol/verifier    # Node >= 22, zero runtime dependencies</pre>
+</section>
+</main>
+
+<footer class="familynav footer">
+  <nav>
+    <span class="brand"><span class="wordmark"><i>[</i>BAP<i>]</i></span></span>
+    <span class="fam">
+      <a href="https://baselabs.github.io/bounded_authority_protocol/">Protocol</a>
+      <a href="https://www.npmjs.com/package/@bounded-authority-protocol/verifier">Verifier</a>
+      <a href="https://baselabs.github.io/bounded_authority_signer_typescript/">Signer</a>
+      <a href="https://github.com/baselabs/bounded_authority_report_adapter">Elixir&nbsp;reference</a>
+    </span>
+    <span class="fine">Apache-2.0 · bundled from this repository’s source with the published signer package</span>
+  </nav>
+</footer>
+
+<script src="./app.js"></script>
+</body>
+</html>

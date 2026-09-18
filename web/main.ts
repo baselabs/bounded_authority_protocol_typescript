@@ -1,0 +1,291 @@
+// The bench — the verifier package's live page. The REAL code runs here:
+// this repository's verifier source (bundled) judges an envelope minted in
+// the browser by the published @bounded-authority-protocol/signer package.
+// No mocks, no server; the demo keys live only in this page.
+import { keygen, sign as nobleSign } from "@noble/ed25519";
+import { signGrant, signReport, type KeyHandle } from "@bounded-authority-protocol/signer";
+import { checkEnvelope, decodeGrant, decodeProof, thumbprint } from "../src/index.js";
+
+interface CustodyKey {
+  pub: Uint8Array;
+  sign: (m: Uint8Array) => Promise<Uint8Array>;
+  mode: "WebCrypto non-extractable" | "in-page (noble)";
+}
+
+async function makeKey(): Promise<CustodyKey> {
+  try {
+    const kp = (await crypto.subtle.generateKey({ name: "Ed25519" } as Algorithm, false, ["sign"])) as CryptoKeyPair;
+    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+    return {
+      pub: new Uint8Array(raw),
+      sign: async (m) => new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, kp.privateKey, m as BufferSource)),
+      mode: "WebCrypto non-extractable",
+    };
+  } catch {
+    const kp = keygen();
+    return { pub: new Uint8Array(kp.publicKey), sign: async (m) => nobleSign(m, kp.secretKey), mode: "in-page (noble)" };
+  }
+}
+
+const b64 = (b: Uint8Array): string => Buffer.from(b).toString("base64url");
+const jwkThumb = (pub: Uint8Array): string => thumbprint({ kty: "OKP", crv: "Ed25519", x: b64(pub) });
+
+const SCENE = {
+  issuer: "https://issuer.example.test",
+  audience: "https://resource.example.test",
+  targetUri: "https://resource.example.test/invoke",
+  invocationId: "550e8400-e29b-41d4-a716-446655440000",
+  grantId: "urn:demo:grant:1",
+  proofId: "urn:demo:proof:1",
+  issuedAt: 1000, notBefore: 1000, expiresAt: 2000, evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300,
+};
+const castArguments = (): { t: "object"; v: Map<string, { t: "int"; v: number }> } => ({
+  t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]),
+});
+
+interface Actor { key: CustodyKey; thumb: string; keyId: string }
+let issuer: Actor, holder: Actor, impostor: Actor;
+let grantCompact: Uint8Array | null = null;
+let proofCompact: Uint8Array | null = null;
+let lastTamper: string | null = null;
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
+const bMint = $<HTMLButtonElement>("btn-mint"), bVerify = $<HTMLButtonElement>("btn-verify");
+const tamperBtns = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-tamper]"));
+
+const handle = (a: Actor, extra: Partial<KeyHandle> = {}): KeyHandle => ({
+  sign: (m) => a.key.sign(m),
+  publicKey: () => a.key.pub,
+  thumbprint: () => a.thumb,
+  keyIdentity: () => ({ keyId: a.keyId, publicKey: a.key.pub }),
+  ...extra,
+});
+
+function flash(lane: HTMLElement): void {
+  lane.classList.remove("flash");
+  void lane.offsetWidth;
+  lane.classList.add("flash");
+}
+
+function setChip(el: HTMLElement, a: Actor, note: string): void {
+  el.innerHTML = `<b><svg class="ic"><use href="#i-key"/></svg> ${a.keyId}</b>
+    <span class="thumb">jkt ${a.thumb.slice(0, 10)}…</span><span>${note} · ${a.key.mode}</span>`;
+}
+
+function artifactCard(kind: "grant" | "proof", typ: string, extra: string, onPick: () => void): HTMLButtonElement {
+  const card = document.createElement("button");
+  card.className = `artifact-card ${kind}`;
+  card.innerHTML = `<span class="t"><svg class="ic"><use href="#i-doc"/></svg> ${kind.toUpperCase()}</span>
+    <span class="meta">typ: ${typ} · ${extra}</span>`;
+  card.addEventListener("click", onPick);
+  return card;
+}
+
+// ---------- wire viewer ----------
+const wireBody = $("wire-body"), segTabs = $("seg-tabs");
+let currentBytes: { label: string; compact: Uint8Array } | null = null;
+
+function showWire(label: string, compact: Uint8Array): void {
+  currentBytes = { label, compact };
+  document.querySelectorAll(".artifact-card.selected").forEach((c) => c.classList.remove("selected"));
+  const segs = Buffer.from(compact).toString("utf8").split(".");
+  segTabs.innerHTML = "";
+  const names = ["protected (header)", "payload", "signature"];
+  segs.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = names[i] ?? `segment ${i}`;
+    if (i === 0) b.classList.add("on");
+    b.addEventListener("click", () => renderSeg(segs, i, names[i] ?? `segment ${i}`));
+    segTabs.appendChild(b);
+  });
+  renderSeg(segs, 0, names[0]);
+}
+
+function renderSeg(segs: string[], idx: number, name: string): void {
+  Array.from(segTabs.children).forEach((c, i) => c.classList.toggle("on", i === idx));
+  const raw = Buffer.from(segs[idx], "base64url");
+  let body: string;
+  if (idx === 2) body = Array.from(raw, (b) => b.toString(16).padStart(2, "0")).join("");
+  else {
+    const utf8 = raw.toString("utf8");
+    try { body = JSON.stringify(JSON.parse(utf8), null, 2); } catch { body = utf8; }
+  }
+  wireBody.innerHTML = `<span class="k">// ${currentBytes?.label ?? ""} — ${name} (${raw.length} bytes)\n</span>`;
+  wireBody.append(body);
+}
+
+function mark(card: HTMLElement): void {
+  document.querySelectorAll(".artifact-card.selected").forEach((c) => c.classList.remove("selected"));
+  card.classList.add("selected");
+}
+
+// ---------- rendering helpers ----------
+function factsReplacer(_k: string, v: unknown): unknown {
+  if (v instanceof Map) return Object.fromEntries(v);
+  if (v instanceof Uint8Array) return `hex:${Array.from(v, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32)}…`;
+  return v;
+}
+
+function setVerdict(state: "idle" | "ok" | "fail", html: string): void {
+  const v = $("verdict");
+  v.dataset.state = state;
+  const icon = state === "ok" ? "#i-check" : state === "fail" ? "#i-x" : "#i-terminal";
+  v.innerHTML = `<span class="verdict-mark"><svg class="ic"><use href="${icon}"/></svg></span><span class="verdict-text">${html}</span>`;
+  if (state !== "idle") flash($("lane-verifier"));
+}
+
+function expected(over: Record<string, unknown> = {}) {
+  return {
+    trustedIssuer: { keyId: issuer.keyId, publicKey: issuer.key.pub },
+    issuer: SCENE.issuer, audience: SCENE.audience,
+    method: "POST", targetUri: SCENE.targetUri, invocationId: SCENE.invocationId,
+    operation: "transfer", castArguments: castArguments(),
+    evaluationTime: SCENE.evaluationTime, clockSkew: SCENE.clockSkew, proofMaxAge: SCENE.proofMaxAge,
+    nonce: { kind: "not_required" as const },
+    ...over,
+  };
+}
+
+function renderDecode(): void {
+  if (!grantCompact || !proofCompact) return;
+  const g = decodeGrant(grantCompact);
+  $("decode-grant").textContent = g.ok ? JSON.stringify(g.value, factsReplacer, 2) : JSON.stringify(g, null, 2);
+  const p = decodeProof(proofCompact);
+  $("decode-proof").textContent = p.ok ? JSON.stringify(p.value, factsReplacer, 2) : JSON.stringify(p, null, 2);
+}
+
+// ---------- actions ----------
+async function doMint(): Promise<void> {
+  const g = await signGrant({
+    issuer: SCENE.issuer, grantId: SCENE.grantId, audiences: [SCENE.audience],
+    issuedAt: SCENE.issuedAt, notBefore: SCENE.notBefore, expiresAt: SCENE.expiresAt,
+    holderThumbprint: holder.thumb,
+    operations: [{ name: "transfer", selectors: [{ kind: "all" } as never] }],
+  }, handle(issuer, { signingIdentity: () => ({ role: "issuer", keyId: issuer.keyId, publicKey: issuer.key.pub }) }));
+  if (!g.ok) { setVerdict("fail", `mint: signGrant → ${g.error}`); return; }
+  grantCompact = g.value.grant;
+
+  const r = await signReport({
+    grantCompact, operation: "transfer", method: "POST", targetUri: SCENE.targetUri,
+    invocationId: SCENE.invocationId, castArguments: castArguments(),
+  }, handle(holder), { issuedAt: SCENE.evaluationTime, proofId: SCENE.proofId });
+  if (!r.ok) { setVerdict("fail", `mint: signReport → ${r.error}`); return; }
+  proofCompact = r.value.proof;
+
+  const sg = $("slot-grant");
+  sg.textContent = "";
+  const cg = artifactCard("grant", "ba+grant", `jkt ${holder.thumb.slice(0, 8)}…`, () => { mark(cg); showWire("grant", grantCompact!); });
+  cg.style.marginBottom = "8px";
+  sg.appendChild(cg);
+  const sp = $("slot-proof");
+  sp.textContent = "";
+  const cp = artifactCard("proof", "dpop+jwt", "POST /invoke · amount 5000", () => { mark(cp); showWire("proof", proofCompact!); });
+  cp.id = "proof-card";
+  sp.appendChild(cp);
+
+  renderDecode();
+  flash($("lane-mint"));
+  bVerify.disabled = false;
+  tamperBtns.forEach((b) => (b.disabled = false));
+  setVerdict("idle", "envelope minted — now judge it");
+}
+
+function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof expected>): void {
+  const at = checkEnvelope(grant, proof, exp as never);
+  if (at.ok) {
+    setVerdict("ok", "ENVELOPE OK — cryptographic facts returned");
+    $("facts-body").textContent = JSON.stringify(at.value, factsReplacer, 2);
+    $("tamper-hint").className = "hint";
+    $("tamper-hint").textContent = "Now try to sneak one past — every button below produces a real, closed INVALID.";
+    return;
+  }
+  const why: Record<string, string> = {
+    payload: "request-digest binding — the proof commits to the digest of THIS request",
+    operation: "operation match — the grant and proof bind one operation",
+    expiry: "time window — grants and proofs expire",
+    impostor: "holder binding — the grant names one holder key (jkt), and this proof was signed by another",
+    issuer: "issuer trust — your resource was told to trust a different issuer key",
+  };
+  setVerdict("fail", "VERIFICATION FAILED — <b>INVALID</b>");
+  $("facts-body").textContent = JSON.stringify(at, null, 2);
+  const which = lastTamper ? why[lastTamper] : undefined;
+  $("tamper-hint").className = "hint fail";
+  $("tamper-hint").textContent = which
+    ? `${which} — and the verifier returned exactly {"ok":false}. No reason, no partial: no oracle for an attacker.`
+    : 'the verifier returned exactly {"ok":false} — no reason, no partial.';
+}
+
+function doVerify(): void {
+  if (!grantCompact || !proofCompact) return;
+  lastTamper = null;
+  verifyWith(grantCompact, proofCompact, expected());
+  showWire("proof (as verified)", proofCompact);
+}
+
+async function tamper(kind: string): Promise<void> {
+  if (!grantCompact || !proofCompact) return;
+  lastTamper = kind;
+  const proofCard = $("proof-card");
+  switch (kind) {
+    case "payload":
+      verifyWith(grantCompact, proofCompact, expected({
+        castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 9000 }]]) },
+      }));
+      showWire("proof (byte-identical — the REQUEST changed)", proofCompact);
+      return;
+    case "operation":
+      verifyWith(grantCompact, proofCompact, expected({ operation: "withdraw" }));
+      return;
+    case "expiry":
+      verifyWith(grantCompact, proofCompact, expected({ evaluationTime: 2600 }));
+      return;
+    case "impostor": {
+      const r = await signReport({
+        grantCompact, operation: "transfer", method: "POST", targetUri: SCENE.targetUri,
+        invocationId: SCENE.invocationId, castArguments: castArguments(),
+      }, handle(impostor), { issuedAt: SCENE.evaluationTime, proofId: "urn:demo:proof:stolen" });
+      if (!r.ok) { setVerdict("fail", `mint: signReport → ${r.error}`); return; }
+      proofCompact = r.value.proof;
+      if (proofCard) { proofCard.classList.add("tampered"); mark(proofCard); }
+      renderDecode();
+      verifyWith(grantCompact, proofCompact, expected());
+      showWire("impostor proof", proofCompact);
+      return;
+    }
+    case "issuer":
+      verifyWith(grantCompact, proofCompact, expected({ trustedIssuer: { keyId: issuer.keyId, publicKey: impostor.key.pub } }));
+      return;
+  }
+}
+
+// ---------- boot ----------
+async function reset(): Promise<void> {
+  [issuer, holder, impostor] = await Promise.all([
+    (async () => { const k = await makeKey(); return { key: k, thumb: jwkThumb(k.pub), keyId: "issuer-key" }; })(),
+    (async () => { const k = await makeKey(); return { key: k, thumb: jwkThumb(k.pub), keyId: "holder-key" }; })(),
+    (async () => { const k = await makeKey(); return { key: k, thumb: jwkThumb(k.pub), keyId: "impostor-key" }; })(),
+  ]);
+  grantCompact = proofCompact = null;
+  setChip($("chip-issuer"), issuer, "issuer role (demo)");
+  setChip($("chip-holder"), holder, "holder (demo)");
+  $("trust-key").textContent = `${issuer.keyId} · jkt ${issuer.thumb.slice(0, 8)}…`;
+  $("slot-grant").textContent = "";
+  $("slot-proof").textContent = "";
+  $("decode-grant").textContent = "—";
+  $("decode-proof").textContent = "—";
+  bVerify.disabled = true;
+  tamperBtns.forEach((b) => (b.disabled = true));
+  $("facts-body").textContent = "—";
+  $("tamper-hint").className = "hint";
+  $("tamper-hint").textContent = "Mint and verify first — then try to sneak one past.";
+  segTabs.innerHTML = "";
+  wireBody.textContent = "nothing selected yet";
+  setVerdict("idle", "verify an envelope to see the fact sheet");
+}
+
+bMint.addEventListener("click", () => void doMint());
+bVerify.addEventListener("click", doVerify);
+$("reset").addEventListener("click", () => void reset());
+tamperBtns.forEach((b) => b.addEventListener("click", () => void tamper(b.dataset.tamper!)));
+
+void reset();

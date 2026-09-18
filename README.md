@@ -129,7 +129,8 @@ The full export list is [`src/index.ts`](src/index.ts).
 
 This package verifies; it never signs and never holds a private key. Its sibling
 [`@bounded-authority-protocol/signer`](https://www.npmjs.com/package/@bounded-authority-protocol/signer)
-produces the signed bytes — and it does so by calling THIS package's producer functions
+produces the signed bytes — see the whole three-role flow run live in your browser at the
+[envelope playground](https://baselabs.github.io/bounded_authority_signer_typescript/) — and it does so by calling THIS package's producer functions
 (`grantSigningInput`, `proofSigningInput`, `boundaryAnchorSigningInput`,
 `keyTransitionSigningInput`) and delegating the cryptography to a caller-owned key handle.
 The dependency direction is one-way: the signer depends on the verifier at runtime

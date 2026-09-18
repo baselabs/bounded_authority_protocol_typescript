@@ -4,3 +4,7 @@ dist/
 
 # Kimosabe local process state (family convention: never tracked)
 .kimosabe/
+
+# Site build output and browser-session artifacts
+site-dist/
+.playwright-mcp/
