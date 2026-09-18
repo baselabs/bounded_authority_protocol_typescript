@@ -125,6 +125,95 @@ local-development proof profile (`localLoopbackHttpProofSigningInput` and friend
 `127.0.0.1`/`[::1]` targets only, mandatory nonce; standard `dpop+jwt` rejects its bytes).
 The full export list is [`src/index.ts`](src/index.ts).
 
+## Pairing with the signer
+
+This package verifies; it never signs and never holds a private key. Its sibling
+[`@bounded-authority-protocol/signer`](https://www.npmjs.com/package/@bounded-authority-protocol/signer)
+produces the signed bytes — and it does so by calling THIS package's producer functions
+(`grantSigningInput`, `proofSigningInput`, `boundaryAnchorSigningInput`,
+`keyTransitionSigningInput`) and delegating the cryptography to a caller-owned key handle.
+The dependency direction is one-way: the signer depends on the verifier at runtime
+(`^0.2.0`), never the reverse. Compatibility between the two is governed by the wire
+contract-majors — both packages carry majors 1 and 2 side by side — not by package
+version numbers.
+
+A production flow has three roles: the issuer mints a grant, the holder binds one
+invocation of it with a proof, and the resource verifies the pair through this package.
+
+```ts
+// Issuer — mint a grant. The private key never enters the signer; your handle
+// routes each sign() to your own custody (KMS, HSM, or an in-process test key).
+import { signGrant, signReport, type KeyHandle } from "@bounded-authority-protocol/signer";
+
+const issuerHandle: KeyHandle = {
+  sign: (message) => issuerCustody.sign(message),  // Ed25519, 64 bytes
+  publicKey: () => issuerPublicKey32,
+  thumbprint: () => issuerThumbprint,              // RFC 7638, base64url
+  // Grants additionally require an atomic issuer-role identity — the C1 gate:
+  // a holder-role handle fails closed before sign() is ever called.
+  signingIdentity: () => ({ role: "issuer", keyId: "issuer-key", publicKey: issuerPublicKey32 }),
+};
+
+const { value: { grant } } = await signGrant(
+  {
+    issuer: "https://issuer.example",
+    grantId: "g-1",
+    audiences: ["https://resource.example"],
+    issuedAt: 1_731_728_000,
+    notBefore: 1_731_728_000,
+    expiresAt: 1_733_728_000,
+    holderThumbprint,  // RFC 7638 base64url of the holder's public JWK
+    operations: [
+      { name: "transfer", selectors: [{ kind: "equals", path: ["amount"], value: { t: "int", v: 5000 } }] },
+    ],
+  },
+  issuerHandle,
+);
+
+// Holder — bind one invocation of that grant with a holder proof.
+const { value: envelope } = await signReport(
+  {
+    grantCompact: grant,
+    operation: "transfer",
+    method: "POST",
+    targetUri: "https://api.example.test/invoke",
+    invocationId: "urn:example:invocation:1",
+    castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]) },
+  },
+  holderHandle,
+);
+
+// Resource — THIS package, and nothing else. Facts, never a decision.
+import { checkEnvelope } from "@bounded-authority-protocol/verifier";
+
+const result = checkEnvelope(envelope.grant, envelope.proof, {
+  trustedIssuer: { keyId: "issuer-key", publicKey: issuerPublicKey32 },
+  issuer: "https://issuer.example",
+  audience: "https://resource.example",
+  method: "POST",
+  targetUri: "https://api.example.test/invoke",
+  invocationId: "urn:example:invocation:1",
+  operation: "transfer",
+  castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]) },
+  evaluationTime: 1_731_728_060,
+  clockSkew: 60,
+  proofMaxAge: 300,
+  nonce: { kind: "not_required" },
+});
+```
+
+Two properties make the pairing safe to build against:
+
+- **Key custody stays at the caller.** The signer's `KeyHandle` is a callback interface
+  (`sign`/`publicKey`/`thumbprint`, plus atomic `keyIdentity`/`signingIdentity` snapshots
+  for anchors, transitions, and role-gated grant signing). A handle fault or a
+  wrong-key rotation race fails loudly as `signing_failed` — the signer verifies every
+  signature against the resolved public key before assembly. The full contract is
+  documented in the [signer's README](https://github.com/baselabs/bounded_authority_signer_typescript#readme).
+- **The two packages cross-validate in CI.** Every compact the signer produces is
+  verified through this package as an independent oracle, so a drift between signing
+  and verifying surfaces in either repository's CI — never in production.
+
 ## Certified, not self-tested
 
 Every release of this SDK is verified against the protocol's published, cryptographically
@@ -175,7 +264,7 @@ the host — a facts value is evidence, never a credential.
 - [@bounded-authority-protocol/signer](https://www.npmjs.com/package/@bounded-authority-protocol/signer) —
   the holder/issuer companion: signs proofs, grants, boundary anchors, and key
   transitions through a caller-owned key handle. This verifier holds no private keys;
-  the signer produces the bytes it checks.
+  the signer produces the bytes it checks (see [Pairing with the signer](#pairing-with-the-signer)).
 - This package on npm:
   [@bounded-authority-protocol/verifier](https://www.npmjs.com/package/@bounded-authority-protocol/verifier).
 
@@ -188,6 +277,7 @@ pnpm test                    # unit + struct + façade corpus-vector tests
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 + key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
+pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 
 ## License

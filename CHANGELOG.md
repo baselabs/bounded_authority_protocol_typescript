@@ -1,14 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.2] — 2026-09-17
 
-- Aligned with BAP 0.4.1 (published 2026-09-17; no wire-format or public-API change):
-  the vendored v1, v2, and local-loopback conformance snapshots were compared
-  byte-for-byte against the monorepo's `priv/conformance` at `main` — no delta, so no
-  corpus rotation is required.
+No library-code change — toolchain and documentation alignment with the protocol family's
+2026-09-17 state (BAP 0.4.1, the tri-platform build bar, the dependency-currency gate).
+
+- BAP 0.4.1 (published 2026-09-17; no wire-format or public-API change): the vendored
+  v1, v2, and local-loopback conformance snapshots were compared byte-for-byte against
+  the monorepo's `priv/conformance` at `main` — no delta, so no corpus rotation was
+  required.
 - Tri-platform CI (the family build bar): the verify battery now runs on ubuntu-24.04,
-  macos-latest, and windows-latest, and a `.gitattributes` eol policy keeps the
-  byte-exact corpora conversion-free on any clone.
+  macos-latest, and windows-latest — observed green on all three lanes — and a
+  `.gitattributes` eol policy keeps the byte-exact corpora conversion-free on any clone.
 - Dependency-currency gate (latest-first, the family ADR 0032 shape):
   `tools/check-currency.mjs` classifies `pnpm outdated` data with the canonical
   `semver` range resolver — in-range resolvable drift fails (never pinnable),
@@ -18,10 +21,12 @@
   tsx 4.23.13, @types/node 26.6.1, eslint 10.10.0, typescript-eslint 8.70.0,
   semver 7.8.5 (the gate's resolver).
 - Node toolchain pinned in lockstep: `.tool-versions` (asdf, 22.23.1 — the family pin)
-  and CI's `node-version` now agree; `engines.node >= 22` stays the consumer-facing
-  floor.
-- README: related-packages cross-links (the protocol monorepo, this package's npm page,
-  and the `@bounded-authority-protocol/signer` sibling).
+  and CI's `node-version` agree; `engines.node >= 22` stays the consumer-facing floor.
+  The release lane pins its Node exactly (24.19.0, matching the signer's lane) and
+  SHA-pins `pnpm/action-setup` like every other action.
+- README: "Pairing with the signer" — the three-role production flow (issuer signs,
+  holder proves, resource verifies through this package), the key-custody and
+  cross-validation properties, and related-package cross-links.
 
 ## [0.2.1] — 2026-09-14
 
