@@ -100,18 +100,23 @@
     <button id="reset" class="btn subtle"><svg class="ic"><use href="#i-key"/></svg> New keys · reset</button>
   </div>
 
+  <div class="id-strip">
+    <div class="keychip grow" id="chip-issuer"></div>
+    <div class="keychip grow" id="chip-holder"></div>
+  </div>
+
   <div class="lanes">
     <article class="lane issuer" id="lane-mint">
       <header><svg class="ic"><use href="#i-seal"/></svg> An envelope arrives <span class="role-badge">demo issuance</span></header>
-      <div class="keychip" id="chip-issuer"></div>
-      <div class="keychip" id="chip-holder"></div>
       <dl class="props">
         <div><dt>claimed</dt><dd><code>transfer</code> · <code>POST /invoke</code> · <code>amount 5000</code></dd></div>
         <div><dt>window</dt><dd>t=1000 → 2000 <span class="dim">(evaluated at 1500)</span></dd></div>
       </dl>
       <button id="btn-mint" class="btn actorbtn issuer"><svg class="ic"><use href="#i-seal"/></svg> Mint the demo envelope</button>
-      <div class="card-slot" id="slot-grant" data-empty="the issuer-signed grant appears here"></div>
-      <div class="card-slot" id="slot-proof" data-empty="the holder proof appears here"></div>
+      <div class="slot-pair">
+        <div class="card-slot" id="slot-grant" data-empty="the grant appears here"></div>
+        <div class="card-slot" id="slot-proof" data-empty="the proof appears here"></div>
+      </div>
     </article>
 
     <article class="lane verifier" id="lane-verifier">
@@ -127,14 +132,14 @@
       </div>
       <details id="facts" open><summary>fact sheet</summary><pre id="facts-body">—</pre></details>
     </article>
+  </div>
 
-    <article class="lane holder" id="lane-decode">
-      <header><svg class="ic"><use href="#i-doc"/></svg> Decode <span class="role-badge">no trust needed</span></header>
-      <p class="dim" style="font-size:.85rem;margin:0">decodeGrant / decodeProof read the envelope’s own
-      bytes — signatures checked, contents listed.</p>
+  <div class="decode-row">
+    <h3><svg class="ic"><use href="#i-doc"/></svg> Decode <small>— decodeGrant / decodeProof read the envelope’s own bytes: signatures checked, contents listed. No trust needed.</small></h3>
+    <div class="decode-grid">
       <details class="decode" open><summary>grant (decodeGrant)</summary><pre id="decode-grant">—</pre></details>
       <details class="decode" open><summary>proof (decodeProof)</summary><pre id="decode-proof">—</pre></details>
-    </article>
+    </div>
   </div>
 
   <div class="tamper">

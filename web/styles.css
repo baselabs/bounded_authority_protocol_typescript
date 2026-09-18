@@ -216,3 +216,17 @@ pre.code.slim { padding: 12px 16px; font-size: .78rem; }
 details.decode { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 details.decode summary { cursor: pointer; padding: 7px 12px; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); background: var(--bg-soft); font-family: var(--mono); }
 details.decode pre { margin: 0; padding: 12px; max-height: 240px; overflow: auto; background: var(--hero); color: #a5f3fc; font-size: .72rem; }
+
+/* bench: breathing room */
+.lanes { gap: 22px; }
+.lane { padding: 20px; }
+.slot-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1; }
+.slot-pair .card-slot { min-height: 104px; }
+.decode-row { margin-top: 26px; border: 1.5px solid var(--line-2); border-radius: 14px; padding: 16px 18px; background: var(--bg-soft); }
+.decode-row h3 small { color: var(--muted); font-weight: 400; }
+.decode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 860px) { .decode-grid { grid-template-columns: 1fr; } .slot-pair { grid-template-columns: 1fr; } }
+
+/* bench: demo-identity strip above the lanes */
+.id-strip { display: flex; gap: 10px; margin: 18px 0 0; flex-wrap: wrap; }
+.keychip.grow { flex: 1 1 280px; }
