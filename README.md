@@ -144,6 +144,7 @@ invocation of it with a proof, and the resource verifies the pair through this p
 // Issuer — mint a grant. The private key never enters the signer; your handle
 // routes each sign() to your own custody (KMS, HSM, or an in-process test key).
 import { signGrant, signReport, type KeyHandle } from "@bounded-authority-protocol/signer";
+import { checkEnvelope } from "@bounded-authority-protocol/verifier";
 
 const issuerHandle: KeyHandle = {
   sign: (message) => issuerCustody.sign(message),  // Ed25519, 64 bytes
@@ -154,7 +155,8 @@ const issuerHandle: KeyHandle = {
   signingIdentity: () => ({ role: "issuer", keyId: "issuer-key", publicKey: issuerPublicKey32 }),
 };
 
-const { value: { grant } } = await signGrant(
+// SignerResult mirrors this package's Result<T>: check ok before reading value.
+const grantResult = await signGrant(
   {
     issuer: "https://issuer.example",
     grantId: "g-1",
@@ -162,37 +164,43 @@ const { value: { grant } } = await signGrant(
     issuedAt: 1_731_728_000,
     notBefore: 1_731_728_000,
     expiresAt: 1_733_728_000,
-    holderThumbprint,  // RFC 7638 base64url of the holder's public JWK
+    holderThumbprint,  // RFC 7638 base64url of the holder's public JWK (the thumbprint primitive)
     operations: [
       { name: "transfer", selectors: [{ kind: "equals", path: ["amount"], value: { t: "int", v: 5000 } }] },
     ],
   },
   issuerHandle,
 );
+if (!grantResult.ok) throw new Error(`signing failed: ${grantResult.error}`);
+const grantCompact = grantResult.value.grant;
 
-// Holder — bind one invocation of that grant with a holder proof.
-const { value: envelope } = await signReport(
+// Holder — bind one invocation of that grant with a holder proof. The holder's
+// handle is constructed exactly like the issuer's (reports need no
+// signingIdentity — proofs are holder-signed by definition), and the proof
+// timestamp is pinned the same way: this verifier reads no clock.
+const proofResult = await signReport(
   {
-    grantCompact: grant,
+    grantCompact: grantCompact,
     operation: "transfer",
     method: "POST",
     targetUri: "https://api.example.test/invoke",
-    invocationId: "urn:example:invocation:1",
+    invocationId: "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",  // a lowercase RFC 4122 UUID — the wire requires it
     castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]) },
   },
   holderHandle,
+  { issuedAt: 1_731_728_030 },
 );
+if (!proofResult.ok) throw new Error(`signing failed: ${proofResult.error}`);
+const envelope = proofResult.value;
 
 // Resource — THIS package, and nothing else. Facts, never a decision.
-import { checkEnvelope } from "@bounded-authority-protocol/verifier";
-
 const result = checkEnvelope(envelope.grant, envelope.proof, {
   trustedIssuer: { keyId: "issuer-key", publicKey: issuerPublicKey32 },
   issuer: "https://issuer.example",
   audience: "https://resource.example",
   method: "POST",
   targetUri: "https://api.example.test/invoke",
-  invocationId: "urn:example:invocation:1",
+  invocationId: "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d",
   operation: "transfer",
   castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]) },
   evaluationTime: 1_731_728_060,
@@ -210,9 +218,11 @@ Two properties make the pairing safe to build against:
   wrong-key rotation race fails loudly as `signing_failed` — the signer verifies every
   signature against the resolved public key before assembly. The full contract is
   documented in the [signer's README](https://github.com/baselabs/bounded_authority_signer_typescript#readme).
-- **The two packages cross-validate in CI.** Every compact the signer produces is
-  verified through this package as an independent oracle, so a drift between signing
-  and verifying surfaces in either repository's CI — never in production.
+- **The two packages cross-validate in CI.** The signer's test oracle produces
+  compacts through its own surface and verifies every one of them through THIS
+  package before release — signing-side drift is caught in the signer's CI against
+  the verifier version its lockfile resolves, and verifier-side changes are gated
+  by this package's certified conformance corpora.
 
 ## Certified, not self-tested
 
