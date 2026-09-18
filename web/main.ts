@@ -182,6 +182,25 @@ function accordion(title: string, chip: string | undefined, facts: unknown, open
   </div>`;
 }
 
+
+// Raw-JSON code box for the FACTS area (owner-directed: no formatted view) —
+// defensively hex any string that still carries control/lossy characters.
+function sanitize(v: unknown): unknown {
+  if (typeof v === "string" && /[\u0000-\u0008\u000e-\u001f\u007f-\u00ff\ufffd]/.test(v)) {
+    return "0x" + Array.from(v, (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  }
+  if (Array.isArray(v)) return v.map(sanitize);
+  if (v && typeof v === "object") {
+    const o: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) o[k] = sanitize(val);
+    return o;
+  }
+  return v;
+}
+function rawJsonBox(facts: unknown): string {
+  return `<pre class="codebox">${esc(JSON.stringify(sanitize(facts), null, 2))}</pre>`;
+}
+
 // One delegated listener drives every accordion on the page, including ones
 // injected later (artifacts after mint).
 document.addEventListener("click", (e) => {
@@ -261,7 +280,7 @@ function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof
   const at = checkEnvelope(grant, proof, exp as never);
   if (at.ok) {
     setVerdict("ok", "ENVELOPE OK — cryptographic facts returned");
-    $("facts-body").innerHTML = accordion("Envelope facts", undefined, at.value, true);
+    $("facts-body").innerHTML = rawJsonBox(at.value);
     $("tamper-hint").className = "hint";
     $("tamper-hint").textContent = "Now try to sneak one past — every button below produces a real, closed INVALID.";
     return;
@@ -274,7 +293,7 @@ function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof
     issuer: "issuer trust — your resource was told to trust a different issuer key",
   };
   setVerdict("fail", "VERIFICATION FAILED — <b>INVALID</b>");
-  $("facts-body").innerHTML = accordion("Result", undefined, at, true);
+  $("facts-body").innerHTML = rawJsonBox(at);
   const which = lastTamper ? why[lastTamper] : undefined;
   $("tamper-hint").className = "hint fail";
   $("tamper-hint").textContent = which
