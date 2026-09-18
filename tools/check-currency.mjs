@@ -2,25 +2,35 @@
 // Dependency-currency gate (latest-first) — the pnpm analogue of the Elixir family's
 // dependency-currency gate (BAP ADR 0032), written in the repo's managed language
 // because the tri-platform build bar (BAP ADR 0031) rejects POSIX shell inside a
-// declared gate. Classification is on `pnpm outdated --format json` DATA, never the
-// tool's exit code: pnpm exits nonzero both on drift and on lookup failure, so the
-// code cannot carry the verdict.
+// declared gate. Classification is on data from two real resolvers, never on a tool's
+// exit status alone: `pnpm outdated --format json` for the drift table (it exits
+// nonzero both on drift and on lookup failure, and exits 0 with `{}` when everything
+// is current — that empty exit-0 table is a VERIFIED all-current state), plus
+// `npm view <name>@<range> version` per outdated package for the in-range maximum
+// (pnpm's `wanted` field is lockfile-anchored and does NOT report versions the
+// declared range already allows, so it cannot carry this classification).
 //
 // Latest-first policy: every dependency resolvable to a newer registry version is
 // updated in the change that discovers it; anything deliberately not at latest
 // carries its reason in DELIBERATE_PINS below (package.json cannot hold comments).
+// A pin is major-jump-shaped only: it exempts a package from updates OUTSIDE its
+// declared range (the range itself — package.json — is where "stay on this major"
+// lives, mirroring the Elixir gate's `~>` requirement cap); it NEVER exempts drift
+// the declared range already allows.
 //
 // Documented departure from the Elixir shape: pnpm renders DIRECT dependencies only
 // (no --all table), so transitive currency is not classified here — transitive moves
 // ride deliberate `pnpm update` commits behind the CI-frozen lockfile.
 //
-// Classification:
-//   isDeprecated                    -> exit 1, named
-//   current !== latest, unpinned    -> exit 1, named (resolvable drift)
-//   current !== latest, pinned      -> reported with the pin's reason
-//   pinned but not listed by pnpm   -> reported (at latest or absent — drop a stale pin)
-//   no table while deps are declared,
-//   unparseable output, spawn error -> exit 1 (an unverified currency state never passes)
+// Classification, per outdated package:
+//   isDeprecated                   -> exit 1, named
+//   current !== in-range max       -> exit 1, named — in-range resolvable drift; never pinnable
+//   in-range max !== latest        -> exit 1, named — newer release outside the declared range
+//   in-range max !== latest, pinned-> reported with the pin's reason
+//   pinned but not listed by pnpm  -> reported (at latest or absent — drop a stale pin)
+//   pnpm exit 0 + empty table      -> PASS (verified all-current)
+//   unparseable output, empty-but-nonzero table, npm-view failure, spawn error
+//                                  -> exit 1 (an unverified currency state never passes)
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,84 +44,139 @@ const DELIBERATE_PINS = new Map([
   ],
 ]);
 
-// pnpm is a .CMD shim on Windows, which spawn cannot execute directly — route through
-// the shell there only (the ADR 0031 `cmd /c` wrapper analogue; args are constants, so
-// the shell surface is closed).
-const child = spawn("pnpm", ["outdated", "--format", "json"], {
-  shell: process.platform === "win32",
-});
-
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-const declared = Object.keys({
-  ...manifest.dependencies,
-  ...manifest.devDependencies,
-});
+const ranges = { ...manifest.dependencies, ...manifest.devDependencies };
+const declared = Object.keys(ranges);
 
-let stdout = "";
-let stderr = "";
-child.stdout.on("data", (chunk) => (stdout += chunk));
-child.stderr.on("data", (chunk) => (stderr += chunk));
+// pnpm/npm are .CMD shims on Windows, which spawn cannot execute directly — route
+// through the shell there only (the ADR 0031 `cmd /c` wrapper analogue). The shell
+// path also needs the version spec quoted: `^` is cmd.exe's escape character, and an
+// unquoted `typescript@^6.0.3` would arrive at npm with the caret eaten. All other
+// args are constants, so the shell surface is closed.
+const isWindows = process.platform === "win32";
 
-child.on("error", (err) => {
-  console.error(`check-currency: cannot run pnpm outdated: ${err.message}`);
-  process.exit(1);
-});
+function run(command, args) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd: root, shell: isWindows });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("error", (err) => resolve({ error: err.message, stdout, stderr, code: null }));
+    child.on("close", (code) => resolve({ error: null, stdout, stderr, code }));
+  });
+}
 
-child.on("close", (code) => {
-  let table;
-  try {
-    table = JSON.parse(stdout);
-  } catch {
-    console.error(
-      `check-currency: no parseable dependency data (pnpm exited ${code}) — ` +
-        `currency state unverified, and an unverified currency state never passes.` +
-        (stderr ? `\n  pnpm stderr: ${stderr.trim()}` : ""),
-    );
-    process.exit(1);
+function maxSatisfying(output) {
+  const parsed = JSON.parse(output);
+  if (typeof parsed === "string") return parsed;
+  if (Array.isArray(parsed) && parsed.every((v) => typeof v === "string") && parsed.length > 0) {
+    return parsed[parsed.length - 1]; // npm lists versions in ascending semver order
   }
+  throw new Error("unexpected npm view shape");
+}
 
-  const entries = Object.entries(table);
-  if (entries.length === 0 && declared.length > 0) {
-    console.error(
-      "check-currency: pnpm outdated rendered no entries while package.json declares " +
-        "dependencies — currency state unverified, and an unverified currency state never passes.",
-    );
-    process.exit(1);
-  }
-
-  const failures = [];
-  const reports = [];
-  for (const [name, info] of entries) {
-    if (info.isDeprecated) {
-      failures.push(`${name}: deprecated on the registry (current ${info.current}) — move off it`);
-    } else if (info.current !== info.latest) {
-      const pin = DELIBERATE_PINS.get(name);
-      if (pin) {
-        reports.push(`${name}: pinned at ${info.current} (latest ${info.latest}) — ${pin}`);
-      } else {
-        failures.push(
-          `${name}: resolvable drift — current ${info.current}, latest ${info.latest} ` +
-            `(update in this change or record a DELIBERATE_PINS reason)`,
-        );
-      }
-    }
-  }
-  const listed = new Set(entries.map(([name]) => name));
-  for (const name of DELIBERATE_PINS.keys()) {
-    if (!listed.has(name)) {
-      reports.push(`${name}: pin recorded but not listed by pnpm outdated — at latest or absent; drop the pin if stale`);
-    }
-  }
-
-  for (const report of reports) console.log(report);
-  if (failures.length > 0) {
-    for (const failure of failures) console.error(failure);
-    console.error(`check-currency: ${failures.length} dependency-currency failure(s).`);
-    process.exit(1);
-  }
-  console.log(
-    `check-currency: all ${declared.length} declared dependencies at latest ` +
-      `or deliberately pinned (reasons above, if any).`,
+async function inRangeMax(name) {
+  const spec = `${name}@${ranges[name]}`;
+  const { error, stdout, code } = await run(
+    "npm",
+    ["view", isWindows ? `"${spec}"` : spec, "version", "--json"],
   );
-});
+  if (error || code !== 0) return { error: `npm view ${spec} failed (exit ${code}, ${error ?? "see stderr"})` };
+  try {
+    return { max: maxSatisfying(stdout) };
+  } catch (err) {
+    return { error: `npm view ${spec}: ${err.message}` };
+  }
+}
+
+const pnpm = await run("pnpm", ["outdated", "--format", "json"]);
+let table;
+try {
+  table = JSON.parse(pnpm.stdout);
+} catch {
+  console.error(
+    `check-currency: no parseable dependency data (pnpm exited ${pnpm.code}) — ` +
+      `currency state unverified, and an unverified currency state never passes.` +
+      (pnpm.stderr ? `\n  pnpm stderr: ${pnpm.stderr.trim()}` : ""),
+  );
+  process.exit(1);
+}
+
+const entries = Object.entries(table);
+if (entries.length === 0) {
+  if (pnpm.code === 0) {
+    console.log(
+      `check-currency: all ${declared.length} declared dependencies at latest ` +
+        "(pnpm outdated rendered an empty, exit-0 table).",
+    );
+    process.exit(0);
+  }
+  console.error(
+    "check-currency: pnpm outdated exited nonzero with no entries while " +
+      "package.json declares dependencies — currency state unverified, and an " +
+      "unverified currency state never passes." +
+      (pnpm.stderr ? `\n  pnpm stderr: ${pnpm.stderr.trim()}` : ""),
+  );
+  process.exit(1);
+}
+
+const failures = [];
+const reports = [];
+const unverified = [];
+for (const [name, info] of entries) {
+  if (!(name in ranges)) {
+    unverified.push(`${name}: not declared in package.json (stray lockfile entry?)`);
+    continue;
+  }
+  const resolution = await inRangeMax(name);
+  if (resolution.error) {
+    unverified.push(resolution.error);
+    continue;
+  }
+  const { max } = resolution;
+  if (info.isDeprecated) {
+    failures.push(`${name}: deprecated on the registry (current ${info.current}) — move off it`);
+  } else if (info.current !== max) {
+    failures.push(
+      `${name}: in-range resolvable drift — current ${info.current}, max within the declared ` +
+        `${ranges[name]} is ${max} (the range already allows it; pnpm update in this change — never pinnable)`,
+    );
+  } else if (max !== info.latest) {
+    const pin = DELIBERATE_PINS.get(name);
+    if (pin) {
+      reports.push(`${name}: pinned (latest ${info.latest} sits outside the declared range) — ${pin}`);
+    } else {
+      failures.push(
+        `${name}: newer release outside the declared range — range max ${max}, latest ` +
+          `${info.latest} (move the range in this change or record a DELIBERATE_PINS reason)`,
+      );
+    }
+  }
+}
+const listed = new Set(entries.map(([name]) => name));
+for (const name of DELIBERATE_PINS.keys()) {
+  if (!listed.has(name)) {
+    reports.push(`${name}: pin recorded but not listed by pnpm outdated — at latest or absent; drop the pin if stale`);
+  }
+}
+
+for (const report of reports) console.log(report);
+for (const item of unverified) console.error(item);
+if (failures.length > 0) {
+  for (const failure of failures) console.error(failure);
+}
+if (failures.length > 0 || unverified.length > 0) {
+  console.error(
+    `check-currency: ${failures.length} dependency-currency failure(s), ` +
+      `${unverified.length} unverified state(s) — an unverified currency state never passes.`,
+  );
+  process.exit(1);
+}
+console.log(
+  `check-currency: all ${declared.length} declared dependencies at latest ` +
+    `or deliberately pinned (reasons above, if any).`,
+);
