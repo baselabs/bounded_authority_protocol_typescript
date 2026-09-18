@@ -24,6 +24,7 @@
     <g id="i-check"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.3l2.4 2.4 4.6-4.9"/></g>
     <g id="i-terminal"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 10l2.6 2-2.6 2"/><path d="M12.5 14h4"/></g>
     <g id="i-wire"><path d="M4 12c2.5-4.5 5.5-4.5 8 0s5.5 4.5 8 0"/></g>
+    <g id="i-chev"><path d="M6 9l6 6 6-6"/></g>
   </defs>
 </svg>
 
@@ -130,15 +131,15 @@
         <span class="verdict-mark"><svg class="ic"><use href="#i-terminal"/></svg></span>
         <span class="verdict-text">verify an envelope to see the fact sheet</span>
       </div>
-      <details id="facts" open><summary>fact sheet</summary><div id="facts-body">—</div></details>
+      <div id="facts-body">—</div>
     </article>
   </div>
 
   <div class="decode-row">
     <h3><svg class="ic"><use href="#i-doc"/></svg> Decode <small>— decodeGrant / decodeProof read the envelope’s own bytes: signatures checked, contents listed. No trust needed.</small></h3>
     <div class="decode-grid">
-      <details class="decode" open><summary>grant (decodeGrant)</summary><div id="decode-grant">—</div></details>
-      <details class="decode" open><summary>proof (decodeProof)</summary><div id="decode-proof">—</div></details>
+      <div id="decode-grant" data-label="grant (decodeGrant)">—</div>
+      <div id="decode-proof" data-label="proof (decodeProof)">—</div>
     </div>
   </div>
 
