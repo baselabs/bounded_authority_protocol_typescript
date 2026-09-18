@@ -10,11 +10,13 @@
   macos-latest, and windows-latest, and a `.gitattributes` eol policy keeps the
   byte-exact corpora conversion-free on any clone.
 - Dependency-currency gate (latest-first, the family ADR 0032 shape):
-  `tools/check-currency.mjs` classifies `pnpm outdated` data — resolvable drift fails,
-  deliberate pins carry inline reasons (typescript stays on 6.x pending the 7.x
-  native-compiler review), and an unverifiable currency state fails closed. Dev
-  dependencies refreshed to latest: tsx 4.23.13, @types/node 26.6.1, eslint 10.10.0,
-  typescript-eslint 8.70.0.
+  `tools/check-currency.mjs` classifies `pnpm outdated` data with the canonical
+  `semver` range resolver — in-range resolvable drift fails (never pinnable),
+  deliberate pins cover only out-of-range latests and carry inline reasons
+  (typescript stays on 6.x pending the 7.x native-compiler review), and an
+  unverifiable currency state fails closed. Dev dependencies refreshed to latest:
+  tsx 4.23.13, @types/node 26.6.1, eslint 10.10.0, typescript-eslint 8.70.0,
+  semver 7.8.5 (the gate's resolver).
 - Node toolchain pinned in lockstep: `.tool-versions` (asdf, 22.23.1 — the family pin)
   and CI's `node-version` now agree; `engines.node >= 22` stays the consumer-facing
   floor.
