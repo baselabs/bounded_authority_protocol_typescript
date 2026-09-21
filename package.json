@@ -1,7 +1,7 @@
 {
   "name": "@bounded-authority-protocol/verifier",
   "version": "0.2.2",
-  "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority \u2014 a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1 and 2).",
+  "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority — a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1, 2, and 3).",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/src/index.js",
@@ -25,6 +25,7 @@
     "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
     "conformance": "tsx conformance/run.ts",
     "conformance:v2": "tsx conformance/run_v2.ts",
+    "conformance:v3": "tsx conformance/run_v3.ts",
     "census": "tsx conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
@@ -33,14 +34,14 @@
     "@bounded-authority-protocol/signer": "^0.1.2",
     "@noble/ed25519": "^3.2.0",
     "@noble/hashes": "^2.4.0",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.2",
     "buffer": "^6.0.3",
     "esbuild": "^0.28.2",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "semver": "^7.8.5",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.0"
+    "typescript-eslint": "^8.70.1"
   },
   "repository": {
     "type": "git",

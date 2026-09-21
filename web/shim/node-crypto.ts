@@ -1,8 +1,14 @@
-// The browser shim for the packages' entire node:crypto surface (verified by
-// grep over both dist trees): createPublicKey, verify (Ed25519), createHash
-// ("sha256"). Implemented over @noble (synchronous — checkEnvelope is a fully
-// synchronous pipeline, so the shim must be too). Nothing here implements
+// The browser shim for the node:crypto surface this bench bundle exercises
+// (verified by grep over both dist trees): createPublicKey, verify (Ed25519),
+// createHash ("sha256"). Implemented over @noble (synchronous — checkEnvelope is
+// a fully synchronous pipeline, so the shim must be too). Nothing here implements
 // cryptography of its own; it only adapts shapes.
+//
+// The v3 ES256 surface (createPublicKey with an EC JWK, verify with
+// dsaEncoding "ieee-p1363") is NOT shimmed: the bench imports only the v1
+// façade from the package root, and esbuild's tree-shaking drops the unused
+// v3 namespace from the bundle (verified by grep over site-dist/app.js). A
+// bench page that starts importing `v3` must extend this shim first.
 import { verify, hashes } from "@noble/ed25519";
 import { Buffer } from "buffer";
 import { sha256, sha512 } from "@noble/hashes/sha2.js";

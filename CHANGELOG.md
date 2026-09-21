@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Wire contract-major 3 — the `BAP3-ES256-SHA256` suite** (the protocol's ADR 0035 activation),
+  exported as the `v3` namespace and re-derived from the normative sources alone
+  (`spec/bap-v3.md` + the incorporated v1/v2 sections + the certified corpus): ECDSA over NIST
+  P-256 with SHA-256 (`alg: "ES256"`), `v: 3` payloads, the `BAP3-REQUEST\0` / `BAP3-CHAIN\0` /
+  `BAP3-ARCHIVE\0EXPORT\0` domain separators, and the v2 selector algebra (all five kinds)
+  incorporated unchanged. Suite specifics: raw public keys are 65-byte uncompressed SEC1
+  points (`0x04||x||y`) with pure-arithmetic coordinate-range and on-curve validation before
+  any backend; the proof JWK is exactly `{crv:"P-256", kty:"EC", x, y}` with the RFC 7638
+  thumbprint over that member set; signatures are the RFC 7518 §3.4 raw `r||s` form (64 bytes)
+  with `0 < r < n`, `0 < s ≤ (n−1)/2` — low-S required and load-bearing (Node's backend
+  accepts the malleable high-S counterpart; the mutation gate proves the gate red-capable).
+  Every v1 and v2 artifact rejects under `v3` with the single closed error, and vice versa.
+- New modules `src/es256.ts` (the P-256 arithmetic + `node:crypto` ECDSA layer, with its own
+  census tracking for the runner's verify-import leg) and `src/ec_jwk.ts` (the EC JWK
+  encode/decode/thumbprint layer); `src/v3.ts` mirrors the v2 façade module exactly.
+- The vendored v3 corpus snapshot (`conformance/corpus-v3`, 292 certified vectors, index
+  SHA-256 pinned at load) plus the curated census sidecar (`conformance/curated-inputs-v3.json`),
+  byte-synced from the monorepo; `conformance/run_v3.ts` recomputes every verdict (292/292
+  agree) and runs the census legs (curated == index two-way; discovery ⊆ declared;
+  verify-import ⊇ expected-verify keys).
+- Permissiveness mutation-gate battery for the ES256 closure classes (7 defect-injection
+  entries, each red-proven at authoring): low-S acceptance, r/s integer range (the
+  encoding-level ordering pin — OpenSSL rejects zero/≥n itself, so the verdict legs stay green
+  without the gates), EC JWK member set, coordinate width (via an on-curve x=256 falsifier
+  whose short spelling passes every arithmetic gate), coordinate range + on-curve (via the
+  x=p/√b pair, which satisfies the curve equation so only the `< p` gate rejects it), and the
+  cross-major `v` gate (same-header v-swap falsifiers; v1/v2 bytes also reject at the `alg`
+  gate). The census verify-import leg closes over the ES256 boundary.
+- CI: a third conformance lane (`pnpm conformance:v3`) on every OS of the tri-platform matrix;
+  `.gitattributes` extends the byte-exact eol exemption to `conformance/corpus-v3/**`.
+
 ## [0.2.2] — 2026-09-17
 
 No library-code change — toolchain and documentation alignment with the protocol family's

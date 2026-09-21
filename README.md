@@ -7,11 +7,11 @@
 Deterministic, fail-closed verification for the **Bounded Authority Protocol** — bounded
 proof-of-possession authority for services and AI agents, in pure TypeScript.
 
-The SDK verifies the protocol's two wire profiles (contract-majors 1 and 2): compact-JWS
+The SDK verifies the protocol's three wire profiles (contract-majors 1, 2, and 3): compact-JWS
 grants, holder proofs, consumption chains, boundary anchors, key transitions, and archived
-exports. It is a TypeScript reimplementation of the reference profile — derived from the
+exports. It is a TypeScript reimplementation of the reference profiles — derived from the
 published specifications and certified conformance corpora, with zero runtime dependencies
-(Ed25519 via `node:crypto`; canonicalization hand-rolled from the RFCs).
+(Ed25519 and ES256 via `node:crypto`; canonicalization hand-rolled from the RFCs).
 
 **It verifies; it never authorizes.** A successful result proves that caller-supplied bytes
 satisfy caller-supplied trusted inputs and expected context — nothing more. There is no
@@ -67,18 +67,24 @@ Every public function returns the same `Result<T>` shape — `{ ok: true, value 
 
 ## Wire contract-majors
 
-The protocol versions its wire formats as complete, parallel **contract-majors**. Both live in
-this package; each verifies only its own bytes — there is no fallback or downgrade in either
+The protocol versions its wire formats as complete, parallel **contract-majors**. All three live
+in this package; each verifies only its own bytes — there is no fallback or downgrade in any
 direction.
 
-| Major | Import | Selector kinds | Notes |
-|---|---|---|---|
-| 1 | `import { verifyGrant, ... }` | `all`, `equals`, `one_of` | The original profile |
-| 2 | `import { v2 } from "@bounded-authority-protocol/verifier"` | `+ lte`, `gte` | Adds inclusive same-tag range selectors (intervals compose conjunctively) |
+| Major | Import | Selector kinds | Suite | Notes |
+|---|---|---|---|---|
+| 1 | `import { verifyGrant, ... }` | `all`, `equals`, `one_of` | `BAP1-Ed25519-SHA256` | The original profile |
+| 2 | `import { v2 } from "@bounded-authority-protocol/verifier"` | `+ lte`, `gte` | `BAP2-Ed25519-SHA256` | Adds inclusive same-tag range selectors (intervals compose conjunctively) |
+| 3 | `import { v3 } from "@bounded-authority-protocol/verifier"` | same five as v2 | `BAP3-ES256-SHA256` | The ES256 suite: ECDSA over NIST P-256, raw 65-byte SEC1 public keys, low-S raw `r\|\|s` signatures |
 
 The `v2` namespace mirrors the full v1 surface — `v2.verifyGrant`, `v2.checkEnvelope`,
 `v2.grantSigningInput`, and so on — under the major-2 separators, suite name, and `v: 2`
-payloads.
+payloads. The `v3` namespace mirrors it again under the ES256 suite: `alg: "ES256"`, the
+65-byte uncompressed-SEC1 raw public-key form, the `{crv, kty, x, y}` proof JWK with its
+RFC 7638 thumbprint, and the RFC 7518 §3.4 raw `r||s` signature form with low-S enforced at
+verification (Node's crypto backend accepts the malleable high-S counterpart; the profile
+gate is load-bearing). Every v1 and v2 artifact rejects under `v3` with the single closed
+error, and vice versa.
 
 ```ts
 import { v2 } from "@bounded-authority-protocol/verifier";
@@ -228,8 +234,9 @@ Two properties make the pairing safe to build against:
 ## Certified, not self-tested
 
 Every release of this SDK is verified against the protocol's published, cryptographically
-certified conformance corpora — **283 vectors** for contract-major 1 and **268** for
-contract-major 2 — recomputing every verdict from scratch, with the corpus `index.json`
+certified conformance corpora — **283 vectors** for contract-major 1, **268** for
+contract-major 2, and **292** for contract-major 3 — recomputing every verdict from scratch,
+with the corpus `index.json`
 SHA-256 asserted at load so a drifted snapshot fails loudly. Permissiveness bugs (a parser
 accepting what the spec forbids) are invisible to corpus agreement by construction, so the
 suite additionally carries a per-language mutation gate that proves each closure
@@ -237,7 +244,7 @@ suite additionally carries a per-language mutation gate that proves each closure
 
 CI runs the full matrix on every push: strict typecheck, build, lint (including a library
 purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
-mutation gate, and both conformance corpora against the vendored snapshots.
+mutation gate, and all three conformance corpora against the vendored snapshots.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every
@@ -246,8 +253,8 @@ artifact.
 ## Versioning
 
 Package versions follow SemVer. Wire contract-majors are a separate axis: a new
-contract-major lands **additively** (a minor release — this package already carries majors 1
-and 2 side by side), and a package major is owed only when a shipped profile or public API is
+contract-major lands **additively** (a minor release — this package already carries majors 1,
+2, and 3 side by side), and a package major is owed only when a shipped profile or public API is
 removed or changes verdicts. Wire artifacts self-declare their major (payload `v`, the
 `BAP<n>-…` suite name, major-bound domain separators), so the package number never needs to
 encode it.
@@ -262,7 +269,8 @@ the host — a facts value is evidence, never a credential.
 ## Protocol documentation
 
 - [BAP v1 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md) ·
-  [v2 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md)
+  [v2 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md) ·
+  [v3 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md)
 - [Certified conformance corpora](https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/)
 - [ADR 0014 — cross-language verifier SDKs](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md) ·
   [ADR 0015 — graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md)
@@ -288,6 +296,7 @@ pnpm test                    # unit + struct + façade corpus-vector tests
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 + key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
+pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 

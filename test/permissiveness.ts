@@ -1630,3 +1630,307 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
     assert.equal(r.ok, false, "assembly must reject a sequence-0 anchor with a non-zero chain hash");
   });
 }
+
+// ---------------------------------------------------------------------------
+// The v3 ES256 suite (contract-major 3, ADR 0035) — red-capable mutation entries. The v3 façade
+// (src/v3.ts) is the v2 façade under the spec/bap-v3.md §2 substitutions: v:3 payloads, BAP3-*
+// separators, alg ES256, raw 65-byte SEC1 keys, the {crv,kty,x,y} proof JWK, and the low-S raw
+// r||s signature form over NIST P-256 (src/es256.ts + src/ec_jwk.ts).
+//
+// DEFECT-INJECTION BATTERY (7 items — same discipline as the batteries above; each injection was
+// made locally, the named test (and, where named, the corpus case) went RED, and the change was
+// reverted; observations recorded here):
+//   a. low-S gate: remove the `if (s > HALF_N) fail(...)` rejection in src/es256.ts es256Verify →
+//      "v3 rejects the high-S malleable counterpart Node's backend accepts" goes RED — the
+//      corpus fixture verify-grant-v3-invalid-signature-high-s is a VALID signature re-spelled
+//      (r, n−s), so Node's backend alone returns true and the envelope verifies (the corpus case
+//      also flips invalid→valid under `pnpm conformance:v3`).
+//   b. r/s integer range: remove the `r === 0n || r >= N` / `s === 0n || s >= N` rejections in
+//      es256Verify → the encoding-level legs go RED. OBSERVED while proving: OpenSSL also
+//      rejects zero/≥n r/s itself, so the final-verdict legs (the corpus cases
+//      verify-grant-v3-invalid-signature-zero-r / -zero-s / -r-at-n / -s-at-n through the façade)
+//      stay green without the gates — the independently red-capable pin is the ORDERING the spec
+//      mandates (REQ3-SIGNING-range: reject as invalid encodings BEFORE any backend call): with
+//      the gates present es256Verify throws InvalidError at the gate; with them removed it
+//      returns the backend's `false` instead, and the throws-leg goes RED. (Contrast (a): the
+//      high-S form is ACCEPTED by OpenSSL, so the low-S gate is verdict-load-bearing.)
+//   c. EC JWK member set: widen parseProofHeader's requireObjectExact to admit a 5th member →
+//      "proof JWK rejects an extra member" goes RED.
+//   d. coordinate width/canonicality: drop the 32-byte x/y width gates → the width leg goes RED
+//      via the x=256 point falsifier below, which IS on the curve as assembled — only the
+//      fixed-width RFC 7518 §6.2.1.2 spelling gate rejects it. OBSERVED while proving: the
+//      corpus's own short-coordinate fixture (a 3-byte x) is SUBSUMED by the off-curve
+//      arithmetic (its doctored value is not a valid coordinate, so it rejects with or without
+//      the width gate), and the padded-coordinate fixture is OVER-DETERMINED — with the
+//      base64url alphabet gate removed its 44-char spelling decodes to 33 bytes and dies at the
+//      width gate, and vice versa (both gates are the v1-certified shared REQ1-B64-* closure +
+//      the v3 width gate; single-gate removal never flips it).
+//   e. coordinate range + on-curve: remove validateEcPublicKey's pure arithmetic (the x<p/y<p
+//      range gate and the curve-equation check) → THREE legs go RED: the off-curve JWK decodes
+//      (the corpus case jwk-decode-public-invalid-off-curve flips — that surface never reaches a
+//      crypto backend, so the arithmetic is the only gate), the x=p/√b falsifier decodes (that
+//      pair SATISFIES y² = x³−3x+b mod p because x=p≡0 makes the right side b and y=√b — only the
+//      x<p gate rejects it), and the proof-header off-curve leg.
+//   f. cross-major v gate: OBSERVED while proving — v1/v2 artifact bytes reject at the ES256
+//      `alg` gate BEFORE the payload v gate (defense in depth), so the corpus-fixture legs stay
+//      green with the v gate widened. The independently red-capable pin is the same-header
+//      falsifier: a v3 grant whose payload carries v:1 / v:2 under the ES256 header — widen the
+//      v check in v3's payload validators to accept them and the v-swap legs go RED (the corpus
+//      cases verify-grant-v3-invalid-cross-major-v1-bytes / -v2-bytes carry the alg dimension and
+//      stay red through that gate).
+//   g. census verify-import: make importEcPublicKey in src/es256.ts NOT register the fingerprint
+//      → conformance/run_v3.ts census aborts ("declared by a valid verification case but never
+//      imported at the ES256 verify boundary").
+// ---------------------------------------------------------------------------
+import * as v3 from "../src/v3.js";
+import { validateEcPublicKey, es256Verify, importEcPublicKey } from "../src/es256.js";
+import { publicKeyThumbprintRaw as ecPublicKeyThumbprintRaw } from "../src/ec_jwk.js";
+
+// P-256 constants for the locally constructed falsifiers (mirror src/es256.ts).
+const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+
+// A fresh P-256 key pair: the raw public key is the 65-byte uncompressed SEC1 point.
+function freshEcKey(): { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject } {
+  const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
+  const xb = base64urlDecode(strUtf8(jwk.x));
+  const yb = base64urlDecode(strUtf8(jwk.y));
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(xb, 1);
+  raw.set(yb, 33);
+  return { publicKey: raw, privateKey };
+}
+
+// Sign with the raw P1363 r||s spelling and normalize to low-S (the profile's producer rule:
+// s ← n − s when high — Node's ECDSA output is not guaranteed low-S).
+function signP1363(message: Uint8Array, privateKey: nodeCrypto.KeyObject): Uint8Array {
+  const sig = new Uint8Array(nodeCrypto.sign("sha256", Buffer.from(message), { key: privateKey, dsaEncoding: "ieee-p1363" }));
+  const s = BigInt("0x" + Buffer.from(sig.subarray(32)).toString("hex"));
+  if (s <= (P256_N - 1n) / 2n) return sig;
+  const sLow = P256_N - s;
+  const out = new Uint8Array(64);
+  out.set(sig.subarray(0, 32), 0);
+  const hex = sLow.toString(16).padStart(64, "0");
+  for (let i = 0; i < 32; i++) out[32 + i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+// Full corpus-case reader for the v3 fixtures (the grant-verify signature-matrix inputs).
+function readV3Case(file: string, id: string): Record<string, unknown> {
+  const doc = JSON.parse(readFileSync(new URL(`../conformance/corpus-v3/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: Record<string, unknown> }> };
+  const c = doc.cases.find((x) => x.id === id);
+  if (!c) throw new Error(`case ${id} not found in ${file}`);
+  return c.input;
+}
+
+// (a)+(b) the signature canonicality matrix through the full verify_grant façade, on the corpus's
+// own signed fixtures (real P-256 artifacts, doctored exactly one encoding dimension at a time).
+{
+  const valid = readV3Case("grant-verify/verify.json", "verify-grant-v3-valid");
+  const tryVerify = (input: Record<string, unknown>): boolean =>
+    v3.verifyGrant(
+      strUtf8(input.compact as string),
+      { keyId: input.key_id as string, publicKey: base64urlDecode(strUtf8(input.public_key as string)) },
+      { issuer: input.issuer as string, audience: input.audience as string, evaluationTime: input.evaluation_time as number, clockSkew: input.clock_skew as number },
+    ).ok;
+
+  test("permissiveness: v3 positive control — the valid corpus grant verifies (mutation a/b control)", () => {
+    assert.equal(tryVerify(valid), true, "the untouched fixture must verify");
+  });
+
+  test("permissiveness: v3 rejects the high-S malleable counterpart Node's backend accepts (mutation a)", () => {
+    // (r, n−s) also satisfies the ECDSA verification equation; Node verifies it — only the
+    // profile's low-S gate rejects. Removing that gate flips this exact leg (and the corpus case).
+    assert.equal(tryVerify(readV3Case("grant-verify/verify.json", "verify-grant-v3-invalid-signature-high-s")), false,
+      "the high-S re-spelling of a valid signature must be invalid");
+  });
+
+  test("permissiveness: v3 rejects zero r / zero s / r = n / s = n as invalid encodings before the backend (mutation b)", () => {
+    // Through the façade (verdict level — green with or without the gates, since OpenSSL
+    // rejects these too; kept as the corpus-mirroring pin):
+    for (const id of ["verify-grant-v3-invalid-signature-zero-r", "verify-grant-v3-invalid-signature-zero-s", "verify-grant-v3-invalid-signature-r-at-n", "verify-grant-v3-invalid-signature-s-at-n"]) {
+      assert.equal(tryVerify(readV3Case("grant-verify/verify.json", id)), false, `${id} must be invalid`);
+    }
+    // At the suite boundary (the red-capable ordering pin): the range rejections fire as
+    // InvalidError BEFORE any backend call — with the gates removed these return the backend's
+    // `false` instead of throwing, and this block goes RED.
+    const issuer = freshEcKey();
+    const key = importEcPublicKey(issuer.publicKey, "census-red-proof-key");
+    const message = strUtf8("ordering pin");
+    const mk = (rHex: string, sHex: string): Uint8Array => {
+      const out = new Uint8Array(64);
+      const rb = Buffer.from(rHex, "hex"); const sb = Buffer.from(sHex, "hex");
+      out.set(rb, 0); out.set(sb, 32);
+      return out;
+    };
+    const N_HEX = "ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551";
+    const LOW_S = "7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a7"; // (n-1)/2
+    for (const [label, sig] of [
+      ["zero r", mk("00".repeat(32), LOW_S)],
+      ["zero s", mk(LOW_S, "00".repeat(32))],
+      ["r = n", mk(N_HEX, LOW_S)],
+      ["s = n", mk(LOW_S, N_HEX)],
+    ] as const) {
+      assert.throws(() => es256Verify(message, sig, key), InvalidError, `${label} must reject as an invalid encoding at the gate`);
+    }
+  });
+
+  test("permissiveness: v3 rejects tampered r and tampered s (encoding-level signature bytes)", () => {
+    for (const id of ["verify-grant-v3-tamper-signature-r", "verify-grant-v3-tamper-signature-s"]) {
+      assert.equal(tryVerify(readV3Case("grant-verify/verify.json", id)), false, `${id} must be invalid`);
+    }
+  });
+}
+
+// (c) the proof-JWK member set: the corpus's valid proof with one extra member (private d) added
+// to the protected header's jwk object — decodes fine as JSON, must fail the closed member set.
+test("permissiveness: v3 proof JWK rejects an extra member (mutation c)", () => {
+  const compact = readV3Case("proof-decode/decode.json", "proof-decode-v3-valid").compact as string;
+  const segs = compact.split(".");
+  const headerText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[0]!)));
+  const doctored = headerText.replace('"kty":"EC"', '"d":"AAAA","kty":"EC"');
+  const doctoredSeg = new TextDecoder().decode(base64urlEncode(strUtf8(doctored)));
+  const r = v3.decodeProof(strUtf8(`${doctoredSeg}.${segs[1]}.${segs[2]}`));
+  assert.equal(r.ok, false, "a 5-member EC JWK (carrying private d) must fail the closed member set");
+});
+
+// (d) coordinate width/canonicality through the jwk.decode_public surface. The corpus fixtures
+// (a 3-byte x; a padded x) plus the constructed width-only falsifier: x = 256 is a VALID
+// P-256 coordinate (with y = 0x2cd2…e4c5), and its 31-byte big-endian spelling carries the
+// integer 1 — assembled into the 65-byte raw form (0x04 || x || pad || y) the point lands
+// exactly on (256, y), passing every arithmetic gate. Only the exactly-32-bytes width gate of
+// the RFC 7518 §6.2.1.2 fixed-width spelling rejects it.
+test("permissiveness: v3 JWK coordinates must be canonical unpadded base64url of exactly 32 bytes (mutation d)", () => {
+  const short = readV3Case("jwk/jwk.json", "jwk-decode-public-invalid-short-coordinate").text as string;
+  assert.equal(v3.jwkDecodePublic(strUtf8(short)).ok, false, "a short coordinate must reject");
+  const padded = readV3Case("jwk/jwk.json", "jwk-decode-public-invalid-padded-coordinate").text as string;
+  assert.equal(v3.jwkDecodePublic(strUtf8(padded)).ok, false, "a padded (non-canonical) coordinate must reject");
+  // The width-only falsifier: on-curve as assembled, wrong coordinate WIDTH.
+  const shortOnCurve = '{"crv":"P-256","kty":"EC","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQ","y":"LNLfpMLrtOjTWd83WjDVrq6pSJbtVtGcM79voJy55MU"}';
+  assert.equal(v3.jwkDecodePublic(strUtf8(shortOnCurve)).ok, false,
+    "a 31-byte x spelling whose assembled point (256, y) is on the curve must reject on width alone");
+});
+
+// (e) coordinate range + on-curve. The x=p/√b falsifier is the load-bearing independent check for
+// the x<p gate: x=p makes the curve equation's right side b (x≡0 mod p), and y=√b satisfies
+// y²=b — so the pair PASSES the curve equation; only the coordinate-range gate rejects it.
+{
+  const SQRT_B = 0x66485c780e2f83d72433bd5d84a06bb6541c2af31dae871728bf856a174f93f4n;
+  const hexBytes = (v: bigint, n: number): Uint8Array => {
+    const out = new Uint8Array(n);
+    const hex = v.toString(16).padStart(n * 2, "0");
+    for (let i = 0; i < n; i++) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  };
+  const P = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn;
+  const jwkText = (x: bigint, y: bigint): Uint8Array => strUtf8(
+    `{"crv":"P-256","kty":"EC","x":"${new TextDecoder().decode(base64urlEncode(hexBytes(x, 32)))}","y":"${new TextDecoder().decode(base64urlEncode(hexBytes(y, 32)))}"}`,
+  );
+
+  test("permissiveness: v3 rejects a coordinate at the field prime even when the curve equation holds (mutation e)", () => {
+    assert.equal(v3.jwkDecodePublic(jwkText(P, SQRT_B)).ok, false,
+      "x=p, y=√b satisfies y²=x³−3x+b mod p — only the x<p gate rejects this pair");
+  });
+
+  test("permissiveness: v3 rejects an off-curve point with no crypto backend in the path (mutation e)", () => {
+    const offCurve = readV3Case("jwk/jwk.json", "jwk-decode-public-invalid-off-curve").text as string;
+    assert.equal(v3.jwkDecodePublic(strUtf8(offCurve)).ok, false, "an off-curve point must reject at decode");
+    // The same arithmetic, applied directly to the doctored coordinates, must fail (pure validation).
+    assert.throws(() => {
+      const raw = new Uint8Array(65);
+      raw[0] = 0x04;
+      raw.set(base64urlDecode(strUtf8("fPJ7GI0DT36KUjgDBLUaw8CJaeJ38hs1pgtI_EdmmXk")), 1);
+      raw.set(base64urlDecode(strUtf8("B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E")), 33);
+      validateEcPublicKey(raw);
+    }, InvalidError, "the doctored corpus coordinates must fail the pure point validation");
+  });
+
+  test("permissiveness: v3 rejects an off-curve proof JWK (mutation e, header path)", () => {
+    // The corpus's valid proof header with x doctored by one character (the corpus's own
+    // off-curve delta) — parseProofHeader must reject before any backend call.
+    const compact = readV3Case("proof-decode/decode.json", "proof-decode-v3-valid").compact as string;
+    const segs = compact.split(".");
+    const headerText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[0]!)));
+    const m = /"x":"([^"]+)"/.exec(headerText);
+    if (!m) throw new Error("proof header carries no x member");
+    const doctoredX = m[1]!.slice(0, -1) + (m[1]!.endsWith("g") ? "k" : "g");
+    const doctored = headerText.replace(m[0]!, `"x":"${doctoredX}"`);
+    const doctoredSeg = new TextDecoder().decode(base64urlEncode(strUtf8(doctored)));
+    const r = v3.decodeProof(strUtf8(`${doctoredSeg}.${segs[1]}.${segs[2]}`));
+    assert.equal(r.ok, false, "an off-curve proof JWK must reject");
+  });
+}
+
+// (f) cross-major: v3 rejects v1 and v2 bytes; v1 and v2 reject v3 bytes. Widening any v gate
+// flips exactly its leg (and the corpus cross-major cases).
+test("permissiveness: v3 rejects v1 and v2 bytes; v1 and v2 reject v3 bytes (mutation f)", () => {
+  const readCompact = (url: string, id: string): string => {
+    const doc = JSON.parse(readFileSync(new URL(url, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: { compact: string } }> };
+    const c = doc.cases.find((x) => x.id === id);
+    if (!c) throw new Error(`case ${id} not found in ${url}`);
+    return c.input.compact;
+  };
+  const v1Grant = readCompact("../conformance/corpus/cases/grant-decode/decode.json", "grant-decode-valid");
+  const v2Grant = readCompact("../conformance/corpus-v2/cases/grant-decode/decode.json", "grant-decode-v2-valid");
+  const v3Grant = readV3Case("grant-decode/decode.json", "grant-decode-v3-valid").compact as string;
+  assert.equal(v3.decodeGrant(strUtf8(v1Grant)).ok, false, "v3 must reject a v:1 grant payload");
+  assert.equal(v3.decodeGrant(strUtf8(v2Grant)).ok, false, "v3 must reject a v:2 grant payload");
+  assert.equal(decodeGrant(strUtf8(v3Grant)).ok, false, "v1 must reject a v:3 payload");
+  assert.equal(v2.decodeGrant(strUtf8(v3Grant)).ok, false, "v2 must reject a v:3 payload");
+  assert.equal(v3.decodeGrant(strUtf8(v3Grant)).ok, true, "control: the v3 façade accepts its own bytes");
+  // The v gate's own falsifiers: the SAME v3 grant with only the payload `v` swapped to 1/2 —
+  // the header stays ES256/correct, so only the v claim gate can reject.
+  for (const other of [1, 2]) {
+    const segs = v3Grant.split(".");
+    const payloadText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[1]!)));
+    const swapped = payloadText.replace('"v":3', `"v":${other}`);
+    if (swapped === payloadText) throw new Error("v3 grant payload carries no v:3 member");
+    const swappedSeg = new TextDecoder().decode(base64urlEncode(strUtf8(swapped)));
+    assert.equal(v3.decodeGrant(strUtf8(`${segs[0]}.${swappedSeg}.${segs[2]}`)).ok, false,
+      `a v3-headered grant with payload v:${other} must reject at the v gate`);
+  }
+});
+
+// The full-suite leg: a fresh P-256 issuer/holder pair through the v3 producers and
+// checkEnvelope at the inclusive range boundary — the ES256 form of the v2 envelope pin.
+test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES256 suite", () => {
+  const issuer = freshEcKey();
+  const holder = freshEcKey();
+  const holderFp = ecPublicKeyThumbprintRaw(holder.publicKey);
+  const gsi = v3.grantSigningInput({
+    keyId: "issuer-1", issuer: "https://issuer.example.test", grantId: "urn:example:grant:v3",
+    audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+    holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
+    operations: [{ name: "transfer", selectors: [
+      { kind: "gte", path: ["amount"], value: { t: "int", v: 50 } },
+      { kind: "lte", path: ["amount"], value: { t: "int", v: 5000 } },
+    ] }],
+  });
+  if (!gsi.ok) throw new Error("v3 grant signing input failed");
+  const gmsg = `${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`;
+  const grantCompact = mustAssemble(gsi.value, signP1363(strUtf8(gmsg), issuer.privateKey));
+  const castArguments: Tagged = { t: "object", v: new Map<string, Tagged>([["amount", { t: "int", v: 5000 }]]) };
+  const psi = v3.proofSigningInput({
+    holderPublicKey: holder.publicKey, proofId: "urn:example:proof:v3", method: "POST",
+    targetUri: "https://resource.example.test/invoke", issuedAt: 1400,
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "transfer",
+    grantCompact, castArguments,
+  });
+  if (!psi.ok) throw new Error("v3 proof signing input failed");
+  const pmsg = `${new TextDecoder().decode(psi.value.protectedSegment)}.${new TextDecoder().decode(psi.value.payloadSegment)}`;
+  const proofCompact = mustAssemble(psi.value, signP1363(strUtf8(pmsg), holder.privateKey));
+  const expected = {
+    trustedIssuer: { keyId: "issuer-1", publicKey: issuer.publicKey },
+    issuer: "https://issuer.example.test", audience: "https://resource.example.test",
+    method: "POST", targetUri: "https://resource.example.test/invoke",
+    invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "transfer",
+    castArguments, evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300,
+    nonce: { kind: "not_required" } as const,
+  };
+  const at = v3.checkEnvelope(grantCompact, proofCompact, expected);
+  assert.equal(at.ok, true, "boundary-equal amount (5000 == lte bound) must verify over ES256");
+  if (at.ok) assert.equal(at.value.version, 3, "the envelope facts carry version 3");
+  const over = v3.checkEnvelope(grantCompact, proofCompact, { ...expected, castArguments: { t: "object", v: new Map<string, Tagged>([["amount", { t: "int", v: 5001 }]]) } });
+  assert.equal(over.ok, false, "amount 5001 > the lte bound must reject");
+});

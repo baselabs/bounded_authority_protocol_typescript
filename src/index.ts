@@ -52,6 +52,14 @@ export { localLoopbackHttpUriNormalize } from "./uri.js";
 // bytes; the two majors share no wire form.
 export * as v2 from "./v2.js";
 
+// The v3 contract-major profile façade (the BAP3-ES256-SHA256 suite, ADR 0035): v:3 payloads,
+// BAP3-* domain separators, the v2 selector algebra (lte/gte incorporated), ES256 signatures over
+// NIST P-256 with raw 65-byte SEC1 public keys and the low-S raw r||s signature form. Same
+// namespace convention: v3.checkEnvelope, v3.proofSigningInput, v3.Selector, and so on. It
+// rejects every v1 and v2 artifact with the single closed error, and vice versa; no major shares
+// a wire form with another.
+export * as v3 from "./v3.js";
+
 export type {
   TrustedIssuer,
   ExpectedGrant,
