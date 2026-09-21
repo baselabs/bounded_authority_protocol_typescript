@@ -72,9 +72,10 @@ interface Raws extends Map<string, Uint8Array> {}
 // The certified index.json SHA-256 (base64url of the SHA-256 digest). ADR 0014 D4: the SDK binds to
 // the exact corpus it was certified against; a mismatched vendored corpus fails closed rather than
 // drifting silently. The v3 corpus pin (hex
-// c8962132cae8ed62210803bee3144cac1bae0431eac97bdb8e54fc2875366aee) — rotate every pin with
-// scripts/regen_corpus_digests.exs in the same change.
-const CERTIFIED_INDEX_SHA = "yJYhMsro7WIhCAO-4xRMrBuuBDHqyXvbjlT8KHU2au4";
+// a5c8075e7534345c3bb6611d0b40292904bcfa3af0702e07ae014fa66926433c — the repaired revision:
+// the signing-input cases were re-keyed to v3 EC shapes and their verdicts re-derived) —
+// rotate every pin with scripts/regen_corpus_digests.exs in the same change.
+const CERTIFIED_INDEX_SHA = "pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw";
 
 function loadCorpus(): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
   const indexPath = join(CORPUS_DIR, "index.json");
@@ -791,10 +792,10 @@ function canonicalJson(v: unknown): string {
 
 // ---- census (the v3 legs: curated == index, two-way; discovery ⊆ declared; verify-import) ----
 // Mirrors the v2 runner's census shape (the Python v2 runner is the precedent): the v3 DECLARED
-// census (12 entries) is an input to the index from the curated generator
+// census (11 entries) is an input to the index from the curated generator
 // (conformance/generators/curated-inputs-v3.json `public_key_fingerprints` — facts the generator
-// directory ships that are NOT derivable from case bytes), and four curated keys emit no case:
-// the case-byte discovery is a strict subset (8 of 12). The two-way equality leg is therefore
+// directory ships that are NOT derivable from case bytes), and three curated keys emit no case:
+// the case-byte discovery is a strict subset (8 of 11). The two-way equality leg is therefore
 // curated == index (both directions), with the case-byte walk kept as the fail-closed subset leg
 // (an UNDECLARED key in a case input still aborts), and the verify-import boundary leg unchanged
 // from v1/v2 (every key a valid verification case declares must be imported at the ES256 verify

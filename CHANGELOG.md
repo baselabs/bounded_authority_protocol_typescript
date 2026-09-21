@@ -24,6 +24,15 @@
   byte-synced from the monorepo; `conformance/run_v3.ts` recomputes every verdict (292/292
   agree) and runs the census legs (curated == index two-way; discovery ⊆ declared;
   verify-import ⊇ expected-verify keys).
+- Corpus-repair rotation (same slice): the certified v3 corpus was repaired upstream — the
+  signing-input case files had carried v2-shaped 32-byte Ed25519 public keys, so their
+  valid-class cases were mislabeled verdict invalid; inputs were re-keyed to v3 EC shapes and
+  expected re-derived. The vendored snapshot was re-synced byte-for-byte (`rsync -a --delete`),
+  the certified index pin rotated to the re-certified digest
+  (`a5c8075e7534345c3bb6611d0b40292904bcfa3af0702e07ae014fa66926433c`, base64url
+  `pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw`), and the curated census sidecar re-vendored
+  (11 keys; discovery stays a strict 8-of-11 subset). 292/292 agreement re-proven; the v1/v2
+  corpora and pins are unchanged.
 - Permissiveness mutation-gate battery for the ES256 closure classes (7 defect-injection
   entries, each red-proven at authoring): low-S acceptance, r/s integer range (the
   encoding-level ordering pin — OpenSSL rejects zero/≥n itself, so the verdict legs stay green
