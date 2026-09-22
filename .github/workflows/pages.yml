@@ -35,6 +35,14 @@ jobs:
           node-version: 22.23.1 # lockstep with .tool-versions (the family asdf pin)
           cache: pnpm
 
+      # The bench page's npm badge is a hand-maintained literal (the site build
+      # templates only the asset cache-buster), and it drifted once — the 0.2.2
+      # badge shipped on the 0.3.0-bumping deploy. Nothing else compares the two,
+      # so this lane does, before it can publish a stale version claim.
+      - name: Bench badge must match package.json version
+        run: |
+          node --input-type=module -e "const { readFileSync } = await import('node:fs'); const pkg = JSON.parse(readFileSync('package.json', 'utf8')).version; const html = readFileSync('web/index.html', 'utf8'); if (!html.includes(\`npm \${pkg}</li>\`)) { console.error(\`web/index.html's badge does not carry the current version \${pkg}\`); process.exit(1); } console.log(\`bench badge matches package.json \${pkg}\`);"
+
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 

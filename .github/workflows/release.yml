@@ -42,10 +42,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Full verification gate (typecheck, lint, license, unit, permissiveness, both conformance corpora)
+      - name: Full verification gate (typecheck, lint, license, unit, permissiveness, all three conformance corpora)
         run: |
           pnpm typecheck && pnpm lint && pnpm license-check && pnpm test && \
-          pnpm test:permissiveness && pnpm conformance && pnpm conformance:v2
+          pnpm test:permissiveness && pnpm conformance && pnpm conformance:v2 && \
+          pnpm conformance:v3
 
       # Idempotent releases: a version already on the registry (e.g. seeded from
       # the repository checkout under the owner's session, as 0.1.0 and the 0.2.0
@@ -58,6 +59,14 @@ jobs:
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # The family routine is "a v* tag on a version-bump commit" — enforce the
+      # match instead of trusting it: the idempotency check above keys on the
+      # TAG, while npm stage publish below publishes package.json's version, so
+      # a tag/manifest mismatch would silently stage the wrong version.
+      - name: Tag must match package.json version
+        run: |
+          node --input-type=module -e "const tag = process.env.GITHUB_REF_NAME.replace(/^v/, ''); const pkg = (await import('./package.json', { with: { type: 'json' } })).default.version; if (pkg !== tag) { console.error(\`tag v\${tag} does not match package.json version \${pkg}\`); process.exit(1); } console.log(\`tag v\${tag} matches package.json \${pkg}\`);"
 
       # Trusted publishing: npm exchanges this workflow's OIDC token for a
       # one-time publish grant. No NPM_TOKEN secret exists anywhere.

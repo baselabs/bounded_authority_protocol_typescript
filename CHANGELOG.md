@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-22
+
 ### Added
 
 - **Wire contract-major 3 — the `BAP3-ES256-SHA256` suite** (the protocol's ADR 0035 activation),
@@ -42,7 +44,19 @@
   cross-major `v` gate (same-header v-swap falsifiers; v1/v2 bytes also reject at the `alg`
   gate). The census verify-import leg closes over the ES256 boundary.
 - CI: a third conformance lane (`pnpm conformance:v3`) on every OS of the tri-platform matrix;
-  `.gitattributes` extends the byte-exact eol exemption to `conformance/corpus-v3/**`.
+  `.gitattributes` extends the byte-exact eol exemption to `conformance/corpus-v3/**`. The
+  release lane now runs the same three-corpus verification gate before staging (it had been
+  left at v1+v2 when the corpus landed) and enforces tag/manifest version match — the signer
+  lane's guard, back-ported.
+- **The verifier bench** — this package's public GitHub Pages site: the real verify path
+  running in the visitor's browser. A static bundle built from this repository's verifier
+  source plus the published signer package (demo issuance only; no backend, deploy-only
+  permissions): check an envelope, decode grants and proofs, and read the cryptographic facts,
+  with keys minted in the browser that never leave it. The page's npm badge tracks the
+  released version.
+- README: the contract-major 3 sections — the majors table row (the `BAP3-ES256-SHA256` suite
+  summary), the `v3` namespace walkthrough, the 292-vector corpus count, and the
+  versioning statement now reading "majors 1, 2, and 3".
 
 ## [0.2.2] — 2026-09-17
 
@@ -80,8 +94,6 @@ No library-code change — toolchain and documentation alignment with the protoc
   publishing — the workflow stages with a signed provenance statement and a human approves
   under 2FA.
 
-All notable changes to `@bounded-authority-protocol/verifier` are documented here.
-
 ## [0.2.0] — 2026-09-14
 
 ### Added
@@ -111,3 +123,5 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
   published as the SDK's graduated per-repository publish surface (the seed publish executed
   from the repository checkout under the owner's npm session; every subsequent release
   publishes from the release workflow via npm trusted publishing with provenance).
+
+All notable changes to `@bounded-authority-protocol/verifier` are documented here.
