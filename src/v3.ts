@@ -287,7 +287,7 @@ const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,valu
 // Numeric-tag domain: a range bound must be integer- or float-tagged at decode (the
 // reference's numeric_bound?/1 — a non-numeric bound is a decode rejection, not a no-match).
 function isNumericTag(v: Tagged): boolean {
-  return v.t === "int" || v.t === "float";
+  return v !== null && typeof v === "object" && (v.t === "int" || v.t === "float");
 }
 
 // Validate + parse a v2 selector from a decoded tagged object: the three ADR-0021 member
@@ -735,7 +735,9 @@ type Shape = "bytes" | "str" | "int" | "object" | "tagged" | { seq: Shape } | { 
 const SHAPE_BOUNDS_OPT: Shape = { opt: "object" };
 
 const SHAPE_HIST_KEY: Shape = { fields: { keyId: "str", publicKey: "bytes", validFrom: "int", validBefore: { opt: "int" } } };
+const SHAPE_GRANT_PRODUCER: Shape = { fields: { keyId: "str", issuer: "str", grantId: "str", audiences: { seq: "str" }, issuedAt: "int", notBefore: "int", expiresAt: "int", holderThumbprint: "str", operations: { seq: { fields: { name: "str" } } } } };
 const SHAPE_PROOF_PRODUCER: Shape = { fields: { holderPublicKey: "bytes", proofId: "str", method: "str", targetUri: "str", issuedAt: "int", invocationId: "str", operation: "str", grantCompact: "bytes", castArguments: "tagged", nonce: { opt: "str" } } };
+const SHAPE_ANCHOR_PRODUCER: Shape = { fields: { anchorId: "str", anchoredAt: "int", chainId: "str", sequence: "int", chainHash: "bytes", keyId: "str", publicKey: "bytes" } };
 const SHAPE_TRANSITION_PRODUCER: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentPublicKey: "bytes", nextKeyId: "str", nextPublicKey: "bytes" } };
 const SHAPE_EXPORT_INPUT: Shape = { fields: { rows: { seq: "bytes" }, startAnchor: "bytes", endAnchor: "bytes", transitions: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } };
 const SHAPE_EXPECTED_CHAIN: Shape = { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } };
@@ -782,7 +784,7 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
     // three, so a compact with a valid protected grant header but non-canonical payload/signature
     // bytes wrongly rejected. Mirror the reference: split into exactly 3 segments, decode protected
     // only, validate the grant header + kid. (An invalid payload/signature does not affect the kid.)
-    const b = bounds ?? MAXIMUM_BOUNDS;
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("key_locator: compact bound");
     // Exactly 3 segments on '.' (a 2- or 4-segment input fails the closed shape).
     const dots: number[] = [];
@@ -1161,7 +1163,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
 // 9. grant_signing_input (the deterministic producer; REQ1-SIGNING-deterministic-produce).
 export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
-    closedShape([grant, bounds], ["object", SHAPE_BOUNDS_OPT]);
+    closedShape([grant, bounds], [SHAPE_GRANT_PRODUCER, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const keyIdBytes = strUtf8(grant.keyId);
     if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("grant_signing_input: key_id bytes");
@@ -1198,6 +1200,11 @@ function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
     const nameBytes = strUtf8(op.name);
     if (nameBytes.length < 1 || nameBytes.length > resolve(b, "operation_bytes" as MaximaKey)) fail("grant_signing_input: operation name bytes");
     if (!/^[\x20-\x7e]+$/.test(op.name)) fail("grant_signing_input: operation name charset");
+    // The shape gate covers the scalar fields + per-operation name; selectors is a union
+    // (bare "all" string or selector objects) the walker cannot express, so gate the array
+    // here — a null/number selectors previously threw a native TypeError past the Result
+    // contract (cross-vendor review m2 sweep); item shapes fail closed in selectorToTagged.
+    if (!Array.isArray(op.selectors)) fail("grant_signing_input: selectors array");
     if (op.selectors.length < 1 || op.selectors.length > resolve(b, "selectors" as MaximaKey)) fail("grant_signing_input: selectors count");
     const sels: Tagged[] = op.selectors.map((s) => selectorToTagged(s, b));
     const opMembers = new Map<string, Tagged>([
@@ -1223,6 +1230,12 @@ function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
 
 // Normalize a selector input (bare "all" string or object) to the tagged form for JCS.
 function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
+  // Leaf gates for the caller-shaped selector input (the m2 sweep's repair round): a null
+  // item, a non-array path (a string path iterated as CHARACTERS and was silently minted),
+  // a non-string path member, a non-array values, or a non-tagged value previously threw a
+  // native TypeError past the Result contract or coerced into the signed grant.
+  if (s === null || s === undefined) fail("selector: shape");
+  if (s !== "all" && typeof s !== "object") fail("selector: shape");
   if (s === "all" || (typeof s === "object" && s.kind === "all")) {
     return { t: "object", v: new Map<string, Tagged>([["kind", { t: "string", v: strUtf8("all") }]]) };
   }
@@ -1238,6 +1251,7 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
   }
   if (typeof s === "object" && s.kind === "one_of") {
     const path = validatePath(s.path, b);
+    if (!Array.isArray(s.values)) fail("selector: values array");
     if (s.values.length < 1 || s.values.length > resolve(b, "one_of_values" as MaximaKey)) fail("selector: values count");
     for (const v of s.values) validateSelectorValue(v, b);
     const members = new Map<string, Tagged>([
@@ -1264,6 +1278,8 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
 }
 
 function validatePath(path: string[], b: Bounds): Tagged {
+  if (!Array.isArray(path)) fail("selector: path array");
+  for (const seg of path) if (typeof seg !== "string") fail("selector: path segment string");
   if (path.length < 1 || path.length > resolve(b, "path_segments" as MaximaKey)) fail("selector: path length");
   const segs: Tagged[] = [];
   for (const seg of path) {
@@ -1275,6 +1291,9 @@ function validatePath(path: string[], b: Bounds): Tagged {
 }
 
 function validateSelectorValue(v: Tagged, b: Bounds): void {
+  if (v === null || v === undefined || typeof v !== "object" || typeof v.t !== "string") {
+    fail("selector: value shape");
+  }
   checkNode(v, 1, b);
 }
 
@@ -1420,7 +1439,7 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
 // 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
-    closedShape([anchor, bounds], ["object", SHAPE_BOUNDS_OPT]);
+    closedShape([anchor, bounds], [SHAPE_ANCHOR_PRODUCER, SHAPE_BOUNDS_OPT]);
     const b = bounds ?? MAXIMUM_BOUNDS;
     const keyIdBytes = strUtf8(anchor.keyId);
     if (keyIdBytes.length < 1 || keyIdBytes.length > resolve(b, "kid_bytes" as MaximaKey)) fail("anchor_signing_input: key_id bytes");

@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Malformed caller context now fails closed on every contract-major surface** (the
+  owner-authorized sweep of the cross-vendor review's m1/m2 findings, first closed for the
+  role-attestation profile at its landing). `bounds.ts`'s `coerceBounds` and the leaf
+  `resolve` reject a structurally malformed `Bounds` object — a non-object, a missing
+  maximum table, or an `overrides` that is missing, `null`, a bare array of non-pairs, or a
+  string — with the single closed error instead of throwing a native `TypeError` past the
+  `Result` contract, and `untrustedKeyLocator` in v1/v2/v3 now COERCES its caller bounds
+  (it resolved them ahead of any coercion, so a forged widening override was honored — the
+  cross-vendor F2 class surviving in exactly one surface). Pinning note: a hand-rolled
+  non-`Map` `ReadonlyMap` implementation now fails closed rather than iterating — an
+  undocumented shape no documented producer ever emitted. The producers gain the field-level
+  shape gates they lacked: `grantSigningInput` in v1/v2/v3 (previously a `null`/numeric
+  `keyId` COERCED into a wire `kid` `"null"`/`"123"` — likewise a `null` operation name into
+  `"name":"null"` — and nine other junk field shapes threw native `TypeError`s) and
+  `boundaryAnchorSigningInput` in v1/v2/v3 (the same coercion class on `keyId`). The
+  selector producer leaves harden the caller-shaped selector items in all three majors: a
+  non-array `path` previously iterated as CHARACTERS when handed a string and was silently
+  minted into the signed grant (`path: "abc"` → `["a","b","c"]` — a scope rewrite), numeric
+  path members coerced to strings, and null selector/value/`values` items threw native
+  `TypeError`s. No verdict changes on legal input: all four certified corpora, the census
+  legs, and the pre-existing suites are unchanged; the context-fail-closed suite (new,
+  RED-first) carries the 8+1 malformed-bounds shapes × 14 surfaces, the legal-bounds
+  controls, and the grant/anchor/selector junk-field matrices across v1/v2/v3.
+
 ### Added
 
 - **The `bap-role-attestation/1` sibling profile** (the protocol's ADR 0036; the release

@@ -246,7 +246,7 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
   if (!(expected.subjectPublicKey instanceof Uint8Array) || expected.subjectPublicKey.length !== 32) {
     fail("verify_attestation: subject key width");
   }
-  const b = safeBounds(expected.bounds);
+  const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
   const mag = resolve(b, "integer_magnitude" as MaximaKey);
   if (!Number.isInteger(a.validFrom) || Math.abs(a.validFrom) > mag) fail("verify_attestation: valid_from magnitude");
   if (a.validBefore !== null && (!Number.isInteger(a.validBefore) || Math.abs(a.validBefore) > mag)) {
@@ -257,24 +257,6 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
   if (a.validBefore !== null && a.validBefore <= a.validFrom) fail("verify_attestation: valid_before ordering");
   if (!Number.isInteger(expected.now) || Math.abs(expected.now) > mag) fail("verify_attestation: now magnitude");
   return b;
-}
-
-// Resolve caller-supplied bounds fail-closed: a malformed Bounds object (non-object, missing
-// or non-Map overrides, missing maximum table) rejects with the single closed error instead
-// of throwing a TypeError out of coerceBounds' `for (const [k, v] of b.overrides)`
-// (cross-vendor review m1 + repair pass — the v1-family entry points share the underlying
-// hole; this profile's surfaces close it at the source). Every legal Bounds carries its
-// overrides as a Map (boundsNew, MAXIMUM_BOUNDS, and the hand-crafted test shape), so the
-// instanceof gate is total where an iterable-shape check still let a bare array of non-pairs
-// through to destructuring.
-function safeBounds(bounds: Bounds | undefined): Bounds {
-  if (bounds === undefined || bounds === null) return MAXIMUM_BOUNDS;
-  if (typeof bounds !== "object") fail("bounds: object");
-  if (typeof (bounds as { maximum?: unknown }).maximum !== "object" || bounds.maximum === null) {
-    fail("bounds: maximum table");
-  }
-  if (!((bounds as { overrides?: unknown }).overrides instanceof Map)) fail("bounds: overrides map");
-  return coerceBounds(bounds);
 }
 
 // --- the four public surfaces (spec §4; REQ-RA1-API-complete) ---
@@ -288,7 +270,7 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
     if (typeof attestation.keyId !== "string") fail("attestation_signing_input: key_id string");
     if (typeof attestation.subjectKeyId !== "string") fail("attestation_signing_input: subject key id string");
     if (typeof attestation.jti !== "string") fail("attestation_signing_input: jti string");
-    const b = safeBounds(bounds);
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     const keyId = requireKidValue({ t: "string", v: strUtf8(attestation.keyId) }, "key_id", b);
     const jtiBytes = strUtf8(attestation.jti);
     if (jtiBytes.length < 1 || jtiBytes.length > resolve(b, "identifier_bytes" as MaximaKey) || !isStringOrUri(attestation.jti)) {
@@ -335,7 +317,7 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
     }
     if (input.kind !== "role_attestation") fail("assemble_compact: kind");
     if (!(signature instanceof Uint8Array)) fail("assemble_compact: signature");
-    const b = safeBounds(bounds);
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     if (input.protectedSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey) || input.payloadSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("assemble_compact: segment bound");
     const assembled = assembleSegments(input, signature);
     if (!assembled.ok) fail("assemble_compact: signing input");
@@ -350,7 +332,7 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
 export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<AttestationDecoded> {
   return trying(() => {
     if (!(compact instanceof Uint8Array)) fail("decode_attestation: compact required");
-    const b = safeBounds(bounds);
+    const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     const { kid, claims } = parseAttestation(compact, b);
     return {
       keyId: kid,

@@ -96,9 +96,23 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
 // {maximum, overrides} object that bypasses boundsNew — including a WIDENING override (compact_bytes
 // > MAXIMA). resolve() trusts the override directly; without this gate the verify/decode paths would
 // honor the forged widening (cross-vendor F2). coerceBounds re-runs the boundsNew validation over the
-// override map so every entry point that resolves caller-supplied bounds fails closed on a forgery.
+// override map so every entry point that COERCES caller-supplied bounds fails closed on a forgery;
+// the leaf resolve() carries the same structural gate for the paths that resolve before coercing.
+//
+// Malformed STRUCTURE fails closed here too (the owner-authorized sweep of cross-vendor review m1):
+// a non-object, a missing maximum table, or an overrides that is not a Map — missing, null, a bare
+// array of non-pairs, a string — returns the single closed error instead of throwing a TypeError out
+// of the iteration below (which `trying` re-throws as a bug, crashing the caller). Every legal
+// Bounds carries its overrides as a Map (boundsNew, MAXIMUM_BOUNDS, and the hand-crafted shape), so
+// the instanceof gate is total; a hand-rolled non-Map ReadonlyMap implementation now fails closed
+// rather than iterating — a deliberate tightening of an undocumented, never-produced shape.
 export function coerceBounds(b: Bounds): Bounds {
-  for (const [key, value] of b.overrides) {
+  if (typeof b !== "object" || b === null) fail("bounds.coerce: object required");
+  if (typeof b.maximum !== "object" || b.maximum === null) fail("bounds.coerce: maximum table required");
+  if (!(b.overrides instanceof Map)) fail("bounds.coerce: overrides map required");
+  // instanceof narrows to the unparameterized Map default; re-establish the typed view.
+  const overrides: ReadonlyMap<MaximaKey, number> = b.overrides;
+  for (const [key, value] of overrides) {
     if (!Number.isInteger(value)) fail(`bounds.coerce: non-integer limit ${key}`);
     if (FIXED_WIDTH_KEYS.has(key)) {
       if (value !== MAXIMA[key]) fail(`bounds.coerce: fixed-width key ${key} must equal maximum`);
@@ -110,7 +124,14 @@ export function coerceBounds(b: Bounds): Bounds {
   return b;
 }
 
-// Resolve a bound: the override if present, else the maximum.
+// Resolve a bound: the override if present, else the maximum. The leaf every bound-sensitive
+// check funnels through, so it carries the same structural gate as coerceBounds (the m1
+// sweep): a path that resolves caller bounds BEFORE coercing (untrustedKeyLocator resolves
+// compact_bytes ahead of any parse) must fail closed on a garbage object here, not throw a
+// TypeError on `.overrides.get` of undefined.
 export function resolve(b: Bounds, key: MaximaKey): number {
+  if (typeof b !== "object" || b === null || !(b.overrides instanceof Map)) {
+    fail("bounds.resolve: malformed bounds object");
+  }
   return b.overrides.get(key) ?? MAXIMA[key];
 }
