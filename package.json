@@ -1,6 +1,6 @@
 {
   "name": "@bounded-authority-protocol/verifier",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority — a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1, 2, and 3).",
   "license": "Apache-2.0",
   "type": "module",

@@ -298,10 +298,34 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
       ["role", { t: "string", v: strUtf8(attestation.role) }],
       ["v", { t: "int", v: VERSION }],
     ]);
+    // Producer/consumer bounds agreement (the cross-vendor finding-4 class, transferred to
+    // this surface): the EMITTED segments and projected compact must satisfy the same
+    // caller-resolved limits the decoder enforces, and the emitted number lexemes must be
+    // decodable — the producer must not mint bytes its own consumer rejects.
+    const payloadJson = jcsEncode({ t: "object", v: payload }, b);
+    if (payloadJson.length > resolve(b, "json_bytes" as MaximaKey)) {
+      fail("attestation_signing_input: emitted json_bytes");
+    }
+    if (payloadJson.length > resolve(b, "jcs_bytes" as MaximaKey)) {
+      fail("attestation_signing_input: emitted jcs_bytes");
+    }
+    const protectedSegment = strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: header }, b))));
+    const emittedPayloadSegment = strUtf8(utf8Str(base64urlEncode(payloadJson)));
+    if (protectedSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey) ||
+        emittedPayloadSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) {
+      fail("attestation_signing_input: emitted encoded_segment_bytes");
+    }
+    if (payloadJson.length > resolve(b, "decoded_segment_bytes" as MaximaKey)) {
+      fail("attestation_signing_input: emitted decoded_segment_bytes");
+    }
+    // Projected compact: both segments + two dots + the 86-char base64url of a 64-byte signature.
+    if (protectedSegment.length + emittedPayloadSegment.length + 2 + 86 > resolve(b, "compact_bytes" as MaximaKey)) {
+      fail("attestation_signing_input: projected compact_bytes");
+    }
     return {
       kind: "role_attestation" as const,
-      protectedSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: header }, b)))),
-      payloadSegment: strUtf8(utf8Str(base64urlEncode(jcsEncode({ t: "object", v: payload }, b)))),
+      protectedSegment,
+      payloadSegment: emittedPayloadSegment,
     };
   });
 }

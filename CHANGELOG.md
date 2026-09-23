@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-23
+
+### Fixed
+
+- **Producer/consumer bounds agreement on emitted bytes** (the cross-vendor finding-4 class,
+  transferred from the protocol repository's repair patch 0.6.1): `attestationSigningInput`
+  now enforces the caller-resolved limits on what it EMITS — encoded and decoded
+  `segment_bytes`, `json_bytes`, `jcs_bytes` over the emitted payload JSON, and the
+  projected `compact_bytes` (segments + separators + the 86-char signature encoding) — so the
+  producer cannot mint bytes its own decoder rejects under the caller's bounds. Each gate is
+  injection-proven red-capable against its named leg. The emitted-number-lexeme class is
+  closed one layer down: any exponent-form integer is far past the shared JCS encoder's
+  2^53−1 magnitude bound (probe: `jcsEncode` throws `jcs: integer bound`); a producer-side
+  lexeme gate is structurally unreachable in this surface and is documented in the test
+  rather than shipped as dead coverage. No verdict changes on legal input (all four
+  certified corpora agree at unchanged counts).
+
+
 ## [0.4.0] — 2026-09-23
 
 The role-attestation release (ADR 0036 Decision 1.8: the first `0.x.0` bearing the

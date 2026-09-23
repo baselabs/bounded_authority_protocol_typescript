@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 
 import { strUtf8 } from "../src/json.js";
 import { base64urlEncode } from "../src/base64url.js";
-import { MAXIMA } from "../src/bounds.js";
+import { MAXIMA, boundsNew } from "../src/bounds.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 import { jcsEncode } from "../src/jcs.js";
 import {
@@ -291,6 +291,37 @@ test("role attestation producer validates its inputs fail-closed", () => {
   assert.equal(decodeAttestation(f.compact, handCrafted).ok, true);
   // The producer takes no expected role and no private key — external signature only.
   assert.equal(attestationSigningInput(f.producer).ok, true);
+});
+
+test("role attestation producer honors caller bounds on its EMITTED bytes (finding-4 transfer)", () => {
+  const f = fixture();
+  const longJti = { ...f.producer, jti: "urn:example:attestation:" + "a".repeat(400) };
+  // The emitted payload segment under DEFAULT bounds is legal...
+  const legal = attestationSigningInput(longJti);
+  assert.equal(legal.ok, true);
+  if (!legal.ok) return;
+  assert.ok(legal.value.payloadSegment.length > 128, "fixture emits a >128-byte segment");
+  // ...but every decoder-enforced limit the producer can violate must gate at production:
+  assert.equal(attestationSigningInput(longJti, boundsNew({ encoded_segment_bytes: 128 })).ok, false);
+  assert.equal(attestationSigningInput(longJti, boundsNew({ decoded_segment_bytes: 128 })).ok, false);
+  assert.equal(attestationSigningInput(longJti, boundsNew({ json_bytes: 128 })).ok, false);
+  assert.equal(attestationSigningInput(longJti, boundsNew({ jcs_bytes: 128 })).ok, false);
+  assert.equal(attestationSigningInput(longJti, boundsNew({ compact_bytes: 200 })).ok, false);
+  // The emitted-number-lexeme class is closed one layer down in this surface: any integer
+  // whose Number-toString carries an exponent is >= 1e21 — far past the 2^53-1 magnitude
+  // bound — and the shared JCS encoder rejects it at production time (jcsEncode throws
+  // "jcs: integer bound"; injection-probed — a producer-side lexeme gate is structurally
+  // unreachable and was removed rather than shipped as dead coverage). The producing call
+  // still fails closed:
+  assert.equal(
+    attestationSigningInput({ ...f.producer, notBefore: 10 ** 30, expiresAt: 10 ** 31 }).ok,
+    false,
+  );
+  assert.equal(
+    attestationSigningInput({ ...f.producer, notBefore: 10 ** 15, expiresAt: 10 ** 15 + 1 }).ok,
+    true,
+    "15-digit integers emit plain lexemes and stay legal",
+  );
 });
 
 // Build a compact from arbitrary header/payload tagged values (test-only; bypasses the producer
