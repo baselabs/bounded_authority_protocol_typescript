@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   verify:
-    name: typecheck, lint, license, unit, conformance (283 + 268 + 292 + census)
+    name: typecheck, lint, license, unit, conformance (283 + 268 + 292 + 40 + census)
     # Family tri-platform build bar (BAP ADR 0031): every lane runs the full battery.
     strategy:
       fail-fast: false
@@ -61,6 +61,9 @@ jobs:
 
       - name: Conformance — vendored v3 snapshot (292 + curated census)
         run: pnpm conformance:v3
+
+      - name: Conformance — vendored role-attestation profile snapshot (40 + cross-profile)
+        run: pnpm conformance:role-attestation
 
   dependency-currency:
     # Latest-first dependency currency (BAP ADR 0032 shape). A property of the

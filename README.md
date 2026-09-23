@@ -11,7 +11,10 @@ The SDK verifies the protocol's three wire profiles (contract-majors 1, 2, and 3
 grants, holder proofs, consumption chains, boundary anchors, key transitions, and archived
 exports. It is a TypeScript reimplementation of the reference profiles — derived from the
 published specifications and certified conformance corpora, with zero runtime dependencies
-(Ed25519 and ES256 via `node:crypto`; canonicalization hand-rolled from the RFCs).
+(Ed25519 and ES256 via `node:crypto`; canonicalization hand-rolled from the RFCs). It also
+carries the protocol's byte-distinct sibling profile for role attestations
+(`bap-role-attestation/1`, under the `roleAttestation` namespace), parsed by no contract-major
+and parsing none of them.
 
 **It verifies; it never authorizes.** A successful result proves that caller-supplied bytes
 satisfy caller-supplied trusted inputs and expected context — nothing more. There is no
@@ -126,10 +129,15 @@ The v1 façade (the `v2` namespace mirrors it):
 | `verifyHistoricalAnchor` / `verifyKeyTransition` | `Result<AnchorFacts \| KeyTransitionFacts>` | Historical boundary + authenticated rollover verification |
 
 Plus the versioned primitives (`jwkEncodePublic`, `thumbprint`, `uriNormalize`, `boundsNew`,
-`jcsEncode`, `base64urlDecode`/`Encode`, the tagged JSON algebra) and the byte-distinct
+`jcsEncode`, `base64urlDecode`/`Encode`, the tagged JSON algebra), the byte-distinct
 local-development proof profile (`localLoopbackHttpProofSigningInput` and friends — literal
-`127.0.0.1`/`[::1]` targets only, mandatory nonce; standard `dpop+jwt` rejects its bytes).
-The full export list is [`src/index.ts`](src/index.ts).
+`127.0.0.1`/`[::1]` targets only, mandatory nonce; standard `dpop+jwt` rejects its bytes), and
+the standalone role-attestation sibling profile (`bap-role-attestation/1`): the
+`roleAttestation` namespace's four surfaces — `attestationSigningInput` (external signature
+only), `assembleAttestationCompact`, `decodeAttestation`, and `verifyAttestation` — bind a
+subject key to a role (`issuer`/`holder`) for a window contained in the attestor key's
+validity, with self-attestation rejected and facts carrying `trust: "not_evaluated"` and no
+authorization marker. The full export list is [`src/index.ts`](src/index.ts).
 
 ## Pairing with the signer
 
@@ -235,8 +243,9 @@ Two properties make the pairing safe to build against:
 
 Every release of this SDK is verified against the protocol's published, cryptographically
 certified conformance corpora — **283 vectors** for contract-major 1, **268** for
-contract-major 2, and **292** for contract-major 3 — recomputing every verdict from scratch,
-with the corpus `index.json`
+contract-major 2, **292** for contract-major 3, and **40** for the `bap-role-attestation/1`
+sibling profile — recomputing every verdict from scratch,
+with each corpus `index.json`
 SHA-256 asserted at load so a drifted snapshot fails loudly. Permissiveness bugs (a parser
 accepting what the spec forbids) are invisible to corpus agreement by construction, so the
 suite additionally carries a per-language mutation gate that proves each closure
@@ -244,7 +253,7 @@ suite additionally carries a per-language mutation gate that proves each closure
 
 CI runs the full matrix on every push: strict typecheck, build, lint (including a library
 purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
-mutation gate, and all three conformance corpora against the vendored snapshots.
+mutation gate, and all four conformance corpora against the vendored snapshots.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every
@@ -270,10 +279,12 @@ the host — a facts value is evidence, never a credential.
 
 - [BAP v1 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md) ·
   [v2 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md) ·
-  [v3 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md)
+  [v3 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md) ·
+  [role-attestation profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md)
 - [Certified conformance corpora](https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/)
 - [ADR 0014 — cross-language verifier SDKs](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md) ·
-  [ADR 0015 — graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md)
+  [ADR 0015 — graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md) ·
+  [ADR 0036 — the role-attestation sibling profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0036-role-attestation-profile.md)
 
 ## Related packages
 
@@ -297,6 +308,7 @@ pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 + key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
 pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
+pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 

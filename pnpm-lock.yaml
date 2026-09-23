@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@bounded-authority-protocol/signer':
-        specifier: ^0.1.2
-        version: 0.1.2
+        specifier: ^0.2.0
+        version: 0.2.0
       '@noble/ed25519':
         specifier: ^3.2.0
         version: 3.2.0
@@ -44,12 +44,12 @@ importers:
 
 packages:
 
-  '@bounded-authority-protocol/signer@0.1.2':
-    resolution: {integrity: sha512-6FqbDRNW3Qq0RhN3dt6PH9K1wb2iQnuWcImgs8JfBkZzrjSjVyLnitfxkKWrXTdWQ5Tqtfk+2j3MPxDLQJVnFQ==}
+  '@bounded-authority-protocol/signer@0.2.0':
+    resolution: {integrity: sha512-+eg4qN30MozF4RnuL6Ylgj5LqfRkNmGqGPJwTGxpqOorXLsb3+yqfxTgdDW4HQwlqXNFD0p7qfP21SnW5TQDgA==}
     engines: {node: '>=22'}
 
-  '@bounded-authority-protocol/verifier@0.2.2':
-    resolution: {integrity: sha512-2GEhe+xIh1nZMKRMs8RtgeYTQfChA1qLt/lWJAGpE5KwajR1spvk8cyvkrSEDWmT4HyNzDhFmbtelaMrzClfpA==}
+  '@bounded-authority-protocol/verifier@0.3.0':
+    resolution: {integrity: sha512-3bfffjp0V4alauvT+KbYw75duowetgOETRpJXQe4/yIOk+J50UhUFV7y6YQr47b3qXA9EdaM3ZBlbMTcJKA9vA==}
     engines: {node: '>=22'}
 
   '@cacheable/memory@2.2.0':
@@ -652,11 +652,11 @@ packages:
 
 snapshots:
 
-  '@bounded-authority-protocol/signer@0.1.2':
+  '@bounded-authority-protocol/signer@0.2.0':
     dependencies:
-      '@bounded-authority-protocol/verifier': 0.2.2
+      '@bounded-authority-protocol/verifier': 0.3.0
 
-  '@bounded-authority-protocol/verifier@0.2.2': {}
+  '@bounded-authority-protocol/verifier@0.3.0': {}
 
   '@cacheable/memory@2.2.0':
     dependencies:

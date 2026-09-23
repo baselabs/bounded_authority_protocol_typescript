@@ -1934,3 +1934,261 @@ test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES
   const over = v3.checkEnvelope(grantCompact, proofCompact, { ...expected, castArguments: { t: "object", v: new Map<string, Tagged>([["amount", { t: "int", v: 5001 }]]) } });
   assert.equal(over.ok, false, "amount 5001 > the lte bound must reject");
 });
+
+// --- role-attestation profile (bap-role-attestation/1, ADR 0036) — the named-check closure
+// battery. Each closure below was defect-injected at authoring: the named check in
+// src/role_attestation.ts was mechanically removed or relaxed, exactly one named test went
+// RED, and the change was reverted. The record (injection → reddened test):
+//   RA-1. attestor window-endpoint magnitude (2^53-1, both signs) + integer: delete the two
+//         magnitude checks in validateExpected → "attestor window endpoints" REDs. (The
+//         Python/Go legs shipped without this once and were repaired 2026-09-22; the
+//         verifyHistoricalAnchor parity is load-bearing, not decorative.)
+//   RA-2. non-integer / over-magnitude now: drop the now check in validateExpected → "now"
+//         REDs. A fractional now inside the window would otherwise VERIFY — the half-open
+//         comparison alone cannot see the fraction.
+//   RA-3. self-attestation material (thumbprint equality): remove the material fail → the
+//         WIRE-carried material leg REDs (the fixture puts the attestor key on the wire with a
+//         matching expected binding, so only this check can reject).
+//   RA-4. self-attestation key-id equality: remove the key-id fail → the WIRE-carried key-id
+//         leg REDs (same discipline).
+//   RA-5. containment nbf >= valid_from: remove the nbf containment fail → REDs.
+//   RA-6. containment exp <= valid_before: remove the exp containment fail → REDs.
+//   RA-7. now in the half-open [nbf, exp): relax the upper bound to now <= exp → REDs.
+//   RA-8. header kid == attestor key id: remove the kid binding fail → REDs.
+//   RA-9. subject binding raw-byte equality: remove the subject bytesEqual fail → REDs.
+//   RA-10. role closed set: drop the ROLES membership check at decode → REDs.
+//   RA-11. canonical payload bytes: remove the payload canonical check → REDs.
+//   RA-12. signature gate: skip ed25519Verify → REDs.
+//   RA-13. v integer-tag distinction: NOT independently red-capable (adjudicated by injection —
+//         relaxing the tag check changed no verdict): JCS re-encodes Number 1.0 to "1", so any
+//         float lexeme for v is non-canonical and RA-11's canonical gate subsumes it on the
+//         wire; the tag check is the semantic gate, byte-level redundant behind canonical. The
+//         behavioral float-lexeme assertion stays (corpus: v-float-lexeme). This adjudication
+//         is scoped to v — whose only float-valued legal value is 1 — and does NOT generalize
+//         to the window members: see RA-15.
+//   RA-14. protected-header canonical bytes (cross-vendor review B1): remove the header
+//         canonical check in parseAttestationHeader → "protected header must equal its JCS
+//         re-encoding" REDs (the falsifier re-orders the header and signs those exact bytes,
+//         so the signature gate passes; the corpus carries only the payload-order case).
+//   RA-15. nbf/exp integer tags (cross-vendor review B2): relax requireInt to accept a float
+//         tag → "nbf and exp must carry integer tags" REDs. Unlike v, a float window endpoint
+//         (1000.5) is byte-identical under JCS re-encoding — canonical — so the RA-14/RA-11
+//         canonical gates do NOT subsume this closure; without it, fractional window
+//         endpoints enter the window arithmetic and verify.
+//
+// Specificity note (cross-vendor review n3, corrected in the repair pass): "exactly one named
+// test" is measured within this battery's run — the injection driver executes
+// test/permissiveness.ts alone, where each removal/relaxation reddens exactly the named test
+// above. The unit suite carries behavioral legs for the closures it shares with this battery
+// and reddens correspondingly for THOSE; RA-14 and RA-15 live only here.
+import * as roleAttestation from "../src/role_attestation.js";
+import { decodeAttestation as raDecode, verifyAttestation as raVerify } from "../src/role_attestation.js";
+
+const RA_MAX = 9007199254740991; // MAXIMA.integer_magnitude (2^53 - 1)
+
+function raFixture() {
+  const attestor = freshKey();
+  const subject = freshKey();
+  const si = roleAttestation.attestationSigningInput({
+    keyId: "attestor-1", jti: "urn:example:attestation:ra",
+    subjectKeyId: "subject-1", subjectPublicKey: subject.publicKey,
+    role: "issuer", notBefore: 1000, expiresAt: 2000,
+  });
+  if (!si.ok) throw new Error("ra fixture signing input failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), attestor.privateKey));
+  const compact = roleAttestation.assembleAttestationCompact(si.value, sig);
+  if (!compact.ok) throw new Error("ra fixture assembly failed");
+  const expected = {
+    attestor: { keyId: "attestor-1", publicKey: attestor.publicKey, validFrom: 500, validBefore: 2500 },
+    subjectKeyId: "subject-1",
+    subjectPublicKey: subject.publicKey,
+    now: 1500,
+  };
+  return { attestor, subject, compact: compact.value, expected };
+}
+
+// RA-1 + RA-2: the caller-supplied attestor context and now are magnitude-bounded integers.
+// The host defect: JS numbers are doubles; without an explicit gate a 2^62 valid_from or a
+// fractional now enters the window arithmetic silently.
+test("permissiveness: attestor window endpoints are integer, magnitude-bounded (2^53-1, both signs)", () => {
+  const f = raFixture();
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: RA_MAX + 1 } }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: -RA_MAX - 1 } }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: 500.5 } }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: RA_MAX + 1 } }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: -RA_MAX - 1 } }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: 2500.5 } }).ok, false);
+});
+test("permissiveness: attestation now must be an integer within magnitude (fractional now would verify)", () => {
+  const f = raFixture();
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 1500.5 }).ok, false, "fractional now inside the window must fail closed");
+  assert.equal(raVerify(f.compact, { ...f.expected, now: RA_MAX + 1 }).ok, false);
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 0.5 }).ok, false);
+});
+
+// RA-3 + RA-4: self-attestation — each leg rejects ON ITS OWN. The discriminating fixtures put
+// the self-attested material ON THE WIRE (via the producer) with an expected context whose
+// subject binding MATCHES it, so the subject-binding gate passes and only the self-attestation
+// check can reject — overriding only the expected context (the earlier shape of these legs)
+// shadows behind the binding gate and proves nothing.
+function raSigned(
+  f: ReturnType<typeof raFixture>,
+  producer: { subjectKeyId: string; subjectPublicKey: Uint8Array },
+): Uint8Array {
+  const si = roleAttestation.attestationSigningInput({
+    keyId: "attestor-1", jti: "urn:example:attestation:ra",
+    subjectKeyId: producer.subjectKeyId, subjectPublicKey: producer.subjectPublicKey,
+    role: "issuer", notBefore: 1000, expiresAt: 2000,
+  });
+  if (!si.ok) throw new Error("ra producer failed");
+  const message = strUtf8(`${new TextDecoder().decode(si.value.protectedSegment)}.${new TextDecoder().decode(si.value.payloadSegment)}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), f.attestor.privateKey));
+  const compact = roleAttestation.assembleAttestationCompact(si.value, sig);
+  if (!compact.ok) throw new Error("ra assembly failed");
+  return compact.value;
+}
+test("permissiveness: self-attestation rejected on material alone and on key id alone", () => {
+  const f = raFixture();
+  // Context-only override of both fields at once: rejects at the subject-binding gate (the
+  // wire still carries the subject key) — a sanity leg, not a discriminating proof. The
+  // wire-carried legs below are the proofs (cross-vendor review n2).
+  assert.equal(
+    raVerify(f.compact, { ...f.expected, subjectKeyId: "attestor-1", subjectPublicKey: f.attestor.publicKey }).ok,
+    false,
+    "expected-context mismatch (binding gate)",
+  );
+  // Material alone: the wire subject IS the attestor key; the expected binding matches it.
+  const materialCompact = raSigned(f, { subjectKeyId: "subject-1", subjectPublicKey: f.attestor.publicKey });
+  assert.equal(raDecode(materialCompact).ok, true, "self-material fixture decodes");
+  assert.equal(
+    raVerify(materialCompact, { ...f.expected, subjectPublicKey: f.attestor.publicKey }).ok,
+    false,
+    "attestor thumbprint == subject thumbprint (distinct key ids)",
+  );
+  // Key id alone: the wire subject key id IS the attestor key id; the expected binding matches.
+  const keyIdCompact = raSigned(f, { subjectKeyId: "attestor-1", subjectPublicKey: f.subject.publicKey });
+  assert.equal(raDecode(keyIdCompact).ok, true, "self-key-id fixture decodes");
+  assert.equal(
+    raVerify(keyIdCompact, { ...f.expected, subjectKeyId: "attestor-1" }).ok,
+    false,
+    "attestor key id == subject key id (distinct key material)",
+  );
+});
+
+// RA-5 + RA-6 + RA-7: containment and the half-open now window.
+test("permissiveness: attestation window must be contained in the attestor key window", () => {
+  const f = raFixture();
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: 1001 } }).ok, false, "nbf < valid_from");
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: 1999 } }).ok, false, "exp > valid_before");
+  // The boundary equalities accept (containment, not strict containment).
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: 1000 } }).ok, true);
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: 2000 } }).ok, true);
+});
+test("permissiveness: now window is half-open [nbf, exp) — now == exp rejects", () => {
+  const f = raFixture();
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 1000 }).ok, true, "now == nbf accepts");
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 1999 }).ok, true);
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 2000 }).ok, false, "now == exp rejects");
+  assert.equal(raVerify(f.compact, { ...f.expected, now: 999 }).ok, false, "now < nbf rejects");
+});
+
+// RA-8 + RA-9: the kid and subject-binding gates.
+test("permissiveness: attestation kid binding and subject raw-byte binding are exact", () => {
+  const f = raFixture();
+  assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, keyId: "attestor-2" } }).ok, false, "header kid must equal the attestor key id");
+  const otherSubject = freshKey();
+  assert.equal(raVerify(f.compact, { ...f.expected, subjectPublicKey: otherSubject.publicKey }).ok, false, "raw public_key byte-equality");
+  assert.equal(raVerify(f.compact, { ...f.expected, subjectKeyId: "subject-2" }).ok, false, "subject key id equality");
+});
+
+// RA-10 + RA-11 + RA-13: the decode-level closures. Built from raw segment text so the wire
+// bytes are exactly the falsifier (the producer cannot emit any of them).
+function raWireCompact(payloadText: string, f: ReturnType<typeof raFixture>): Uint8Array {
+  const segs = new TextDecoder().decode(f.compact).split(".");
+  const payloadSegment = new TextDecoder().decode(base64urlEncode(strUtf8(payloadText)));
+  return strUtf8(`${segs[0]}.${payloadSegment}.${segs[2]}`);
+}
+test("permissiveness: attestation role closed set, canonical payload bytes, and integer v tag", () => {
+  const f = raFixture();
+  const segs = new TextDecoder().decode(f.compact).split(".");
+  const payloadText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[1]!)));
+
+  // RA-10: role outside the closed set.
+  const auditor = payloadText.replace('"role":"issuer"', '"role":"auditor"');
+  if (auditor === payloadText) throw new Error("fixture payload carries no role member");
+  assert.equal(raDecode(raWireCompact(auditor, f)).ok, false, "role outside {issuer, holder}");
+
+  // RA-11: non-canonical member order — the SAME members, re-ordered (the trailing ",\"v\":1}"
+  // moves to the front), so no duplicate-member gate can shadow the canonical gate.
+  const nonCanonical = payloadText
+    .replace('{"exp":', '{"v":1,"exp":')
+    .replace(',"v":1}', "}");
+  assert.notEqual(nonCanonical, payloadText);
+  assert.equal(nonCanonical.split('"v":').length - 1, 1, "the reorder must not duplicate v");
+  assert.equal(raDecode(raWireCompact(nonCanonical, f)).ok, false, "payload must equal its JCS re-encoding");
+
+  // RA-13: the float lexeme 1.0 for v (JSON.parse would collapse it to an integer).
+  // Adjudication (defect-injection observed): this closure is NOT independently red-capable —
+  // JCS re-encodes Number 1.0 to "1", so ANY float lexeme for v is non-canonical and the
+  // RA-11 canonical gate subsumes it on the wire; the v tag check is the semantic gate and
+  // byte-level redundant behind canonical. The behavioral assertion stays (the corpus's
+  // v-float-lexeme case carries it); the load-bearing mutation entry for this family is RA-11.
+  const floatV = payloadText.replace('"v":1}', '"v":1.0}');
+  if (floatV === payloadText) throw new Error("fixture payload carries no v member");
+  assert.equal(raDecode(raWireCompact(floatV, f)).ok, false, "float-encoded v must reject");
+});
+
+// RA-12: the signature gate — flip a meaningful byte in the MIDDLE of the signature segment
+// (the final chars are canonical-base64url-constrained; a middle char flips freely).
+test("permissiveness: attestation signature gate rejects a tampered signature", () => {
+  const f = raFixture();
+  const chars = new TextDecoder().decode(f.compact).split("");
+  const dot = chars.lastIndexOf(".");
+  chars[dot + 20] = chars[dot + 20] === "A" ? "B" : "A";
+  const tampered = strUtf8(chars.join(""));
+  assert.equal(raDecode(tampered).ok, true, "canonical-width signature still decodes");
+  assert.equal(raVerify(tampered, f.expected).ok, false, "the signature must verify under the attestor key");
+});
+
+// RA-14 (cross-vendor review B1): the PROTECTED-HEADER canonical gate. Spec §2
+// REQ-RA1-CLAIM-canonical — "both segments" — and the corpus carries only the payload-order
+// case, so without this leg the header gate's removal survives every gate green and a
+// non-canonical-header attestation VERIFIES. The falsifier re-orders the header members
+// (same members, same values, JCS-illegal order) and signs THOSE exact bytes, so the
+// signature gate passes and only the canonical gate can reject.
+test("permissiveness: attestation protected header must equal its JCS re-encoding", () => {
+  const f = raFixture();
+  const segs = new TextDecoder().decode(f.compact).split(".");
+  const payloadSegment = segs[1]!;
+  const headerText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[0]!)));
+  // JCS order is alg,kid,typ; rebuild as typ,kid,alg (a legal JSON re-order, illegal JCS).
+  const reordered = '{"typ":"ba+role-attestation","kid":"attestor-1","alg":"EdDSA"}';
+  assert.notEqual(reordered, headerText);
+  const headerSegment = new TextDecoder().decode(base64urlEncode(strUtf8(reordered)));
+  const message = strUtf8(`${headerSegment}.${payloadSegment}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), f.attestor.privateKey));
+  const nonCanonicalHeader = strUtf8(`${headerSegment}.${payloadSegment}.${new TextDecoder().decode(base64urlEncode(sig))}`);
+  assert.equal(raDecode(nonCanonicalHeader).ok, false, "the protected header must equal its JCS re-encoding");
+  assert.equal(raVerify(nonCanonicalHeader, f.expected).ok, false, "and must never verify");
+});
+
+// RA-15 (cross-vendor review B2): the integer-tag closure for nbf/exp. REQ-RA1-CLAIM-
+// closed-required forbids float-encoded numerics on EVERY member, and — unlike v (RA-13) —
+// the canonical gate does NOT subsume this: JCS re-encodes 1000.5 to the byte-identical
+// 1000.5, so a float window endpoint is canonical and only the int tag rejects it. Without
+// this leg, relaxing requireInt lets fractional window endpoints enter the window arithmetic
+// and VERIFY.
+test("permissiveness: nbf and exp must carry integer tags (float endpoints are canonical, not caught by RA-14/RA-11)", () => {
+  const f = raFixture();
+  const segs = new TextDecoder().decode(f.compact).split(".");
+  const payloadText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[1]!)));
+  const floatWindow = payloadText.replace('"nbf":1000,', '"nbf":1000.5,').replace('"exp":2000,', '"exp":2000.5,');
+  if (floatWindow === payloadText) throw new Error("fixture payload carries no integer window to falsify");
+  const payloadSegment = new TextDecoder().decode(base64urlEncode(strUtf8(floatWindow)));
+  const message = strUtf8(`${segs[0]}.${payloadSegment}`);
+  const sig = new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), f.attestor.privateKey));
+  const floatCompact = strUtf8(`${segs[0]}.${payloadSegment}.${new TextDecoder().decode(base64urlEncode(sig))}`);
+  assert.equal(raDecode(floatCompact).ok, false, "float-encoded nbf/exp must reject at the integer-tag gate");
+  assert.equal(raVerify(floatCompact, f.expected).ok, false, "and must never verify");
+});

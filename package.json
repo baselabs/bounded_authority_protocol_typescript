@@ -26,12 +26,13 @@
     "conformance": "tsx conformance/run.ts",
     "conformance:v2": "tsx conformance/run_v2.ts",
     "conformance:v3": "tsx conformance/run_v3.ts",
+    "conformance:role-attestation": "tsx conformance/run_role_attestation.ts",
     "census": "tsx conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
   },
   "devDependencies": {
-    "@bounded-authority-protocol/signer": "^0.1.2",
+    "@bounded-authority-protocol/signer": "^0.2.0",
     "@noble/ed25519": "^3.2.0",
     "@noble/hashes": "^2.4.0",
     "@types/node": "^26.6.2",

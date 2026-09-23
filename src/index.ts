@@ -60,6 +60,16 @@ export * as v2 from "./v2.js";
 // a wire form with another.
 export * as v3 from "./v3.js";
 
+// The bap-role-attestation/1 sibling profile (ADR 0036): a standalone, grant-unbound compact
+// JWS binding a subject key to a role for a bounded window under contract-major-1 mechanics
+// (Ed25519/EdDSA, BAP1-Ed25519-SHA256). Parsed by no contract-major profile — its
+// `ba+role-attestation` typ and every major typ reject each other — and selected only through
+// this separately named namespace: roleAttestation.attestationSigningInput,
+// roleAttestation.assembleAttestationCompact, roleAttestation.decodeAttestation,
+// roleAttestation.verifyAttestation. Facts carry trust "not_evaluated" and no authorization
+// marker (the anchor posture); verification is not authority.
+export * as roleAttestation from "./role_attestation.js";
+
 export type {
   TrustedIssuer,
   ExpectedGrant,

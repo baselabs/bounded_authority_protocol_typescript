@@ -1,0 +1,16 @@
+# Gitleaks default rules with a rule-scoped public-fixture exception, mirroring the BAP
+# monorepo's posture for the same certified content. The role-attestation conformance corpus
+# is byte-exact, digest-pinned cryptographic fixture material: compact JWS artifacts minted
+# with ephemeral in-memory keys and published in the protocol repository (spec
+# bap-role-attestation-v1.md §6). The `jwt` rule pattern-matches these public fixtures; the
+# exception is anchored to the target rule and the exact corpus paths, and the corpus files
+# cannot carry inline `# gitleaks:allow` markers without breaking their certified digests.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public compact JWS conformance fixtures (certified corpus, digest-pinned, ephemeral keys)"
+targetRules = ["jwt"]
+paths = [
+  '''^conformance/corpus-role-attestation/(?:attestation-cases|profile)\.json$''',
+]

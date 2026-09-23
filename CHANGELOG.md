@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+### Added
+
+- **The `bap-role-attestation/1` sibling profile** (the protocol's ADR 0036; the release
+  precondition for any `0.x.0` bearing the profile), exported as the `roleAttestation`
+  namespace and re-derived from the normative sources alone (`spec/bap-role-attestation-v1.md`
+  + the certified corpus — ADR 0014's no-derivation bar): a standalone, grant-unbound compact
+  JWS under contract-major-1 mechanics (Ed25519/EdDSA, `BAP1-Ed25519-SHA256`) in which an
+  attestor key binds a subject key to a role (`issuer`/`holder`) for a window contained in the
+  attestor key's validity. Four surfaces — `attestationSigningInput` (external signature only;
+  the SDK holds no private key), `assembleAttestationCompact` (revalidates header, payload
+  member rules, segment bounds, and signature width before returning bytes),
+  `decodeAttestation` (bounded decode, no trust evaluation), and `verifyAttestation` (the
+  citation surface): closed header `{alg, kid, typ: "ba+role-attestation"}` and payload
+  `{v, jti, key_id, public_key, role, nbf, exp}` sets, JCS canonical byte-equality on both
+  segments, kid==attestor binding plus Ed25519 signature, subject binding by key-id equality
+  and raw public-key byte-equality, self-attestation rejected on either leg (thumbprint or key
+  id), window containment with `exp == valid_before` accepting, and the half-open
+  `now ∈ [nbf, exp)`. The attestor context (`HistoricalPublicKey`) window endpoints and `now`
+  are integer- and magnitude-bounded (2^53−1) — the `verifyHistoricalAnchor` parity the
+  sibling Python/Go legs landed without and repaired same-day. `AttestationFacts` carry the
+  anchor posture (`verification: "signature_and_window"`, `trust: "not_evaluated"`, RFC 7638
+  fingerprints, and NO authorization marker). Parsed by no contract-major: attestation bytes
+  reject at the v1/v2/v3 surfaces and a live v1 grant rejects at attestation decode.
+- The vendored certified role-attestation corpus snapshot
+  (`conformance/corpus-role-attestation`, revision 1, 40 cases, index SHA-256
+  `be5275c69539a0f31734242ff00a484c2f855f39181c55689d8b0f671195d62a` pinned at load; the exact
+  two-file set, profile identity, revision, and case counts verified before the per-file
+  digests are trusted) plus `conformance/run_role_attestation.ts`: 40/40 decode + verify
+  agreement, producer/assembly byte symmetry against the certified valid compact, and
+  cross-profile rejection in both directions. Wired into CI and the release lane's
+  verification gate (`pnpm conformance:role-attestation`).
+- Permissiveness mutation-gate battery for the profile's named closures (14 defect-injection
+  entries; twelve red-proven within the battery's run with exactly one targeted test each, two
+  adjudicated by injection): attestor window-endpoint magnitude, non-integer `now` (a
+  fractional now inside the window would otherwise verify), self-attestation ×2 (each leg
+  discriminated on the wire, behind no other gate), containment ×2, the half-open now window,
+  kid binding, subject raw-byte binding, role closed set, canonical payload bytes, the
+  signature gate, the protected-header canonical gate, and the `nbf`/`exp` integer tags. Two
+  adjudications from the injection driver, both verified rather than assumed: the `v`
+  integer-tag distinction is byte-level redundant (JCS re-encodes `1.0` to `1`, so the
+  canonical gate subsumes float lexemes for `v` — relaxing the tag check changed zero
+  verdicts), while float `nbf`/`exp` endpoints are canonical (`1000.5` re-encodes
+  byte-identically) and carry their own red-proven closure. The first cross-vendor review
+  pass caught the two missing closures (header canonical, window integer tags) plus a
+  double-encoded test header; all repaired with re-run red proofs and the full battery.
+- `SigningInputKind` gains `role_attestation` (the `assembleSegments` kind list; assembly for
+  every existing kind is byte-unchanged) — the TypeScript form of ADR 0036 D7's labeled
+  kind touch.
+
 ## [0.3.0] — 2026-09-22
 
 ### Added

@@ -42,11 +42,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Full verification gate (typecheck, lint, license, unit, permissiveness, all three conformance corpora)
+      - name: Full verification gate (typecheck, lint, license, unit, permissiveness, all four conformance corpora)
         run: |
           pnpm typecheck && pnpm lint && pnpm license-check && pnpm test && \
           pnpm test:permissiveness && pnpm conformance && pnpm conformance:v2 && \
-          pnpm conformance:v3
+          pnpm conformance:v3 && pnpm conformance:role-attestation
 
       # Idempotent releases: a version already on the registry (e.g. seeded from
       # the repository checkout under the owner's session, as 0.1.0 and the 0.2.0
