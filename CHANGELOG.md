@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-23
+
+The role-attestation release (ADR 0036 Decision 1.8: the first `0.x.0` bearing the
+`bap-role-attestation/1` profile). Additive public surface — the `roleAttestation` namespace —
+with zero verdict changes on existing input (all four certified corpora agree at unchanged
+counts); the Result-contract sweep closes crash-past-`Result` and silent-coercion defects on
+malformed caller context across the v1/v2/v3 façades.
 ### Fixed
 
 - **Malformed caller context now fails closed on every contract-major surface** (the
