@@ -1,29 +1,44 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.0] — 2026-09-27
 
-- Tighten shared StringOrURI admission in the already shipped v1, v2, v3, and
-  role-attestation profiles: reject repeated fragment delimiters, raw brackets in
-  userinfo or outside authority, and malformed bracketed IPv6 hosts such as
-  `http://[abc]/x`. Compressed IPv6 and valid final IPv4 groups remain accepted;
-  escaped userinfo brackets remain accepted. Identifier validation preserves the
-  original bytes; target-URI normalization retains its existing reference behavior.
-  These changed shipped-profile verdicts require package-major release qualification
-  under the README policy, separately from the additive content-assertion feature.
-  No package version bump or publication is included in this source change.
-- Reject unknown structural bounds keys before formatting errors so malformed
-  inputs retain the closed result.
+The content-assertion release. Before 1.0 the minor position is the breaking boundary, so this
+release is also the package-major step for the identifier-admission tightening below.
 
-- Add the explicitly selected `contentAssertion` namespace for the standalone
+### Added
+
+- The explicitly selected `contentAssertion` namespace for the standalone
   `bap-content-assertion/1` profile: bounded exact-content hashing, external-signature
-  production/assembly, structural decode, explicit-context verification, and
-  pairwise successor comparison. Facts retain the non-authorizing posture.
-- Add the tightenable `content_bytes` ceiling (65,536 maximum), real-Ed25519
-  behavior tests, in-memory source-mutation checks, and the dedicated content
-  assertion conformance command in local/CI/release verification. Release
-  qualification and publication remain separate from this source addition.
+  production and assembly, structural decode, explicit-context verification, and pairwise
+  successor comparison. Facts retain the non-authorizing posture.
+- The tightenable `content_bytes` ceiling (65,536 maximum), real-Ed25519 behavior tests,
+  in-memory source-mutation checks, and the `conformance:content-assertion` command over the
+  vendored revision-1 corpus (131 assertion, 9 digest, 14 successor cases; index SHA-256
+  `14b7436ccf7cc91fece52a1578c3760df6720a93494d147ee5ab523e2ce21876`) in local, CI, and
+  release verification. Matches protocol package 0.7.0.
 
-- CI: runs on Linux only; macOS/Windows jobs removed. Developer portability is unchanged.
+### Changed (verdicts in shipped profiles)
+
+- Tighten shared StringOrURI admission in the v1, v2, v3, and role-attestation profiles:
+  reject repeated fragment delimiters, raw brackets in userinfo or outside authority, and
+  malformed bracketed IPv6 hosts such as `http://[abc]/x`. Compressed IPv6 and valid final
+  IPv4 groups remain accepted; escaped userinfo brackets remain accepted. Identifier
+  validation preserves the original bytes; target-URI normalization keeps its existing
+  reference behavior.
+
+### Fixed
+
+- Reject unknown structural bounds keys before formatting errors, so malformed inputs keep
+  the closed result.
+
+### Maintenance
+
+- CI runs on Linux only; macOS and Windows jobs are removed. Developer portability is
+  unchanged.
+- Dev dependencies moved to latest: `@types/node` 26.6.3 and
+  `@bounded-authority-protocol/signer` 0.2.1. TypeScript stays on 6.0.3: a 7.0.2 probe failed
+  typecheck (the compiler API the mutation tests use is absent) and lint (typescript-eslint
+  8.70.1 peers `typescript <6.1.0`).
 
 ## [0.4.1] — 2026-09-23
 

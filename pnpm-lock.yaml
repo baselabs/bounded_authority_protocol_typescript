@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@bounded-authority-protocol/signer':
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.2.1
+        version: 0.2.1
       '@noble/ed25519':
         specifier: ^3.2.0
         version: 3.2.0
@@ -18,8 +18,8 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
       '@types/node':
-        specifier: ^26.6.2
-        version: 26.6.2
+        specifier: ^26.6.3
+        version: 26.6.3
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -44,12 +44,12 @@ importers:
 
 packages:
 
-  '@bounded-authority-protocol/signer@0.2.0':
-    resolution: {integrity: sha512-+eg4qN30MozF4RnuL6Ylgj5LqfRkNmGqGPJwTGxpqOorXLsb3+yqfxTgdDW4HQwlqXNFD0p7qfP21SnW5TQDgA==}
+  '@bounded-authority-protocol/signer@0.2.1':
+    resolution: {integrity: sha512-EP8BWyE73yB8FPXJP6cC9osqWDIw9hSs+v4L+tHtSCkTOXAWzGuOII5ybps0Mb+ik/0PN5zE0C1ed0/5rQKWqw==}
     engines: {node: '>=22'}
 
-  '@bounded-authority-protocol/verifier@0.3.0':
-    resolution: {integrity: sha512-3bfffjp0V4alauvT+KbYw75duowetgOETRpJXQe4/yIOk+J50UhUFV7y6YQr47b3qXA9EdaM3ZBlbMTcJKA9vA==}
+  '@bounded-authority-protocol/verifier@0.4.1':
+    resolution: {integrity: sha512-hUS5HLKe42BC6le2HqEoOuJ8PNYurp4BbQ87H+4hdxzw3SEfgL7b6RUmo6zIqHIiCmoVRo6r6gl+54NLh1sQ1A==}
     engines: {node: '>=22'}
 
   '@cacheable/memory@2.2.0':
@@ -289,8 +289,8 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@26.6.2':
-    resolution: {integrity: sha512-X1P21scMv4zGKLYqjdGjaKa7COa0RKVYYZZN/NfvLQ1JegxFhdhpZG/Lyn8AXx6CDUavKAd11v6BvfpkDByK8g==}
+  '@types/node@26.6.3':
+    resolution: {integrity: sha512-dsqMQQoeTLqu9wynDD00q573mNzso3IdQOAfHRJqLCcmCFPoGo9A1bDpUcv/9tnKpErQWv9uKeGfl37EIS02Yg==}
 
   '@typescript-eslint/eslint-plugin@8.70.1':
     resolution: {integrity: sha512-nDNrUQ/4ruSNYbu749TRY7cfrzPtoLHEXSNBI8aaNY32LlZCajixqRf3FqcKC4p5Cam4VOHYx/t+i5+nKXvrqA==}
@@ -652,11 +652,11 @@ packages:
 
 snapshots:
 
-  '@bounded-authority-protocol/signer@0.2.0':
+  '@bounded-authority-protocol/signer@0.2.1':
     dependencies:
-      '@bounded-authority-protocol/verifier': 0.3.0
+      '@bounded-authority-protocol/verifier': 0.4.1
 
-  '@bounded-authority-protocol/verifier@0.3.0': {}
+  '@bounded-authority-protocol/verifier@0.4.1': {}
 
   '@cacheable/memory@2.2.0':
     dependencies:
@@ -812,7 +812,7 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@26.6.2':
+  '@types/node@26.6.3':
     dependencies:
       undici-types: 8.9.0
 

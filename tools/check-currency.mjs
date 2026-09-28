@@ -51,7 +51,7 @@ import semver from "semver";
 const DELIBERATE_PINS = new Map([
   [
     "typescript",
-    "7.x is the native-compiler major line; adopting it is a review-gated move (strict-build emit plus both conformance corpora), not a currency patch",
+    "7.x is the native-compiler major line. Probed 2026-09-27 with 7.0.2: its package drops the JS compiler API the in-memory mutation tests use (ts.ScriptTarget/ts.ModuleKind, TS2339), and typescript-eslint 8.70.1 (latest) peers typescript <6.1.0 and fails to load (lint exit 2). Stay on 6.x until both move",
   ],
 ]);
 

@@ -12,9 +12,10 @@ grants, holder proofs, consumption chains, boundary anchors, key transitions, an
 exports. It is a TypeScript reimplementation of the reference profiles — derived from the
 published specifications and certified conformance corpora, with zero runtime dependencies
 (Ed25519 and ES256 via `node:crypto`; canonicalization hand-rolled from the RFCs). It also
-carries the protocol's byte-distinct sibling profile for role attestations
-(`bap-role-attestation/1`, under the `roleAttestation` namespace), parsed by no contract-major
-and parsing none of them.
+carries the protocol's byte-distinct sibling profiles for role attestations
+(`bap-role-attestation/1`, under the `roleAttestation` namespace) and content assertions
+(`bap-content-assertion/1`, under the `contentAssertion` namespace), parsed by no
+contract-major and parsing none of them.
 
 **It verifies; it never authorizes.** A successful result proves that caller-supplied bytes
 satisfy caller-supplied trusted inputs and expected context — nothing more. There is no
@@ -139,7 +140,7 @@ subject key to a role (`issuer`/`holder`) for a window contained in the attestor
 validity, with self-attestation rejected and facts carrying `trust: "not_evaluated"` and no
 authorization marker. The full export list is [`src/index.ts`](src/index.ts).
 
-## Content assertions (unreleased source)
+## Content assertions
 
 The separately selected `contentAssertion` namespace implements
 `bap-content-assertion/1` under the existing Ed25519 suite. It binds exact content
@@ -181,9 +182,9 @@ produces the signed bytes — see the whole three-role flow run live in your bro
 (`grantSigningInput`, `proofSigningInput`, `boundaryAnchorSigningInput`,
 `keyTransitionSigningInput`) and delegating the cryptography to a caller-owned key handle.
 The dependency direction is one-way: the signer depends on the verifier at runtime
-(`^0.2.0`), never the reverse. Compatibility between the two is governed by the wire
-contract-majors — both packages carry majors 1 and 2 side by side — not by package
-version numbers.
+through a caret range on the verifier's current minor, never the reverse. Compatibility
+between the two is governed by the wire contract-majors (the signer produces majors 1 and
+3; this package verifies 1, 2, and 3), not by package version numbers.
 
 A production flow has three roles: the issuer mints a grant, the holder binds one
 invocation of it with a proof, and the resource verifies the pair through this package.
@@ -276,17 +277,14 @@ Two properties make the pairing safe to build against:
 
 Every release of this SDK is verified against the protocol's published, cryptographically
 certified conformance corpora — **283 vectors** for contract-major 1, **268** for
-contract-major 2, **292** for contract-major 3, and **40** for the `bap-role-attestation/1`
-sibling profile — recomputing every verdict from scratch,
+contract-major 2, **292** for contract-major 3, **40** for the `bap-role-attestation/1`
+sibling profile, and **131** assertion, **9** digest, and **14** successor cases for the
+`bap-content-assertion/1` sibling profile — recomputing every verdict from scratch,
 with each corpus `index.json`
 SHA-256 asserted at load so a drifted snapshot fails loudly. Permissiveness bugs (a parser
 accepting what the spec forbids) are invisible to corpus agreement by construction, so the
 suite additionally carries a per-language mutation gate that proves each closure
 **red-capable**: mechanically remove a check, watch its test fail.
-
-The unreleased content-assertion profile adds 131 assertion cases, 9 digest cases,
-and 14 successor cases under its independently pinned corpus identity. Source
-qualification does not establish publication or released-package acceptance.
 
 Linux CI verification includes strict typecheck, build, lint (including a library
 purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
@@ -305,16 +303,15 @@ removed or changes verdicts. Wire artifacts self-declare their major (payload `v
 `BAP<n>-…` suite name, major-bound domain separators), so the package number never needs to
 encode it.
 
-The current unreleased source tightens identifier admission in the shipped v1,
-v2, v3, and role-attestation profiles. It rejects repeated fragment delimiters,
-raw brackets in userinfo or outside authority, and malformed bracketed IPv6 hosts
-such as `http://[abc]/x`. Valid compressed IPv6, final IPv4 groups, and escaped
-userinfo brackets retain their verdicts and exact identifier bytes. Target-URI
-normalization retains its existing reference behavior. This shipped-profile
-verdict change requires package-major release qualification under the policy above;
-it is separate from the additive content-assertion namespace. The source package
-version remains unchanged. Publication requires separate approval for the exact
-qualified release.
+Before 1.0, the minor position is the breaking boundary: npm caret ranges such as
+`^0.4.1` never select `0.5.0`. Release 0.5.0 is therefore the package-major step for
+its shipped-profile verdict change. It tightens identifier admission in the v1, v2,
+v3, and role-attestation profiles: repeated fragment delimiters, raw brackets in
+userinfo or outside authority, and malformed bracketed IPv6 hosts such as
+`http://[abc]/x` are now rejected. Valid compressed IPv6, final IPv4 groups, and
+escaped userinfo brackets keep their verdicts and exact identifier bytes. Target-URI
+normalization keeps its existing reference behavior. The same release adds the
+content-assertion namespace.
 
 ## What this SDK does not do
 
@@ -328,11 +325,13 @@ the host — a facts value is evidence, never a credential.
 - [BAP v1 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md) ·
   [v2 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md) ·
   [v3 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md) ·
-  [role-attestation profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md)
+  [role-attestation profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md) ·
+  [content-assertion profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md)
 - [Certified conformance corpora](https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/)
 - [ADR 0014 — cross-language verifier SDKs](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md) ·
   [ADR 0015 — graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md) ·
-  [ADR 0036 — the role-attestation sibling profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0036-role-attestation-profile.md)
+  [ADR 0036 — the role-attestation sibling profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0036-role-attestation-profile.md) ·
+  [ADR 0037 — the content-assertion sibling profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0037-content-assertion-profile.md)
 
 ## Related packages
 
@@ -357,7 +356,7 @@ pnpm conformance             # 283/283 + key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
 pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
-pnpm conformance:content-assertion # frozen content assertion snapshot and independent byte agreement
+pnpm conformance:content-assertion # 131 + 9 + 14 + producer/assembly byte agreement (vendored sibling-profile snapshot)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 
