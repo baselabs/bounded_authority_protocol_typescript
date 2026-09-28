@@ -1,12 +1,13 @@
 import { fail } from "./error.js";
 
-// The fixed v1 profile maxima — the 38-row Hard maxima table (spec/bap-v1.md).
+// The fixed v1 profile maxima, plus the content_bytes ceiling added by ADR 0037.
 // Pinned by the corpus bounds.new cases so any mistyped constant fails. Fixed-width keys
 // (REQ1-BOUNDS-fixed-widths, L395): digest_bytes, public_key_bytes, signature_bytes are the immutable
 // cryptographic constants of suite BAP1-Ed25519-SHA256 — they MUST equal the maximum exactly (widening
 // is forbidden); all others may be tightened to a positive integer at most the maximum.
 export const MAXIMA = {
   compact_bytes: 65536,
+  content_bytes: 65536, // ADR 0037: exact external content bytes, tightenable.
   encoded_segment_bytes: 32768,
   decoded_segment_bytes: 24576,
   json_bytes: 65536,
@@ -75,7 +76,7 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
   if (tightening === undefined) return MAXIMUM_BOUNDS;
   const overrides = new Map<MaximaKey, number>();
   for (const [key, value] of Object.entries(tightening)) {
-    if (!(key in MAXIMA)) fail(`bounds.new: unknown limit ${key}`);
+    if (!Object.hasOwn(MAXIMA, key)) fail(`bounds.new: unknown limit ${key}`);
     if (!Number.isInteger(value)) fail(`bounds.new: non-integer limit ${key}`);
     const mk = key as MaximaKey;
     if (FIXED_WIDTH_KEYS.has(mk)) {
@@ -113,6 +114,7 @@ export function coerceBounds(b: Bounds): Bounds {
   // instanceof narrows to the unparameterized Map default; re-establish the typed view.
   const overrides: ReadonlyMap<MaximaKey, number> = b.overrides;
   for (const [key, value] of overrides) {
+    if (typeof key !== "string" || !Object.hasOwn(MAXIMA, key)) fail("bounds.coerce: unknown limit");
     if (!Number.isInteger(value)) fail(`bounds.coerce: non-integer limit ${key}`);
     if (FIXED_WIDTH_KEYS.has(key)) {
       if (value !== MAXIMA[key]) fail(`bounds.coerce: fixed-width key ${key} must equal maximum`);

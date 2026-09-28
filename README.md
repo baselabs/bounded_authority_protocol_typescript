@@ -139,6 +139,39 @@ subject key to a role (`issuer`/`holder`) for a window contained in the attestor
 validity, with self-attestation rejected and facts carrying `trust: "not_evaluated"` and no
 authorization marker. The full export list is [`src/index.ts`](src/index.ts).
 
+## Content assertions (unreleased source)
+
+The separately selected `contentAssertion` namespace implements
+`bap-content-assertion/1` under the existing Ed25519 suite. It binds exact content
+bytes by digest to an issuer, one audience, a stable subject lineage, a pinned
+semantic profile/schema digest, a generation/predecessor, and a validity window.
+It neither parses the content nor supplies operational authority.
+
+The public operations are `assertionSigningInput`, `assembleCompact`,
+`decodeAssertion`, `verifyAssertion`, `contentDigest`, `assertionDigest`, and
+`verifySuccessor`. They return the SDK's closed `Result<T>` shape; successor
+comparison returns `Result<void>`. `contentDigest` hashes `BAP1-CONTENT`, one zero
+byte, and exact content bytes, with a tightenable `content_bytes` maximum of 65,536.
+`assertionDigest` checks this profile's structure and hashes its exact compact;
+it makes no signature claim.
+
+`ExpectedContentAssertion` requires `attestor`, `issuer`, `audience`, `subject`,
+`profile`, raw 32-byte `profileDigest` and `contentDigest`, explicit `now`, and
+`bounds`. A key window's unbounded upper endpoint is `null`, following the existing
+`HistoricalPublicKey` contract. A consumer must validate its content schema and
+supply the digest of the exact retained bytes; signature verification alone does
+not validate a semantic profile.
+
+Verified facts are redacted on inspection and carry `trust: "not_evaluated"`.
+`verifySuccessor` compares complete facts and exact predecessor history, without
+requiring an expired predecessor to be currently valid. Facts reconstructed from
+storage remain caller-provenanced values. Trust admission, revocation knowledge,
+fork/bootstrap policy, durable generation/clock state, and restore continuity
+remain host responsibilities. The verifier does not derive key windows or walk
+key transitions. See the public
+[profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md)
+and [ADR 0037](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0037-content-assertion-profile.md).
+
 ## Pairing with the signer
 
 This package verifies; it never signs and never holds a private key. Its sibling
@@ -251,9 +284,13 @@ accepting what the spec forbids) are invisible to corpus agreement by constructi
 suite additionally carries a per-language mutation gate that proves each closure
 **red-capable**: mechanically remove a check, watch its test fail.
 
-CI runs the full matrix on every push: strict typecheck, build, lint (including a library
+The unreleased content-assertion profile adds 131 assertion cases, 9 digest cases,
+and 14 successor cases under its independently pinned corpus identity. Source
+qualification does not establish publication or released-package acceptance.
+
+Linux CI verification includes strict typecheck, build, lint (including a library
 purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
-mutation gate, and all four conformance corpora against the vendored snapshots.
+mutation gate, and all five conformance corpora against the vendored snapshots.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every
@@ -267,6 +304,17 @@ contract-major lands **additively** (a minor release — this package already ca
 removed or changes verdicts. Wire artifacts self-declare their major (payload `v`, the
 `BAP<n>-…` suite name, major-bound domain separators), so the package number never needs to
 encode it.
+
+The current unreleased source tightens identifier admission in the shipped v1,
+v2, v3, and role-attestation profiles. It rejects repeated fragment delimiters,
+raw brackets in userinfo or outside authority, and malformed bracketed IPv6 hosts
+such as `http://[abc]/x`. Valid compressed IPv6, final IPv4 groups, and escaped
+userinfo brackets retain their verdicts and exact identifier bytes. Target-URI
+normalization retains its existing reference behavior. This shipped-profile
+verdict change requires package-major release qualification under the policy above;
+it is separate from the additive content-assertion namespace. The source package
+version remains unchanged. Publication requires separate approval for the exact
+qualified release.
 
 ## What this SDK does not do
 
@@ -309,6 +357,7 @@ pnpm conformance             # 283/283 + key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
 pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
+pnpm conformance:content-assertion # frozen content assertion snapshot and independent byte agreement
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 

@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   verify:
-    name: typecheck, lint, license, unit, conformance (283 + 268 + 292 + 40 + census)
+    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, census)
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +72,9 @@ jobs:
 
       - name: Conformance — vendored role-attestation profile snapshot (40 + cross-profile)
         run: pnpm conformance:role-attestation
+
+      - name: Conformance — vendored content-assertion profile snapshot
+        run: pnpm conformance:content-assertion
 
   dependency-currency:
     # Latest-first dependency currency (BAP ADR 0032 shape). A property of the

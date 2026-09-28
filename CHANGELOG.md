@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+- Tighten shared StringOrURI admission in the already shipped v1, v2, v3, and
+  role-attestation profiles: reject repeated fragment delimiters, raw brackets in
+  userinfo or outside authority, and malformed bracketed IPv6 hosts such as
+  `http://[abc]/x`. Compressed IPv6 and valid final IPv4 groups remain accepted;
+  escaped userinfo brackets remain accepted. Identifier validation preserves the
+  original bytes; target-URI normalization retains its existing reference behavior.
+  These changed shipped-profile verdicts require package-major release qualification
+  under the README policy, separately from the additive content-assertion feature.
+  No package version bump or publication is included in this source change.
+- Reject unknown structural bounds keys before formatting errors so malformed
+  inputs retain the closed result.
+
+- Add the explicitly selected `contentAssertion` namespace for the standalone
+  `bap-content-assertion/1` profile: bounded exact-content hashing, external-signature
+  production/assembly, structural decode, explicit-context verification, and
+  pairwise successor comparison. Facts retain the non-authorizing posture.
+- Add the tightenable `content_bytes` ceiling (65,536 maximum), real-Ed25519
+  behavior tests, in-memory source-mutation checks, and the dedicated content
+  assertion conformance command in local/CI/release verification. Release
+  qualification and publication remain separate from this source addition.
+
 - CI: runs on Linux only; macOS/Windows jobs removed. Developer portability is unchanged.
 
 ## [0.4.1] — 2026-09-23

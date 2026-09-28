@@ -1,3 +1,4 @@
+import { isStringOrUri } from "./string_or_uri.js";
 import { fail, assert, trying, type Result } from "./error.js";
 import { parseCompact, assembleSegments, type SigningInput } from "./compact.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
@@ -107,43 +108,6 @@ function requireKidValue(v: Tagged | undefined, key: string, bounds: Bounds): st
   const s = utf8Str(b);
   if (!/^[A-Za-z0-9._~-]+$/.test(s)) fail(`attestation: ${key} charset`);
   return s;
-}
-
-// StringOrURI (RFC 7519 §2): well-formed, non-empty, ≤ identifier_bytes.
-function isWellFormed(s: string): boolean {
-  const anyStr = s as string & { isWellFormed?: () => boolean };
-  return typeof anyStr.isWellFormed === "function"
-    ? anyStr.isWellFormed()
-    : !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
-}
-
-function isStringOrUri(s: string): boolean {
-  if (!isWellFormed(s)) return false;
-  const colon = s.indexOf(":");
-  if (colon === -1) return true;
-  const scheme = s.slice(0, colon);
-  if (!/^[A-Za-z][A-Za-z0-9+\-.]*$/.test(scheme)) return false;
-  if (!/^(?:%[0-9A-Fa-f]{2}|[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=])*$/.test(s)) return false;
-  const rest = s.slice(colon + 1);
-  if (!rest.startsWith("//")) return true;
-  return validUriAuthority(rest.slice(2).split(/[/?#]/, 1)[0]!);
-}
-
-function validUriAuthority(authority: string): boolean {
-  const at = authority.indexOf("@");
-  const hostport = at === -1 ? authority : authority.slice(at + 1);
-  if (hostport.includes("@")) return false;
-  if (hostport.startsWith("[")) {
-    const close = hostport.indexOf("]");
-    if (close === -1) return false;
-    if (!/^[0-9A-Fa-f:.]+$/.test(hostport.slice(1, close))) return false;
-    const suffix = hostport.slice(close + 1);
-    return suffix === "" || /^:\d*$/.test(suffix);
-  }
-  if (hostport.includes("[") || hostport.includes("]")) return false;
-  if ((hostport.match(/:/g) ?? []).length > 1) return false;
-  const sep = hostport.lastIndexOf(":");
-  return sep === -1 || /^\d*$/.test(hostport.slice(sep + 1));
 }
 
 function requireStringOrUri(v: Tagged | undefined, key: string, bounds: Bounds): string {

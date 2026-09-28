@@ -1,3 +1,4 @@
+import { isStringOrUri } from "./string_or_uri.js";
 import { fail, assert, type Result, trying } from "./error.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
@@ -251,47 +252,6 @@ function isWellFormed(s: string): boolean {
   return typeof anyStr.isWellFormed === "function"
     ? anyStr.isWellFormed()
     : !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(s);
-}
-
-// StringOrURI (RFC 7519 §2; mirrors the official valid_uri? / StringOrURI). A bare string with no
-// ':' is always valid; an opaque scheme `a:b` (no `//`) is valid; a `//` authority is structurally
-// validated. This is REQUIRED to reject the corpus's `ht tp://x` and `http://a:b` cases.
-function isStringOrUri(s: string): boolean {
-  if (!isWellFormed(s)) return false;
-  const colon = s.indexOf(":");
-  if (colon === -1) return true; // bare string: always a StringOrURI
-  const scheme = s.slice(0, colon);
-  if (!/^[A-Za-z][A-Za-z0-9+\-.]*$/.test(scheme)) return false;
-  // uri_bytes shape: unreserved + reserved punctuation, or a %HH escape.
-  if (!/^(?:%[0-9A-Fa-f]{2}|[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=])*$/.test(s)) return false;
-  const rest = s.slice(colon + 1);
-  if (!rest.startsWith("//")) return true; // opaque / path-rootless: no authority to validate.
-  return validUriAuthority(rest.slice(2).split(/[/?#]/, 1)[0]!);
-}
-
-// RFC 3986 authority validation matching URI.new for the cases the profile can produce.
-function validUriAuthority(authority: string): boolean {
-  const at = authority.indexOf("@");
-  const hostport = at === -1 ? authority : authority.slice(at + 1);
-  if (hostport.includes("@")) return false; // a second @ lands in the host — invalid.
-  if (hostport.startsWith("[")) {
-    const close = hostport.indexOf("]");
-    if (close === -1) return false; // unterminated IPv6 literal.
-    if (!isIpv6(hostport.slice(1, close))) return false;
-    const suffix = hostport.slice(close + 1);
-    return suffix === "" || /^:\d*$/.test(suffix);
-  }
-  if (hostport.includes("[") || hostport.includes("]")) return false; // stray bracket in host.
-  if ((hostport.match(/:/g) ?? []).length > 1) return false; // host/port ambiguity.
-  const sep = hostport.lastIndexOf(":");
-  return sep === -1 || /^\d*$/.test(hostport.slice(sep + 1));
-}
-
-function isIpv6(literal: string): boolean {
-  // node:net isIP accepts only a valid IPv6 literal in brackets (matches Erlang :uri_string).
-  // Avoid importing node:net in the library path (the purity gate bans it); a structural check is
-  // sufficient for the StringOrURI authority gate (the corpus has no bracketed-IPv6 StringOrURI).
-  return /^[0-9A-Fa-f:.]+$/.test(literal);
 }
 
 // StringOrURI claim: non-empty, ≤ identifier_bytes, well-formed, valid StringOrURI.

@@ -27,6 +27,7 @@
     "conformance:v2": "tsx conformance/run_v2.ts",
     "conformance:v3": "tsx conformance/run_v3.ts",
     "conformance:role-attestation": "tsx conformance/run_role_attestation.ts",
+    "conformance:content-assertion": "tsx conformance/run_content_assertion.ts",
     "census": "tsx conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"

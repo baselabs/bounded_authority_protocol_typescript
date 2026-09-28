@@ -70,6 +70,9 @@ export * as v3 from "./v3.js";
 // marker (the anchor posture); verification is not authority.
 export * as roleAttestation from "./role_attestation.js";
 
+// Standalone digest-bound assertion profile; explicit selection, never authorization.
+export * as contentAssertion from "./content_assertion.js";
+
 export type {
   TrustedIssuer,
   ExpectedGrant,

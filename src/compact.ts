@@ -92,8 +92,8 @@ function concat(...parts: Uint8Array[]): Uint8Array {
 // REQ1-VERIFY-no-signer-callback: takes a signature, never a key. kind ∈ {grant, proof,
 // boundary_anchor, key_transition} (the runner's accepted signing-input kinds) — plus the
 // byte-distinct sibling-profile kinds (local_loopback_http_proof per ADR 0027,
-// role_attestation per ADR 0036; assembly for every pre-existing kind is byte-unchanged).
-export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation";
+// role_attestation per ADR 0036, content_assertion per ADR 0037; existing assembly bytes stay unchanged).
+export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion";
 
 export interface SigningInput {
   readonly kind: SigningInputKind;
@@ -109,7 +109,7 @@ export interface SigningInput {
 // compacts freely; the public contract is the façade (assembleCompact in v1.ts).
 export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
-    const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation"];
+    const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation", "content_assertion"];
     if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
     assert(signature.length === 64, "assemble_segments: signature width 64");
     // compact = protected "." payload "." base64url(signature).
