@@ -240,7 +240,7 @@ function expected(over: Record<string, unknown> = {}) {
 function renderDecode(): void {
   if (!grantCompact || !proofCompact) return;
   const g = decodeGrant(grantCompact);
-  $("decode-grant").innerHTML = accordion("Grant", "ba+grant", g.ok ? g.value : g, false);
+  $("decode-grant").innerHTML = accordion("Grant", "ba+cap", g.ok ? g.value : g, false);
   const p = decodeProof(proofCompact);
   $("decode-proof").innerHTML = accordion("Proof", "dpop+jwt", p.ok ? p.value : p, false);
 }
@@ -265,7 +265,7 @@ async function doMint(): Promise<void> {
 
   const sg = $("slot-grant");
   sg.textContent = "";
-  const cg = artifactCard("grant", "ba+grant", `jkt ${holder.thumb.slice(0, 8)}…`, () => { mark(cg); showWire("grant", grantCompact!); });
+  const cg = artifactCard("grant", "ba+cap", `jkt ${holder.thumb.slice(0, 8)}…`, () => { mark(cg); showWire("grant", grantCompact!); });
   cg.style.marginBottom = "8px";
   sg.appendChild(cg);
   const sp = $("slot-proof");

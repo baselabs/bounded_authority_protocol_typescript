@@ -136,7 +136,7 @@
   </div>
 
   <div class="decode-row">
-    <div class="panel-head"><div class="panel-badge"><svg class="ic"><use href="#i-doc"/></svg></div><div class="panel-titles"><span class="panel-title">Decode</span><span class="panel-sub">The signed contents of each artifact — signature-checked, no trust needed.</span></div></div>
+    <div class="panel-head"><div class="panel-badge"><svg class="ic"><use href="#i-doc"/></svg></div><div class="panel-titles"><span class="panel-title">Decode</span><span class="panel-sub">The contents of each artifact, decoded structurally. Decoding checks no signature and grants no trust; the verdict comes from checkEnvelope.</span></div></div>
     <div class="decode-grid">
       <div id="decode-grant" data-label="grant (decodeGrant)">—</div>
       <div id="decode-proof" data-label="proof (decodeProof)">—</div>
@@ -194,9 +194,12 @@
       <tr><td><code>checkEnvelope</code></td><td>grant + proof against an expected request — the resource’s entry point</td></tr>
       <tr><td><code>checkLocalLoopbackHttpEnvelope</code></td><td>same, for the <code>ba+loopback-proof</code> profile (canonical loopback targets only)</td></tr>
       <tr><td><code>verifyGrant</code></td><td>a grant standalone against one trusted issuer</td></tr>
-      <tr><td><code>decodeGrant</code> / <code>decodeProof</code></td><td>signature-checked contents of either compact — what the bench shows</td></tr>
+      <tr><td><code>decodeGrant</code> / <code>decodeProof</code></td><td>structural contents of either compact, marked <code>verification: not_evaluated</code>; no signature check. What the bench shows</td></tr>
       <tr><td><code>verifyHistoricalAnchor</code> / <code>verifyKeyTransition</code></td><td>the historical surfaces — boundary anchors and key rotations</td></tr>
       <tr><td><code>checkChain</code> / <code>verifyAnchoredExport</code></td><td>consumption chains and anchored exports</td></tr>
+      <tr><td><code>v2</code> / <code>v3</code> namespaces</td><td>the same surface for contract-major 2 (range selectors) and contract-major 3 (the ES256 suite); each major rejects the others’ bytes</td></tr>
+      <tr><td><code>roleAttestation.verifyAttestation</code></td><td>a role attestation binding a subject key to <code>issuer</code> or <code>holder</code> within the attestor key’s window</td></tr>
+      <tr><td><code>contentAssertion.verifyAssertion</code> / <code>verifySuccessor</code></td><td>a content assertion binding an exact content digest and context, and one lineage step between two verified assertions</td></tr>
     </tbody>
   </table>
 </section>
