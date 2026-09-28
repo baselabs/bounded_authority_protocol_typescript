@@ -33,7 +33,7 @@
     "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
   },
   "devDependencies": {
-    "@bounded-authority-protocol/signer": "^0.2.1",
+    "@bounded-authority-protocol/signer": "^0.3.0",
     "@noble/ed25519": "^3.2.0",
     "@noble/hashes": "^2.4.0",
     "@types/node": "^26.6.3",
