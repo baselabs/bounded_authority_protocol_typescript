@@ -98,3 +98,29 @@ export function es256Verify(
     fail("es256: backend rejected");
   }
 }
+
+// The ES256 sibling of verifyStrict (src/ed25519.ts): a synchronous verification that never throws, for
+// callers that hold raw bytes (for example a signer checking its own output before it assembles a
+// compact). Returns true only for a 65-byte uncompressed SEC1 key that passes validateEcPublicKey, a
+// 64-byte r || s signature with 0 < r < n and 0 < s <= (n - 1) / 2 (low-S, REQ3-SIGNING-low-s), and then
+// the backend's ECDSA P-256 / SHA-256 verification over the message. Any other input, including a
+// wrong-size or non-byte input, returns false. It records nothing in the census.
+export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
+  if (!(message instanceof Uint8Array) || !(signature instanceof Uint8Array) || !(publicKey instanceof Uint8Array)) return false;
+  if (signature.length !== 64 || publicKey.length !== 65) return false;
+  try {
+    validateEcPublicKey(publicKey);
+  } catch {
+    return false;
+  }
+  const r = bytesToBigInt(signature.subarray(0, 32));
+  const s = bytesToBigInt(signature.subarray(32, 64));
+  if (r === 0n || r >= N) return false;
+  if (s === 0n || s >= N) return false;
+  if (s > HALF_N) return false; // low-S (REQ3-SIGNING-low-s)
+  try {
+    return p256Verify(p256Key(publicKey), message, signature);
+  } catch {
+    return false;
+  }
+}
