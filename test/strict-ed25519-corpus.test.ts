@@ -1,7 +1,7 @@
 // The vendored strict-Ed25519 corpus snapshot (conformance/corpus-strict-ed25519), the way this
 // repository vendors every other corpus: byte-identical to the certified source, the index SHA-256
 // asserted at load, every listed file's SHA-256 recomputed, and the exact file set required. Every
-// verdict is then recomputed by the SDK in conformance/run_strict_ed25519.ts (pnpm
+// verdict is then recomputed by the SDK in conformance/core/strict_ed25519.ts (pnpm
 // conformance:strict-ed25519); this suite pins the snapshot itself and the no-flip property: the
 // index of every EXISTING corpus is byte-identical to its certified pin, so adding this corpus rotated
 // none of them (the strict corpus is additive).

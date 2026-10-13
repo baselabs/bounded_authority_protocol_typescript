@@ -1,0 +1,34 @@
+{
+  "format": "bap-ts-verdict-digests/1",
+  "note": "SHA-256 of the canonical JSON of [case id, verdict projection] per corpus (conformance/digest.ts). Recorded from the verifier source at c406489 (0.6.0) on Node 22.23.1 and 24.19.0 with the node:crypto backend; every runtime lane (either backend, Deno, Bun, browsers) is held to these values.",
+  "digests": {
+    "v1": {
+      "cases": 283,
+      "sha256": "c90b903a05e777b59f76f722e7867d5623be0b6530ff1379abf464e54839a036"
+    },
+    "v2": {
+      "cases": 268,
+      "sha256": "72176430431ad3dfd522d74efa595cae6ce77bcde005973f49f8fac8372b2a94"
+    },
+    "v3": {
+      "cases": 292,
+      "sha256": "79aa03444448a3a43ec8295e46597988dfd92de45956e2c28aad38dc19ee15ae"
+    },
+    "local-loopback-http": {
+      "cases": 44,
+      "sha256": "8b6f4ecfc58cb6d389155d36daa66d0ea09683f662a5292f5ebaf48b0c61000b"
+    },
+    "role-attestation": {
+      "cases": 40,
+      "sha256": "e27f5ce5ea3ee9144ca3656dae8edb83765e13d853fcec32218ac456b32a3f34"
+    },
+    "content-assertion": {
+      "cases": 154,
+      "sha256": "9207c4cc9031890f8d30c31f84980c9d854d405616bb82842f78071c242bc8e6"
+    },
+    "strict-ed25519": {
+      "cases": 2410,
+      "sha256": "cf0fe81583a51d2a5e1674ebf1fae28b843b9ef6214dc0616e75b620c29c4e3a"
+    }
+  }
+}

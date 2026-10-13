@@ -20,7 +20,7 @@
 //   5. int/float tag distinction: collapse the float tag to integer in digest.ts typedProject →
 //      "integer 1 and float 1.0 distinct identity" + "equals selector distinguishes" go RED.
 //   6. census two-boundary (ADR 0014 D9): make importPublicKey in ed25519.ts NOT register the
-//      fingerprint → conformance/run.ts census aborts ("declared by a valid verification case but
+//      fingerprint → the conformance/core/v1.ts census aborts ("declared by a valid verification case but
 //      never imported at the Ed25519 verify boundary").
 //   7. purity lint (ADR 0014 D8): inject `Date.now()` into a src/ module → eslint no-restricted-
 //      syntax fails ("Date.now() forbidden in the verify path").
@@ -1682,7 +1682,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
 //      cases verify-grant-v3-invalid-cross-major-v1-bytes / -v2-bytes carry the alg dimension and
 //      stay red through that gate).
 //   g. census verify-import: make importEcPublicKey in src/es256.ts NOT register the fingerprint
-//      → conformance/run_v3.ts census aborts ("declared by a valid verification case but never
+//      → the conformance/core/v3.ts census aborts ("declared by a valid verification case but never
 //      imported at the ES256 verify boundary").
 // ---------------------------------------------------------------------------
 import * as v3 from "../src/v3.js";

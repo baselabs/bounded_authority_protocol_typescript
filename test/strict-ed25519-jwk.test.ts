@@ -91,7 +91,7 @@ test("thumbprintDigestUnchecked is referenced only by its definition, the census
     .sort();
   const allowed = new Set([
     "src/jwk.ts", // the definition
-    "conformance/run.ts", "conformance/run_v2.ts", // the two-boundary census
+    "conformance/core/v1.ts", "conformance/core/v2.ts", // the two-boundary census (the v1 and v2 conformance cores)
     "test/strict-ed25519-jwk.test.ts", // this pin
   ]);
   for (const user of users) assert.ok(allowed.has(user), `unexpected caller ${user}`);
