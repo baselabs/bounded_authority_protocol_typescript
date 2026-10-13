@@ -62,7 +62,9 @@ test.before(() => {
   tarball = join(scratch, readdirSync(scratch).find((f) => f.endsWith(".tgz"))!);
   mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "bap-consumer", private: true, type: "module", dependencies: { [NAME]: `file:${tarball}` } }));
-  run("pnpm", ["install", "--offline", "--ignore-scripts", "--config.confirmModulesPurge=false"], consumer);
+  // --prefer-offline, not --offline: a fresh CI runner has no pnpm metadata cache for the
+  // packed tarball's own dependencies, so it must be allowed to fetch them.
+  run("pnpm", ["install", "--prefer-offline", "--ignore-scripts", "--config.confirmModulesPurge=false"], consumer);
   writeFileSync(join(consumer, "consumer.ts"), CONSUMER_TS);
   writeFileSync(join(consumer, "main.mjs"), CONSUMER_JS);
 });
