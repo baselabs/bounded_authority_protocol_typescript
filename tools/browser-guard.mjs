@@ -7,7 +7,8 @@
 //      browser globals only, so a free Buffer, process, require or __dirname reference anywhere in the
 //      bundle (ours or a dependency's) is a finding; eval, implied eval and the Function constructor
 //      are findings too (the strict CSP in the browser lane forbids them).
-// test/guards.test.ts red-proofs both layers through the exported functions.
+// test/guards.test.ts red-proofs both layers through the exported functions. With --scan <file> it runs
+// the second layer alone over an already-built bundle (the Pages bench, site-dist/app.js).
 import { build } from "esbuild";
 import { Linter } from "eslint";
 import globals from "globals";
@@ -59,7 +60,22 @@ export async function scanUnresolvedGlobals(code) {
   return [...out];
 }
 
+// --scan <file>: the unresolved-globals scan alone, over an already-built bundle (the Pages bench,
+// site-dist/app.js, after pnpm build:site).
+async function scanFile(file) {
+  const { readFileSync } = await import("node:fs");
+  const findings = await scanUnresolvedGlobals(readFileSync(file, "utf8"));
+  if (findings.length > 0) {
+    console.error(`browser-guard: ${findings.length} finding(s) in ${file}:`);
+    for (const f of findings) console.error(`  ${f}`);
+    process.exit(1);
+  }
+  console.log(`browser-guard: PASS (${file}: no unresolved globals, eval or Function constructor)`);
+}
+
 async function main() {
+  const scan = process.argv.indexOf("--scan");
+  if (scan !== -1) return scanFile(process.argv[scan + 1]);
   const result = await bundleForBrowser({});
   if (!result.ok) {
     console.error("browser-guard: the browser build of dist/src/index.js failed:");

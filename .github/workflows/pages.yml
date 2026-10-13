@@ -52,6 +52,9 @@ jobs:
       - name: Build the bundle
         run: pnpm build:site
 
+      - name: Scan the bench bundle (no unresolved globals, eval or Function constructor)
+        run: node tools/browser-guard.mjs --scan site-dist/app.js
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@0252fc4ba7626f0298f0cf00902a25c6afc77fa8 # v3.0.0
         with:

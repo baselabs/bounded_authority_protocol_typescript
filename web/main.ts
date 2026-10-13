@@ -4,7 +4,7 @@
 // No mocks, no server; the demo keys live only in this page.
 import { keygen, sign as nobleSign } from "@noble/ed25519";
 import { signGrant, signReport, type KeyHandle } from "@bounded-authority-protocol/signer";
-import { checkEnvelope, decodeGrant, decodeProof, thumbprint } from "../src/index.js";
+import { base64urlEncode, checkEnvelope, decodeGrant, decodeProof, thumbprint, utf8Str } from "../src/index.js";
 
 interface CustodyKey {
   pub: Uint8Array;
@@ -27,7 +27,16 @@ async function makeKey(): Promise<CustodyKey> {
   }
 }
 
-const b64 = (b: Uint8Array): string => Buffer.from(b).toString("base64url");
+const b64 = (b: Uint8Array): string => utf8Str(base64urlEncode(b));
+// Lenient display-only decoding of a (possibly tampered) segment; verification never uses it.
+const segmentBytes = (s: string): Uint8Array => {
+  try {
+    const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(s.length + ((4 - (s.length % 4)) % 4), "="));
+    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  } catch {
+    return new TextEncoder().encode(s);
+  }
+};
 const jwkThumb = (pub: Uint8Array): string => thumbprint({ kty: "OKP", crv: "Ed25519", x: b64(pub) });
 
 const SCENE = {
@@ -88,7 +97,7 @@ let currentBytes: { label: string; compact: Uint8Array } | null = null;
 function showWire(label: string, compact: Uint8Array): void {
   currentBytes = { label, compact };
   document.querySelectorAll(".artifact-card.selected").forEach((c) => c.classList.remove("selected"));
-  const segs = Buffer.from(compact).toString("utf8").split(".");
+  const segs = new TextDecoder().decode(compact).split(".");
   segTabs.innerHTML = "";
   const names = ["protected (header)", "payload", "signature"];
   segs.forEach((s, i) => {
@@ -103,11 +112,11 @@ function showWire(label: string, compact: Uint8Array): void {
 
 function renderSeg(segs: string[], idx: number, name: string): void {
   Array.from(segTabs.children).forEach((c, i) => c.classList.toggle("on", i === idx));
-  const raw = Buffer.from(segs[idx], "base64url");
+  const raw = segmentBytes(segs[idx] ?? "");
   let body: string;
   if (idx === 2) body = Array.from(raw, (b) => b.toString(16).padStart(2, "0")).join("");
   else {
-    const utf8 = raw.toString("utf8");
+    const utf8 = new TextDecoder().decode(raw);
     try { body = JSON.stringify(JSON.parse(utf8), null, 2); } catch { body = utf8; }
   }
   wireBody.innerHTML = `<span class="k">// ${currentBytes?.label ?? ""} — ${name} (${raw.length} bytes)\n</span>`;
@@ -189,7 +198,7 @@ function sanitize(v: unknown): unknown {
   // Byte arrays render as their base64url wire form — JSON.stringify on a
   // Uint8Array explodes into {"0":123,"1":34,…} index objects otherwise.
   if (v instanceof Uint8Array) {
-    return Buffer.from(v).toString("base64url");
+    return b64(v);
   }
   if (typeof v === "string" && /[\u0000-\u0008\u000e-\u001f\u007f-\u00ff\ufffd]/.test(v)) {
     return "0x" + Array.from(v, (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join("");

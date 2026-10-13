@@ -75,7 +75,7 @@
     "conformance:portable": "node --conditions=bap-source --conditions=bap-portable --import tsx/esm conformance/run_all.ts --backend=portable",
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
-    "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --conditions=bap-source --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
+    "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --conditions=bap-source,bap-portable --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",
