@@ -1,5 +1,5 @@
 // The bench page's node:crypto adapter, kept ONLY for the published @bounded-authority-protocol/signer
-// 0.3.1 the bench imports for demo issuance (it and its nested verifier 0.5.0 import node:crypto and use
+// 0.4.0 the bench imports for demo issuance (it and its nested verifier 0.6.0 import node:crypto and use
 // Buffer). This repository's own verifier source no longer needs it: since 0.7.0 the bench bundles it
 // under the bap-portable condition, so it runs the package's portable backend directly. The adapter
 // covers what the signer exercises (verified by grep over its dist tree): createPublicKey, verify
