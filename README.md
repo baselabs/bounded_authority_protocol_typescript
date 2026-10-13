@@ -300,7 +300,7 @@ Every release of this SDK is verified against the protocol's published, cryptogr
 certified conformance corpora — **283 vectors** for contract-major 1, **268** for
 contract-major 2, **292** for contract-major 3, **40** for the `bap-role-attestation/1`
 sibling profile, and **131** assertion, **9** digest, and **14** successor cases for the
-`bap-content-assertion/1` sibling profile, plus **2391** strict-Ed25519 cases (rule S1: canonical,
+`bap-content-assertion/1` sibling profile, plus **2410** strict-Ed25519 cases (rule S1: canonical,
 non-small-order keys and points, cofactorless verification) — recomputing every verdict from scratch,
 with each corpus `index.json`
 SHA-256 asserted at load so a drifted snapshot fails loudly. Permissiveness bugs (a parser
@@ -380,7 +380,7 @@ pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
 pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
 pnpm conformance:content-assertion # 131 + 9 + 14 + producer/assembly byte agreement (vendored sibling-profile snapshot)
-pnpm conformance:strict-ed25519 # 2391/2391 strict-Ed25519 verdicts (vendored additive snapshot)
+pnpm conformance:strict-ed25519 # 2410/2410 strict-Ed25519 verdicts (vendored additive snapshot)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 

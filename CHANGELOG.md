@@ -14,9 +14,9 @@ below.
   eight small-order encodings, and on the curve. `torsionFree` additionally requires `[L]A = O` in pure
   BigInt arithmetic (no new dependency); a host calls it at key enrollment, at trust install, and
   before any deny-list or revocation comparison, never on the verify path.
-- The `conformance:strict-ed25519` command over the vendored, additive strict-Ed25519 corpus (2391
+- The `conformance:strict-ed25519` command over the vendored, additive strict-Ed25519 corpus (2410
   cases in 14 families; index SHA-256
-  `0cfae60706387c8436735fd0282c3b7bed270105f6ec57e654cf1ccf3c80180c`), run in local, CI and release
+  `732117dfe1881b553998126a9524a95bfb1171257e388d5430a0a099f2287cb9`), run in local, CI and release
   verification. The existing v1, v2, v3, loopback, role-attestation and content-assertion corpora and
   their pins are unchanged.
 - A Node 24.19.0 CI leg beside Node 22.23.1; verdicts are identical on both.

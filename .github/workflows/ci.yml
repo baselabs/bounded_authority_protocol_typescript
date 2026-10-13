@@ -90,7 +90,7 @@ jobs:
       - name: Conformance — vendored content-assertion profile snapshot
         run: pnpm conformance:content-assertion
 
-      - name: Conformance — vendored strict Ed25519 snapshot (2391, additive to the corpora above)
+      - name: Conformance — vendored strict Ed25519 snapshot (2410, additive to the corpora above)
         run: pnpm conformance:strict-ed25519
 
   dependency-currency:

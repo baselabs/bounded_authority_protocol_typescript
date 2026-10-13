@@ -40,10 +40,10 @@ const CORPUS_DIR = join(pathResolve(fileURLToPath(import.meta.url), ".."), "corp
 
 // The certified index.json SHA-256 (hex). Pinned here and in test/strict-ed25519-corpus.test.ts; rotate
 // every pin in the same change as any corpus revision.
-const CERTIFIED_INDEX_SHA256 = "0cfae60706387c8436735fd0282c3b7bed270105f6ec57e654cf1ccf3c80180c";
+const CERTIFIED_INDEX_SHA256 = "732117dfe1881b553998126a9524a95bfb1171257e388d5430a0a099f2287cb9";
 const PROFILE_IDENTITY = "bap-strict-ed25519/1";
 const CERTIFIED_REVISION = 1;
-const CERTIFIED_CASES = 2391;
+const CERTIFIED_CASES = 2410;
 
 function abort(message: string): never {
   console.error(`strict-ed25519 conformance: ${message}`);
@@ -176,6 +176,31 @@ function jsToTagged(value: unknown): Tagged {
   return fail("jsToTagged: unsupported value");
 }
 
+// The inverse of jsToTagged, for comparing a decoded value against the case's expected JSON. Strings
+// decode through the SDK's own utf8Str, so a leading U+FEFF survives exactly as the SDK keeps it.
+function taggedToJs(value: Tagged): unknown {
+  switch (value.t) {
+    case "null": return null;
+    case "bool": case "int": case "float": return value.v;
+    case "string": return utf8Str(value.v);
+    case "array": return value.v.map(taggedToJs);
+    case "object": {
+      const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+      for (const [k, v] of value.v) out[k] = taggedToJs(v);
+      return out;
+    }
+  }
+}
+
+// Structural equality over JSON values (member order ignored, int and float compared by value).
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return a === b;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a as object).sort(), kb = Object.keys(b as object).sort();
+  if (ka.length !== kb.length || ka.some((k, i) => k !== kb[i])) return false;
+  return ka.every((k) => sameJson((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
 // ---- surface dispatch: call the SDK, project the result into the expected-field shape ----
 
 // v1 and v2 expose the same façade names and shapes; the case's `major` selects the module.
@@ -301,7 +326,8 @@ const HANDLERS: Record<string, Handler> = {
   },
   "json.decode": (c) => {
     const bytes = inputBytes(obj(c, "input"), c.id);
-    return runThunk(() => jsonDecode(bytes)) === INVALID ? INVALID : {};
+    const r = runThunk(() => jsonDecode(bytes));
+    return r === INVALID ? INVALID : { value: taggedToJs(r) };
   },
   "request_digest": (c) => {
     const i = obj(c, "input");
@@ -434,7 +460,7 @@ function compareVerdict(c: CorpusCase, actual: Verdict): string | null {
     if (key === "verdict") continue;
     const got = actual[key];
     if (got === undefined) return `valid result carries no ${key} to compare`;
-    if (got !== want) return `${key}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`;
+    if (!sameJson(got, want)) return `${key}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`;
   }
   return null;
 }

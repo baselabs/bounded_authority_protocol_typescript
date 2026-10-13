@@ -16,7 +16,7 @@ const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const read = (path: string) => new Uint8Array(readFileSync(path));
 
 const STRICT = join(ROOT, "corpus-strict-ed25519");
-const STRICT_INDEX_SHA256 = "0cfae60706387c8436735fd0282c3b7bed270105f6ec57e654cf1ccf3c80180c";
+const STRICT_INDEX_SHA256 = "732117dfe1881b553998126a9524a95bfb1171257e388d5430a0a099f2287cb9";
 
 function files(dir: string): string[] {
   const out: string[] = [];
@@ -39,7 +39,7 @@ test("the strict corpus snapshot is exactly the files its index lists, each at i
   };
   assert.equal(index.profile, "bap-strict-ed25519/1");
   assert.equal(index.revision, 1);
-  assert.equal(index.total_cases, 2391);
+  assert.equal(index.total_cases, 2410);
   assert.equal(index.private_material_tracked, false);
   const listed = index.files.map((f) => f.path).sort();
   assert.deepEqual(listed, files(STRICT).filter((p) => p !== "index.json").sort(), "no unlisted or missing file");
