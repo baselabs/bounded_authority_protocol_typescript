@@ -13,14 +13,18 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege: no job holds an OIDC token by default. The verify job runs every lane
+# with contents: read only; the publish job alone gets id-token: write, needs verify, and
+# runs nothing but checkout, a frozen install, the build and the staged publish.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
-    name: Verify then publish to npm (provenance-bound)
+  verify:
+    name: Verify the tagged tree (every lane; no publish credentials)
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,7 +34,7 @@ jobs:
         with:
           version: 10.20.0
 
-      - name: Set up Node (24 bundles npm >= 11.5 — required for OIDC trusted publishing)
+      - name: Set up Node (24.19.0, the release lane)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0 # pinned exactly, matching the signer's release lane
@@ -70,9 +74,37 @@ jobs:
           BAP_BROWSERS: chromium,firefox,webkit
         run: pnpm exec playwright install --with-deps chromium firefox webkit && pnpm test:browser
 
+  publish:
+    name: Stage the publish to npm (provenance-bound; human approval required)
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0 (matches the signer's release lane)
+        with:
+          version: 10.20.0
+
+      - name: Set up Node (24 bundles npm >= 11.5 — required for OIDC trusted publishing)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0 # pinned exactly, matching the signer's release lane
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
       # Idempotent releases: a version already on the registry (e.g. seeded from
       # the repository checkout under the owner's session, as 0.1.0 and the 0.2.0
-      # rename seed were) verifies only — the full matrix above still gates the tag.
+      # rename seed were) verifies only — the verify job still gates the tag.
       - name: Check registry for existing version
         id: existing
         run: |
