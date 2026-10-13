@@ -20,7 +20,7 @@ import {
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import { join } from "node:path";
-import { sha256 } from "../src/ed25519.js";
+import { sha256, acceptablePublicKey } from "../src/ed25519.js";
 import { _resetCensus, _importedFingerprints } from "../src/ed25519.js";
 import { jsonDecode } from "../src/json.js";
 import { boundsNew } from "../src/bounds.js";
@@ -720,8 +720,21 @@ test("census tracks imported fingerprints", () => {
 // parseAndMatchTransition / the checkChain call (proven in the task log).
 // ============================================================================
 
-const KEY_A = new Uint8Array(32).fill(7);
-const KEY_B = new Uint8Array(32).fill(8);
+// REAL generated Ed25519 keys. The old fill(7) / fill(8) placeholders are not points on the curve, and a
+// verifier that accepts any 32 bytes as a key would pass them; key acceptance refuses them, which is the
+// point of the strict-key rule. The positive control below proves these keys reach (and pass) acceptance.
+function generatedKey(): Uint8Array {
+  const { publicKey } = crypto.generateKeyPairSync("ed25519");
+  return new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-32));
+}
+const KEY_A = generatedKey();
+const KEY_B = generatedKey();
+test("encode-parity key control: the generated anchor keys pass key acceptance and the fill(7)/fill(8) placeholders do not", () => {
+  assert.equal(acceptablePublicKey(KEY_A), true);
+  assert.equal(acceptablePublicKey(KEY_B), true);
+  assert.notDeepEqual([...KEY_A], [...KEY_B]);
+  assert.equal(acceptablePublicKey(new Uint8Array(32).fill(7)) && acceptablePublicKey(new Uint8Array(32).fill(8)), false);
+});
 const Z32T = new Uint8Array(32);
 const SIG64T = new Uint8Array(64);
 const SIG32T = new Uint8Array(32);

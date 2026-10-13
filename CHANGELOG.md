@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.6.0] — Unreleased
+
+Strict Ed25519 verification: reject small-order and non-canonical keys and points. Before 1.0 the
+minor position is the breaking boundary, so this release also carries the API and behavior changes
+below.
+
+### Added
+
+- `verifyStrict`, `acceptablePublicKey` and `torsionFree` (exported from the package root), the
+  TypeScript spelling of rule S1. `verifyStrict` is total (wrong widths and non-byte input return
+  `false`, it never throws). `acceptablePublicKey` is the key-entry check: canonical, not one of the
+  eight small-order encodings, and on the curve. `torsionFree` additionally requires `[L]A = O` in pure
+  BigInt arithmetic (no new dependency); a host calls it at key enrollment, at trust install, and
+  before any deny-list or revocation comparison, never on the verify path.
+- The `conformance:strict-ed25519` command over the vendored, additive strict-Ed25519 corpus (2391
+  cases in 14 families; index SHA-256
+  `0cfae60706387c8436735fd0282c3b7bed270105f6ec57e654cf1ccf3c80180c`), run in local, CI and release
+  verification. The existing v1, v2, v3, loopback, role-attestation and content-assertion corpora and
+  their pins are unchanged.
+- A Node 24.19.0 CI leg beside Node 22.23.1; verdicts are identical on both.
+
+### Changed (verdicts in shipped profiles)
+
+- Every Ed25519 verification applies rule S1 before the backend: the key and the signature point must
+  be canonical encodings, neither may be a small-order encoding, and `S < L`; the backend then
+  computes the cofactorless equation. Only inputs that no conforming signer emits change from accept
+  to reject, and no existing corpus verdict changes.
+- A key that fails `acceptablePublicKey` is refused with the closed error wherever it enters: trusted
+  issuer, historical and archive keys, proof-header JWKs, the role-attestation subject key (also at
+  decode), and every producer input.
+- **API behavior change.** The JWK functions are now fallible for such a key: `jwkFromPublicKey`,
+  `jwkEncodePublic`, `thumbprintPreimage`, `thumbprint`, `thumbprintRaw` and `publicKeyThumbprintRaw`
+  throw `InvalidError`, and `jwkDecodePublic` returns the closed error. The raw hash-only
+  `thumbprintDigestUnchecked` (internal, not exported from the package) serves censuses and generators;
+  the v1 and v2 conformance censuses use it.
+- The browser playground shim verifies with an explicit cofactorless check behind the same gate instead
+  of the default noble verify (which is cofactored).
+
+### Fixed
+
+- JCS string encoding: the UTF-8 validator masked the lead byte too narrowly, so it rejected valid
+  text in U+0400 to U+047F, U+8000 to U+87FF and U+100000 to U+10FFFF (a false reject of the request
+  digest and signing inputs the reference accepts) and admitted some invalid sequences (surrogates,
+  values above U+10FFFF) that then threw a native error past the closed-Result contract. Every Unicode
+  scalar value is now admitted byte for byte and every invalid sequence is a closed rejection.
+- JCS string encoding no longer drops a leading U+FEFF from a string value or member name.
+
+### Maintenance
+
+- Test fixtures that used all-zero or repeated-byte placeholders as public keys now use generated keys,
+  each with a positive control proving the key reaches and passes key acceptance.
+
 ## [0.5.0] — 2026-09-27
 
 The content-assertion release. Before 1.0 the minor position is the breaking boundary, so this

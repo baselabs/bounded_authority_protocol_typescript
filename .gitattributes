@@ -7,3 +7,4 @@ conformance/corpus-v2/** -text
 conformance/corpus-v3/** -text
 conformance/corpus-local-loopback-http/** -text
 conformance/corpus-role-attestation/** -text
+conformance/corpus-strict-ed25519/** -text

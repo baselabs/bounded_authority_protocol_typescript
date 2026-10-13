@@ -9,6 +9,9 @@ import * as v1 from "../src/v1.js";
 import * as v2 from "../src/v2.js";
 import * as v3 from "../src/v3.js";
 import type { GrantProducer } from "../src/v1.js";
+import { assembleSegments } from "../src/compact.js";
+import { acceptablePublicKey } from "../src/ed25519.js";
+import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
 // The Result contract on every public surface: a malformed CALLER CONTEXT — a garbage Bounds
 // object, or a grant producer with junk field types — returns the single closed error. It
@@ -38,7 +41,17 @@ const GRANT: GrantProducer = {
 // The v1-style 32-byte thumbprint shape is valid at all three producers' shape gates (each
 // major applies its own suite-specific fingerprint semantics after the field-type gate).
 
-const HIST_KEY = { keyId: "k", publicKey: new Uint8Array(32), validFrom: 0, validBefore: null };
+// A REAL generated Ed25519 key. The all-zero 32-byte array is the identity-adjacent order-4 point, which
+// key acceptance refuses before the bounds gate is ever reached (a vacuous cell: the call would reject
+// for the key, not for the context this suite pins). Every key-bearing cell below uses this key, and the
+// positive-control tests at the end of the file prove it reaches (and passes) key acceptance.
+function freshEdKey(): { raw: Uint8Array; privateKey: nodeCrypto.KeyObject } {
+  const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync("ed25519");
+  return { raw: new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-32)), privateKey };
+}
+const ED = freshEdKey();
+
+const HIST_KEY = { keyId: "k", publicKey: ED.raw, validFrom: 0, validBefore: null };
 
 // A REAL P-256 uncompressed point for v3 surfaces: the all-zero 65-byte array fails v3's
 // on-curve validation before the bounds gate is ever reached (a vacuous cell — review F4).
@@ -55,12 +68,12 @@ function boundsSurfaces(): Array<[string, (bounds: unknown) => unknown]> {
     ["v1.decodeProof", (b) => v1.decodeProof(GARBAGE_COMPACT, b as never)],
     ["v1.assembleCompact", (b) => v1.assembleCompact({ kind: "grant", protectedSegment: strUtf8("a"), payloadSegment: strUtf8("b") }, new Uint8Array(64), b as never)],
     ["v1.grantSigningInput", (b) => v1.grantSigningInput(GRANT, b as never)],
-    ["v1.verifyGrant", (b) => v1.verifyGrant(GARBAGE_COMPACT, { keyId: "k", publicKey: new Uint8Array(32) }, { issuer: "i", audience: "a", evaluationTime: 1, clockSkew: 0, bounds: b as never })],
+    ["v1.verifyGrant", (b) => v1.verifyGrant(GARBAGE_COMPACT, { keyId: "k", publicKey: ED.raw }, { issuer: "i", audience: "a", evaluationTime: 1, clockSkew: 0, bounds: b as never })],
     ["v1.verifyHistoricalAnchor", (b) => v1.verifyHistoricalAnchor(GARBAGE_COMPACT, HIST_KEY, { anchorId: "a", anchoredAt: 1, chainId: "c", sequence: 1, chainHash: new Uint8Array(32), keyId: "k", keyFingerprint: new Uint8Array(32), bounds: b as never })],
     ["v1.encodeConsumptionEntry", (b) => v1.encodeConsumptionEntry({ chainId: "c", sequence: 1, previousHash: new Uint8Array(32), commitment: new Uint8Array(32) }, b as never)],
     ["v2.decodeGrant", (b) => v2.decodeGrant(GARBAGE_COMPACT, b as never)],
     ["v2.grantSigningInput", (b) => v2.grantSigningInput(GRANT, b as never)],
-    ["v2.verifyGrant", (b) => v2.verifyGrant(GARBAGE_COMPACT, { keyId: "k", publicKey: new Uint8Array(32) }, { issuer: "i", audience: "a", evaluationTime: 1, clockSkew: 0, bounds: b as never })],
+    ["v2.verifyGrant", (b) => v2.verifyGrant(GARBAGE_COMPACT, { keyId: "k", publicKey: ED.raw }, { issuer: "i", audience: "a", evaluationTime: 1, clockSkew: 0, bounds: b as never })],
     ["v3.decodeGrant", (b) => v3.decodeGrant(GARBAGE_COMPACT, b as never)],
     ["v3.grantSigningInput", (b) => v3.grantSigningInput(GRANT, b as never)],
     ["v3.verifyGrant", (b) => v3.verifyGrant(GARBAGE_COMPACT, { keyId: "k", publicKey: freshEcPublicKey() }, { issuer: "i", audience: "a", evaluationTime: 1, clockSkew: 0, bounds: b as never })],
@@ -119,7 +132,7 @@ test("legal caller Bounds still resolve on every contract-major surface", () => 
 test("anchor producers reject junk field types with the closed error (no coercion, no TypeError)", () => {
   const ANCHOR = {
     keyId: "issuer-1", anchorId: "urn:example:anchor:1", chainId: "urn:example:chain:1",
-    anchoredAt: 1000, sequence: 1, chainHash: new Uint8Array(32), publicKey: new Uint8Array(32),
+    anchoredAt: 1000, sequence: 1, chainHash: new Uint8Array(32), publicKey: ED.raw,
   };
   const producers: Array<[string, (a: unknown) => unknown]> = [
     ["v1.boundaryAnchorSigningInput", (a) => v1.boundaryAnchorSigningInput(a as never)],
@@ -203,4 +216,60 @@ test("grant producers reject junk field types with the closed error (no coercion
       );
     }
   }
+});
+
+// ---- positive controls: the generated key is real, so the closed errors above are the context's ----
+
+
+const asciiOf = (si: { protectedSegment: Uint8Array; payloadSegment: Uint8Array }) =>
+  strUtf8(`${utf8(si.protectedSegment)}.${utf8(si.payloadSegment)}`);
+const signWith = (message: Uint8Array) => new Uint8Array(nodeCrypto.sign(null, Buffer.from(message), ED.privateKey));
+
+test("control: the generated key passes key acceptance (the cells above do not reject on the key)", () => {
+  assert.equal(acceptablePublicKey(ED.raw), true);
+  // The placeholder this suite used to carry is refused by key acceptance, which is why it was vacuous.
+  assert.equal(acceptablePublicKey(new Uint8Array(32)), false);
+});
+
+test("control: a real signed grant verifies under legal bounds; every malformed bounds shape then returns the closed error", () => {
+  for (const [name, major] of [["v1", v1], ["v2", v2]] as const) {
+    const si = major.grantSigningInput({ ...GRANT, keyId: "k" });
+    assert.ok(si.ok, `${name} grant signing input`);
+    const compact = assembleSegments(si.value, signWith(asciiOf(si.value)));
+    assert.ok(compact.ok);
+    const expected = { issuer: GRANT.issuer, audience: GRANT.audiences[0]!, evaluationTime: 1200, clockSkew: 60 };
+    const trusted = { keyId: "k", publicKey: ED.raw };
+    assert.equal(major.verifyGrant(compact.value, trusted, expected).ok, true, `${name} legal bounds verify`);
+    assert.equal(major.verifyGrant(compact.value, trusted, { ...expected, bounds: boundsNew({ compact_bytes: 4096 }) }).ok, true);
+    for (const [shapeName, shape] of MALFORMED_BOUNDS) {
+      let result: unknown = undefined;
+      assert.doesNotThrow(() => { result = major.verifyGrant(compact.value, trusted, { ...expected, bounds: shape as never }); }, `${name} ${shapeName}`);
+      assert.equal((result as { ok: boolean }).ok, false, `${name}: malformed bounds (${shapeName}) must fail closed on a VALID grant`);
+    }
+  }
+});
+
+test("control: a real signed anchor verifies under legal bounds; malformed bounds then fail closed", () => {
+  const anchor = { keyId: "k", anchorId: "urn:example:anchor:1", chainId: "urn:example:chain:1", anchoredAt: 1000, sequence: 1, chainHash: new Uint8Array(32), publicKey: ED.raw };
+  const si = v1.boundaryAnchorSigningInput(anchor);
+  assert.ok(si.ok);
+  const compact = assembleSegments(si.value, signWith(asciiOf(si.value)));
+  assert.ok(compact.ok);
+  const expected = { anchorId: anchor.anchorId, anchoredAt: 1000, chainId: anchor.chainId, sequence: 1, chainHash: anchor.chainHash, keyId: "k", keyFingerprint: publicKeyThumbprintRaw(ED.raw) };
+  assert.equal(v1.verifyHistoricalAnchor(compact.value, HIST_KEY, expected).ok, true, "legal bounds verify");
+  for (const [shapeName, shape] of MALFORMED_BOUNDS) {
+    let result: unknown = undefined;
+    assert.doesNotThrow(() => { result = v1.verifyHistoricalAnchor(compact.value, HIST_KEY, { ...expected, bounds: shape as never }); }, shapeName);
+    assert.equal((result as { ok: boolean }).ok, false, `malformed bounds (${shapeName}) must fail closed on a VALID anchor`);
+  }
+});
+
+test("control: the anchor producers accept the real key before the junk fields are applied", () => {
+  const ANCHOR = {
+    keyId: "issuer-1", anchorId: "urn:example:anchor:1", chainId: "urn:example:chain:1",
+    anchoredAt: 1000, sequence: 1, chainHash: new Uint8Array(32), publicKey: ED.raw,
+  };
+  assert.equal(v1.boundaryAnchorSigningInput(ANCHOR).ok, true);
+  assert.equal(v2.boundaryAnchorSigningInput(ANCHOR).ok, true);
+  assert.equal(v3.boundaryAnchorSigningInput({ ...ANCHOR, publicKey: freshEcPublicKey() }).ok, true);
 });

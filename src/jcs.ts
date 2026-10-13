@@ -1,6 +1,6 @@
 import { fail } from "./error.js";
 import { resolve, coerceBounds, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
-import { strUtf8, utf8Str, type Tagged } from "./json.js";
+import { strUtf8, type Tagged } from "./json.js";
 
 // RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (spec/bap-v1.md,
 // REQ1-JSON-jcs-exact). Accepts only the tagged algebra. Enforces every JSON + output bound while
@@ -62,7 +62,7 @@ function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number,
       // over-bound value (not from the decoder) is rejected at encode, matching jcs.ex:57-59.
       // Cross-vendor (JCS UTF-8): the reference guard is `String.valid?(value)` (jcs.ex:58) which
       // rejects invalid UTF-8. A programmatically-built JString with invalid bytes would otherwise
-      // reach escapeString → utf8Str (fatal TextDecoder) and throw TypeError past the closed-Result
+      // reach escapeString → the fatal TextDecoder and throw TypeError past the closed-Result
       // contract. Validate UTF-8 here and fail closed (Err) instead.
       if (level > depth || value.v.length > resolve(bounds, "string_bytes" as MaximaKey) || !isValidUtf8(value.v)) fail("jcs: string bound");
       parts.push(escapeString(value.v, bounds));
@@ -145,7 +145,7 @@ const SHORT_ESCAPES: Record<number, string> = {
 };
 
 // UTF-8 validity check that does NOT throw (cross-vendor JCS UTF-8): the reference's String.valid?
-// (jcs.ex:58) rejects invalid UTF-8 at encode. The fatal TextDecoder in utf8Str throws TypeError on
+// (jcs.ex:58) rejects invalid UTF-8 at encode. The fatal TextDecoder in escapeString throws TypeError on
 // invalid bytes, escaping the closed-Result contract; this gate lets jcsEncode fail closed instead.
 // Walks the byte stream validating leading/multi-byte sequences (RFC 3629).
 function isValidUtf8(bytes: Uint8Array): boolean {
@@ -160,7 +160,8 @@ function isValidUtf8(bytes: Uint8Array): boolean {
     else if ((b0 & 0xf8) === 0xf0) { need = 3; min = 0x10000; }
     else return false; // invalid leading byte (continuation, or 0xf8+)
     if (i + need >= bytes.length) return false; // truncated
-    let cp = b0 & (0x1f >> need);
+    // The lead byte carries 5, 4 or 3 payload bits for need = 1, 2 or 3 (masks 0x1f, 0x0f, 0x07).
+    let cp = b0 & (0x7f >> (need + 1));
     for (let j = 1; j <= need; j++) {
       const bj = bytes[i + j]!;
       if ((bj & 0xc0) !== 0x80) return false; // not a continuation byte
@@ -174,10 +175,16 @@ function isValidUtf8(bytes: Uint8Array): boolean {
   return true;
 }
 
+// A fatal UTF-8 decoder that keeps a leading U+FEFF. The shared utf8Str decoder strips a leading byte
+// order mark (the TextDecoder default), which would drop U+FEFF from the front of a string value or
+// member name; the reference passes every scalar value through. The bytes were validated above, so the
+// fatal flag is a backstop only.
+const KEEP_BOM = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
 function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
   const out: number[] = [0x22 /* " */];
   // Decode UTF-8 to code points so \uXXXX escaping (for < 0x20 and lone surrogates) is correct.
-  const s = utf8Str(bytes);
+  const s = KEEP_BOM.decode(bytes);
   for (let i = 0; i < s.length; i++) {
     const cp = s.codePointAt(i)!;
     if (cp > 0xffff) {

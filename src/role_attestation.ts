@@ -5,7 +5,7 @@ import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { jcsEncode } from "./jcs.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { jwkFromPublicKey, thumbprintRaw } from "./jwk.js";
-import { importPublicKey, ed25519Verify } from "./ed25519.js";
+import { importPublicKey, ed25519Verify, acceptablePublicKey } from "./ed25519.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import type { HistoricalPublicKey } from "./v1.js";
 
@@ -174,6 +174,9 @@ function parseAttestationPayload(seg: ReturnType<typeof parseCompact>, bounds: B
   const jti = requireStringOrUri(p.v.get("jti"), "jti", bounds);
   const subjectKeyId = requireKidValue(p.v.get("key_id"), "key_id", bounds);
   const subjectPublicKey = requireB64urlN(p.v.get("public_key"), "public_key", 32);
+  // Rule S1 key acceptance: a subject key that is non-canonical, small-order or off the curve is refused
+  // at decode, not only at verify (REQ1-KEY-ed25519-acceptable).
+  assert(acceptablePublicKey(subjectPublicKey), "attestation payload: subject key not acceptable");
   const roleV = p.v.get("role");
   if (!roleV || roleV.t !== "string") fail("attestation payload: role string");
   const role = utf8Str(roleV.v);
@@ -243,6 +246,7 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
     const subjectKeyId = requireKidValue({ t: "string", v: strUtf8(attestation.subjectKeyId) }, "key_id", b);
     if (!(attestation.subjectPublicKey instanceof Uint8Array)) fail("attestation_signing_input: subject key");
     assert(attestation.subjectPublicKey.length === 32, "attestation_signing_input: subject key width");
+    assert(acceptablePublicKey(attestation.subjectPublicKey), "attestation_signing_input: subject key not acceptable");
     if (attestation.role !== "issuer" && attestation.role !== "holder") fail("attestation_signing_input: role closed set");
     if (!Number.isInteger(attestation.notBefore) || !Number.isInteger(attestation.expiresAt)) {
       fail("attestation_signing_input: integer times");

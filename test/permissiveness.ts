@@ -55,7 +55,7 @@ import {
 } from "../src/v1.js";
 import { boundsNew, MAXIMA, type Bounds } from "../src/bounds.js";
 import { assembleSegments } from "../src/compact.js";
-import { sha256, _resetCensus } from "../src/ed25519.js";
+import { sha256, _resetCensus, acceptablePublicKey } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
 const dec = (s: string) => jsonDecode(strUtf8(s));
@@ -265,7 +265,10 @@ test("permissiveness: checkEnvelope null trustedIssuer fails closed (cross-vendo
 // suffices. Defect: revert the Number.isInteger/`<= 0` guards → fractional/zero values pass.
 test("permissiveness: checkEnvelope rejects fractional/zero temporal context (cross-vendor #19)", () => {
   const junk = strUtf8("aaa.bbb.ccc");
-  const issuer = { keyId: strUtf8("k"), publicKey: new Uint8Array(32) };
+  // A REAL generated key: the all-zero array is an order-4 point that key acceptance refuses, so it would
+  // make the integer-context control below reject for the key instead of for the junk compact it names.
+  const issuer = { keyId: strUtf8("k"), publicKey: freshKey().publicKey };
+  assert.equal(acceptablePublicKey(issuer.publicKey), true, "control: the generated issuer key passes key acceptance");
   const base = {
     trustedIssuer: issuer, issuer: "x", audience: "x", method: "GET", targetUri: "https://x.example/",
     invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",

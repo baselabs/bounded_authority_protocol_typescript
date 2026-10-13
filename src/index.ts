@@ -130,7 +130,7 @@ export {
   publicKeyThumbprintRaw,
 } from "./jwk.js";
 export type { OkpPublic } from "./jwk.js";
-export { sha256 } from "./ed25519.js";
+export { sha256, verifyStrict, acceptablePublicKey, torsionFree } from "./ed25519.js";
 export { base64urlDecode, base64urlEncode } from "./base64url.js";
 export { parseSelector, selectorMatches, semanticIdentity } from "./selector.js";
 export { typedProject } from "./digest.js";

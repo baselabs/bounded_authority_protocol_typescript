@@ -1,6 +1,6 @@
 import { fail, assert, type Result, ok, err } from "./error.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
-import { sha256 } from "./ed25519.js";
+import { acceptablePublicKey, sha256 } from "./ed25519.js";
 import { jcsEncode } from "./jcs.js";
 import { jsonDecode, strUtf8, utf8Str } from "./json.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
@@ -9,6 +9,13 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
 // The public OKP JWK has exactly three members — crv="Ed25519", kty="OKP", x=<base64url raw 32 bytes>
 // — in RFC 7638 lexicographic order (crv, kty, x). The thumbprint preimage is the JCS of that object;
 // the thumbprint is SHA-256 of the preimage (base64url); the raw thumbprint is the 32-byte digest.
+//
+// Key acceptance (rule S1, REQ1-KEY-ed25519-acceptable). Every public function that encodes, decodes or
+// hashes a key is FALLIBLE: a key that fails acceptablePublicKey (non-canonical, small-order, or off the
+// curve) is refused with the closed InvalidError (decode returns the closed error), so no weak key
+// reaches a thumbprint, a holder binding or a verify input. The one exception is thumbprintDigestUnchecked,
+// the raw hash-only path for censuses, generators and deny-list fingerprinting: it is never used on a
+// verify path, and a test pins its callers.
 
 export interface OkpPublic {
   readonly crv: "Ed25519";
@@ -47,6 +54,7 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
     if (x.t !== "string") fail("jwk.decode_public: x");
     const raw = base64urlDecode(x.v);
     if (raw.length !== 32) fail("jwk.decode_public: x width");
+    if (!acceptablePublicKey(raw)) fail("jwk.decode_public: key not acceptable");
     return ok(raw);
   } catch (e) {
     if (e instanceof Error && e.name === "InvalidError") return err();
@@ -56,11 +64,24 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
 
 export function jwkFromPublicKey(rawKey: Uint8Array): OkpPublic {
   assert(rawKey.length === 32, "jwk: public key width");
+  assert(acceptablePublicKey(rawKey), "jwk: key not acceptable");
+  return uncheckedJwk(rawKey);
+}
+
+function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
   return { crv: "Ed25519", kty: "OKP", x: utf8Str(base64urlEncode(rawKey)) };
 }
 
-// RFC 7638 thumbprint preimage: the JCS bytes of {crv, kty, x} (lexicographic order).
+// RFC 7638 thumbprint preimage: the JCS bytes of {crv, kty, x} (lexicographic order). Fallible: the key
+// behind x must be acceptable.
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
+  const raw = base64urlDecode(strUtf8(jwk.x));
+  assert(raw.length === 32, "jwk: x width");
+  assert(acceptablePublicKey(raw), "jwk: key not acceptable");
+  return preimageOf(jwk);
+}
+
+function preimageOf(jwk: OkpPublic): Uint8Array {
   const members = new Map<string, never>([
     ["crv", { t: "string", v: strUtf8(jwk.crv) } as never],
     ["kty", { t: "string", v: strUtf8(jwk.kty) } as never],
@@ -79,7 +100,16 @@ export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
   return sha256(thumbprintPreimage(jwk));
 }
 
-// Raw 32-byte thumbprint directly from a raw 32-byte public key.
+// Raw 32-byte thumbprint directly from a raw 32-byte public key. Fallible, like every function above.
 export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(jwkFromPublicKey(rawKey));
+}
+
+// The raw hash-only thumbprint path: SHA-256 of the RFC 7638 preimage of ANY 32 bytes, with no key
+// acceptance. For censuses, corpus generators and deny-list fingerprinting only (a weak key must still
+// be nameable there). It is internal (not exported from the package index) and is never used on a verify
+// path; test/strict-ed25519-jwk.test.ts pins its callers.
+export function thumbprintDigestUnchecked(rawKey: Uint8Array): Uint8Array {
+  assert(rawKey.length === 32, "jwk: public key width");
+  return sha256(preimageOf(uncheckedJwk(rawKey)));
 }

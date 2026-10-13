@@ -69,6 +69,27 @@ if (result.ok) {
 Every public function returns the same `Result<T>` shape — `{ ok: true, value }` or
 `{ ok: false }` — mirroring the reference's `{:ok, value} | {:error, :invalid}`.
 
+## Strict Ed25519 (rule S1)
+
+Every Ed25519 verification in the package goes through one gate, then the backend's cofactorless
+equation. A signature is accepted only if the key `A` and the signature point `R` are canonical
+encodings (RFC 8032 section 5.1.3), neither is one of the eight small-order encodings, and `S < L`. A key
+that is non-canonical, of small order, or off the curve is refused wherever it enters (trusted issuer and
+archive keys, proof-header JWKs, producers, thumbprints) with the closed error.
+
+Three helpers are exported for hosts:
+
+```ts
+import { verifyStrict, acceptablePublicKey, torsionFree } from "@bounded-authority-protocol/verifier";
+
+verifyStrict(message, signature64, publicKey32); // boolean; never throws
+acceptablePublicKey(publicKey32); // canonical, not small order, on the curve
+torsionFree(publicKey32);         // acceptable, and [L]A = O (under 1 ms; never on the verify path)
+```
+
+Verification itself has no subgroup check. A host MUST call `torsionFree` at key enrollment, at trust
+install, and before any deny-list or revocation comparison, so that one secret has one key encoding.
+
 ## Wire contract-majors
 
 The protocol versions its wire formats as complete, parallel **contract-majors**. All three live
@@ -279,7 +300,8 @@ Every release of this SDK is verified against the protocol's published, cryptogr
 certified conformance corpora — **283 vectors** for contract-major 1, **268** for
 contract-major 2, **292** for contract-major 3, **40** for the `bap-role-attestation/1`
 sibling profile, and **131** assertion, **9** digest, and **14** successor cases for the
-`bap-content-assertion/1` sibling profile — recomputing every verdict from scratch,
+`bap-content-assertion/1` sibling profile, plus **2391** strict-Ed25519 cases (rule S1: canonical,
+non-small-order keys and points, cofactorless verification) — recomputing every verdict from scratch,
 with each corpus `index.json`
 SHA-256 asserted at load so a drifted snapshot fails loudly. Permissiveness bugs (a parser
 accepting what the spec forbids) are invisible to corpus agreement by construction, so the
@@ -288,7 +310,8 @@ suite additionally carries a per-language mutation gate that proves each closure
 
 Linux CI verification includes strict typecheck, build, lint (including a library
 purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
-mutation gate, and all five conformance corpora against the vendored snapshots.
+mutation gate, and all six conformance corpora against the vendored snapshots, on Node 22.23.1
+and Node 24.19.0.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every
@@ -357,6 +380,7 @@ pnpm conformance:v2          # 268/268 + key census (vendored v2 snapshot)
 pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
 pnpm conformance:content-assertion # 131 + 9 + 14 + producer/assembly byte agreement (vendored sibling-profile snapshot)
+pnpm conformance:strict-ed25519 # 2391/2391 strict-Ed25519 verdicts (vendored additive snapshot)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 

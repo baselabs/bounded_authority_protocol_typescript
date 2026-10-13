@@ -9,7 +9,7 @@
 // façade from the package root, and esbuild's tree-shaking drops the unused
 // v3 namespace from the bundle (verified by grep over site-dist/app.js). A
 // bench page that starts importing `v3` must extend this shim first.
-import { verify, hashes } from "@noble/ed25519";
+import { Point, hashes } from "@noble/ed25519";
 import { Buffer } from "buffer";
 import { sha256, sha512 } from "@noble/hashes/sha2.js";
 
@@ -46,6 +46,58 @@ export function createPublicKey(opts: {
   return { kind: "shim-ed25519-public", raw };
 }
 
+// The base-point order L = 2^252 + 27742317777372353535851937790883648493.
+const L = 2n ** 252n + 27742317777372353535851937790883648493n;
+
+const littleEndian = (bytes: Uint8Array): bigint => {
+  let v = 0n;
+  for (let i = bytes.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(bytes[i]!);
+  return v;
+};
+
+/**
+ * Explicit COFACTORLESS Ed25519 verification: encode([S]B - [k]A) == R, compared byte for byte.
+ *
+ * Rule S1 (strict Ed25519) mandates the cofactorless equation, and noble's own verify is cofactored in
+ * BOTH of its modes: `zip215: true` (the default) and `zip215: false` both accept signatures the
+ * cofactorless equation rejects (a torsion component in R or A that the cofactor multiplication
+ * cancels), so neither can stand in for it. test/strict-ed25519-shim.test.ts pins that reason (a
+ * mixed-order-R signature that noble accepts in both modes and this check refuses) and runs every
+ * verify case of the strict corpus through this shim. A is decoded with the strict RFC 8032 section 5.1.3 rule
+ * (`zip215 = false`: canonical y, no sign bit when x = 0) and an off-curve A throws, which is a
+ * rejection. S >= L is refused here as well.
+ *
+ * This function sits behind the same byte-level gate as the Node build: src/ed25519.ts applies the
+ * canonical, small-order and S < L checks (strictGate) BEFORE it calls verify, and this shim is only
+ * reached through that call. The checks here are the equation and its two bounds, not a second gate.
+ */
+function verifyCofactorless(signature: Uint8Array, message: Uint8Array, publicKey: Uint8Array): boolean {
+  if (signature.length !== 64 || publicKey.length !== 32) return false;
+  let a: Point;
+  try {
+    a = Point.fromBytes(publicKey, false);
+  } catch {
+    return false;
+  }
+  const rBytes = signature.subarray(0, 32);
+  const s = littleEndian(signature.subarray(32));
+  // noble's multiply also range-asserts a scalar to 1..L-1 (and throws, which verifyEd25519 maps to false),
+  // so this check is redundant with it; it stays so that rule S1 does not depend on that incidental assertion.
+  // test/strict-ed25519-shim.test.ts pins the behavior (the S + L twin is refused).
+  if (s >= L) return false;
+  const challenge = new Uint8Array(rBytes.length + publicKey.length + message.length);
+  challenge.set(rBytes, 0);
+  challenge.set(publicKey, rBytes.length);
+  challenge.set(message, rBytes.length + publicKey.length);
+  const k = littleEndian(sha512(challenge)) % L;
+  const sb = s === 0n ? Point.ZERO : Point.BASE.multiply(s);
+  const ka = k === 0n ? Point.ZERO : a.multiply(k, false);
+  const lhs = sb.subtract(ka).toBytes();
+  if (lhs.length !== rBytes.length) return false;
+  for (let i = 0; i < lhs.length; i++) if (lhs[i] !== rBytes[i]) return false;
+  return true;
+}
+
 /** The packages always call verify(null, data, ed25519Key, sig). */
 export function verifyEd25519(
   _alg: unknown,
@@ -54,7 +106,7 @@ export function verifyEd25519(
   signature: Uint8Array,
 ): boolean {
   try {
-    return verify(signature, data, key.raw);
+    return verifyCofactorless(signature, data, key.raw);
   } catch {
     return false;
   }

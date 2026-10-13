@@ -28,11 +28,16 @@ concurrency:
 
 jobs:
   verify:
-    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, census)
+    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, census) on Node ${{ matrix.node }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04]
+        # Two pinned Node lines, both exact: 22.23.1 (lockstep with .tool-versions, the family asdf pin)
+        # and 24.19.0 (the release lane, release.yml). Verdicts must be identical on both: the strict
+        # Ed25519 rule gates every verify before the backend, so a backend that differs by version
+        # (the platform OpenSSL) cannot change a verdict.
+        node: [22.23.1, 24.19.0]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out source
@@ -46,7 +51,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.1 # lockstep with .tool-versions (the family asdf pin)
+          node-version: ${{ matrix.node }} # exact pins: 22.23.1 (.tool-versions lockstep) and 24.19.0 (release lane)
           cache: pnpm
 
       - name: Install (frozen lockfile)
@@ -84,6 +89,9 @@ jobs:
 
       - name: Conformance — vendored content-assertion profile snapshot
         run: pnpm conformance:content-assertion
+
+      - name: Conformance — vendored strict Ed25519 snapshot (2391, additive to the corpora above)
+        run: pnpm conformance:strict-ed25519
 
   dependency-currency:
     # Latest-first dependency currency (BAP ADR 0032 shape). A property of the

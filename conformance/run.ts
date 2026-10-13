@@ -18,7 +18,7 @@ import { jsonDecode, strUtf8, utf8Str, type Tagged } from "../src/json.js";
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { jcsEncode } from "../src/jcs.js";
 import { sha256, _importedFingerprints, _resetCensus } from "../src/ed25519.js";
-import { thumbprintRaw, jwkFromPublicKey, jwkEncodePublic, thumbprintPreimage } from "../src/jwk.js";
+import { thumbprintRaw, jwkFromPublicKey, jwkEncodePublic, thumbprintPreimage, thumbprintDigestUnchecked } from "../src/jwk.js";
 import { uriNormalize } from "../src/uri.js";
 import { parseSelector } from "../src/selector.js";
 import { boundsNew, MAXIMA } from "../src/bounds.js";
@@ -774,7 +774,7 @@ function collectCaseKeys(value: unknown, target: Set<string>): void {
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     if (isCensusKeyLabel(key)) {
       const raw = decodeCensusRawKey(child);
-      if (raw) target.add(b64e(sha256(thumbprintPreimage(jwkFromPublicKey(raw)))));
+      if (raw) target.add(b64e(thumbprintDigestUnchecked(raw))); // the raw hash-only path: a census must name a weak key too
     }
     collectCaseKeys(child, target);
   }
