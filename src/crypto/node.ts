@@ -4,6 +4,7 @@
 import { createHash, createPublicKey, verify as verifySig, type KeyObject } from "node:crypto";
 import { base64urlEncode } from "../base64url.js";
 import { utf8Str } from "../json.js";
+import { checkedParts } from "./parts.js";
 import type { BackendId, BackendPublicKey } from "./types.js";
 
 export const BACKEND_ID: BackendId = "node";
@@ -13,13 +14,13 @@ const asBackendKey = (key: KeyObject): BackendPublicKey => key as unknown as Bac
 
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   const h = createHash("sha256");
-  for (const p of parts) h.update(Buffer.from(p));
+  for (const p of checkedParts(parts)) h.update(Buffer.from(p.buffer, p.byteOffset, p.byteLength));
   return new Uint8Array(h.digest());
 }
 
 export function sha256Concat(parts: readonly Uint8Array[]): Uint8Array {
   const h = createHash("sha256");
-  for (const p of parts) h.update(Buffer.from(p));
+  for (const p of checkedParts(parts)) h.update(Buffer.from(p.buffer, p.byteOffset, p.byteLength));
   return new Uint8Array(h.digest());
 }
 
@@ -37,8 +38,13 @@ export function ed25519Cofactorless(key: BackendPublicKey, message: Uint8Array, 
   return verifySig(undefined, Buffer.from(message), asKeyObject(key), Buffer.from(sig64));
 }
 
-// Imported through the key's EC JWK spelling; OpenSSL validates the point again (defense in depth).
+// Imported through the key's EC JWK spelling; OpenSSL validates the point again (defense in depth). The
+// width and the 0x04 prefix are checked first: the JWK spelling carries only x and y, so a hybrid
+// (0x06/0x07) or any other prefix would otherwise import as the same point.
 export function p256Key(rawSec1_65: Uint8Array): BackendPublicKey {
+  if (!(rawSec1_65 instanceof Uint8Array) || rawSec1_65.length !== 65 || rawSec1_65[0] !== 0x04) {
+    throw new TypeError("node backend: uncompressed SEC1 P-256 key required");
+  }
   const jwk = {
     kty: "EC" as const,
     crv: "P-256" as const,

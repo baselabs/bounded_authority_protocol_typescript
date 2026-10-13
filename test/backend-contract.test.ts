@@ -12,6 +12,8 @@ import * as node from "../src/crypto/node.js";
 import * as portable from "../src/crypto/portable.js";
 import type * as Contract from "../src/crypto/backend.js";
 import type { BackendPublicKey } from "../src/crypto/types.js";
+import { InvalidError } from "../src/error.js";
+import { sha256 as profileSha256, sha256Concat as profileSha256Concat } from "../src/ed25519.js";
 import {
   BASE, L, P, add, bigToLe, challenge, classifyEncoding, concat, encodePoint, forgeUnderSmallOrderKey, keyHolder,
   leToBig, multiply, publicKeyFromSeed, signHonest, torsionPoints,
@@ -66,6 +68,42 @@ for (const [name, b] of BACKENDS) {
     const reference = createHash("sha256");
     for (const c of chunks) reference.update(c);
     assert.equal(toHex(b.sha256Concat(chunks)), reference.digest("hex"));
+  });
+}
+
+// A part that is not a Uint8Array is refused with the package's closed error (InvalidError), the same
+// on both backends: no string, array, ArrayBuffer, DataView or other typed array is coerced or hashed.
+const NOT_BYTES: ReadonlyArray<readonly [string, unknown]> = [
+  ["string", "abc"], ["number array", [97, 98, 99]], ["ArrayBuffer", new ArrayBuffer(3)], ["DataView", new DataView(new ArrayBuffer(3))],
+  ["Uint16Array", new Uint16Array(3)], ["Int8Array", new Int8Array(3)], ["Uint8ClampedArray", new Uint8ClampedArray(3)],
+  ["Float64Array", new Float64Array(1)], ["null", null], ["undefined", undefined], ["number", 3], ["object", { length: 3 }],
+];
+type Sha = Pick<typeof Contract, "sha256" | "sha256Concat">;
+const SHA_SURFACES: ReadonlyArray<readonly [string, Sha]> = [
+  ...BACKENDS,
+  ["the package sha256 / sha256Concat (this lane's backend)", { sha256: profileSha256, sha256Concat: profileSha256Concat }],
+];
+
+for (const [name, b] of SHA_SURFACES) {
+  test(`${name}: sha256 and sha256Concat refuse any part that is not a Uint8Array with InvalidError`, () => {
+    for (const [label, bad] of NOT_BYTES) {
+      const part = bad as Uint8Array;
+      assert.throws(() => b.sha256(part), InvalidError, `sha256(${label})`);
+      assert.throws(() => b.sha256(enc("ok"), part), InvalidError, `sha256(ok, ${label})`);
+      assert.throws(() => b.sha256Concat([part]), InvalidError, `sha256Concat([${label}])`);
+      assert.throws(() => b.sha256Concat([enc("ok"), part]), InvalidError, `sha256Concat([ok, ${label}])`);
+    }
+    for (const [label, bad] of [["a string", "abc"], ["undefined", undefined], ["a Uint8Array", enc("abc")], ["an object", { length: 0 }]] as const) {
+      assert.throws(() => b.sha256Concat(bad as unknown as Uint8Array[]), InvalidError, `sha256Concat(${label})`);
+    }
+  });
+
+  test(`${name}: a Uint8Array subclass (Node's Buffer) and a subarray view hash as their bytes`, () => {
+    const abc = enc("xabcx").subarray(1, 4);
+    const want = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    assert.equal(toHex(b.sha256(abc)), want);
+    assert.equal(toHex(b.sha256(Buffer.from("abc"))), want);
+    assert.equal(toHex(b.sha256Concat([Buffer.from("a"), abc.subarray(1)])), want);
   });
 }
 
@@ -163,6 +201,18 @@ for (const [name, b] of BACKENDS) {
     const offCurve = concat(Uint8Array.of(4), be32(1n), be32(1n));
     assert.throws(() => b.p256Key(offCurve));
     assert.throws(() => b.p256Key(concat(Uint8Array.of(2), P256_PUBLIC.subarray(1, 33))));
+  });
+
+  test(`${name}: p256Key requires exactly 65 bytes with the 0x04 prefix (hybrid and other prefixes, wrong widths)`, () => {
+    const xy = P256_PUBLIC.subarray(1);
+    const yOdd = (P256_PUBLIC[64]! & 1) === 1;
+    for (const prefix of [yOdd ? 7 : 6, yOdd ? 6 : 7, 0, 1, 2, 3, 5, 0xff]) {
+      assert.throws(() => b.p256Key(concat(Uint8Array.of(prefix), xy)), `prefix 0x${prefix.toString(16)}`);
+    }
+    assert.throws(() => b.p256Key(P256_PUBLIC.subarray(0, 64)), "64 bytes");
+    assert.throws(() => b.p256Key(concat(P256_PUBLIC, Uint8Array.of(0))), "66 bytes");
+    assert.throws(() => b.p256Key(xy), "64 bytes without a prefix");
+    assert.ok(b.p256Key(P256_PUBLIC), "control: the uncompressed key imports");
   });
 }
 

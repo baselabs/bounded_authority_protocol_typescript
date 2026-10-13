@@ -271,7 +271,8 @@ export function ed25519Verify(
   }
 }
 
-// SHA-256 helper (FIPS 180-4), used by thumbprints + digests. The backend computes it.
+// SHA-256 helper (FIPS 180-4), used by thumbprints + digests. The backend computes it. Every part must
+// be a Uint8Array; anything else throws InvalidError on both backends (never coerced).
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   return backendSha256(...parts);
 }
@@ -279,6 +280,6 @@ export function sha256(...parts: Uint8Array[]): Uint8Array {
 // SHA-256 over an ARRAY of chunks (no spread). Used by archive-verify, which hashes a caller-supplied
 // chunk list that may hold up to archive_chunks (65796) entries — beyond V8's ~65534 call-argument
 // ceiling, so the chunk list MUST be fed as an array, not spread into sha256(...chunks).
-export function sha256Concat(parts: Uint8Array[]): Uint8Array {
+export function sha256Concat(parts: readonly Uint8Array[]): Uint8Array {
   return backendSha256Concat(parts);
 }

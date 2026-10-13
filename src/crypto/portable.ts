@@ -16,6 +16,7 @@
 import { Point } from "@noble/ed25519";
 import { p256 } from "@noble/curves/nist.js";
 import { sha256 as nobleSha256, sha512 } from "@noble/hashes/sha2.js";
+import { checkedParts } from "./parts.js";
 import type { BackendId, BackendPublicKey } from "./types.js";
 
 export const BACKEND_ID: BackendId = "portable";
@@ -32,13 +33,13 @@ function keyOf<K extends "ed25519" | "p256">(key: BackendPublicKey, kind: K): K 
 
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   const h = nobleSha256.create();
-  for (const p of parts) h.update(p);
+  for (const p of checkedParts(parts)) h.update(p);
   return h.digest();
 }
 
 export function sha256Concat(parts: readonly Uint8Array[]): Uint8Array {
   const h = nobleSha256.create();
-  for (const p of parts) h.update(p);
+  for (const p of checkedParts(parts)) h.update(p);
   return h.digest();
 }
 
@@ -64,9 +65,10 @@ export function ed25519Cofactorless(key: BackendPublicKey, message: Uint8Array, 
   if (sig64.length !== 64) return false;
   const rBytes = sig64.subarray(0, 32);
   const s = littleEndian(sig64.subarray(32));
-  // noble's multiply also range-asserts a scalar to 1..L-1 (and throws, a rejection), so this check is
-  // redundant with it; it stays so that rule S1 does not depend on that incidental assertion. The S + L
-  // twin is pinned in test/backend-contract.test.ts.
+  // noble's multiply also range-asserts a scalar to 1..L-1 (and throws, a rejection), so with the
+  // pinned noble this check is redundant and no test can make it red on its own: removing it leaves
+  // the S + L twin refused by noble's throw (test/backend-contract.test.ts pins the refusal, not this
+  // line). It stays so that rule S1 does not depend on that incidental assertion of a dependency.
   if (s >= L) return false;
   const challenge = new Uint8Array(rBytes.length + publicKey.length + message.length);
   challenge.set(rBytes, 0);

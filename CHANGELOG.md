@@ -38,6 +38,16 @@ additive except the internal types noted under deep imports. No verdict changes.
   1.3.14, and in Chromium: v1 `c90b903a…` (283), v2 `72176430…` (268), v3 `79aa0344…` (292),
   local-loopback-http `8b6f4ecf…` (44), role-attestation `e27f5ce5…` (40), content-assertion
   `9207c4cc…` (154), strict-ed25519 `cf0fe815…` (2410).
+- **API behavior change.** `sha256` (exported from the package root and the `v2` and `v3`
+  namespaces) now throws `InvalidError`, the package's closed error, for any part that is not a
+  `Uint8Array` (a subclass such as Node's `Buffer` still is one), identically on both backends. 0.6.0
+  coerced strings, number arrays, `ArrayBuffer`s and other typed arrays through `Buffer.from` and hashed
+  a `DataView` as empty input. The internal `sha256Concat` applies the same rule and also requires an
+  array.
+- The node backend's P-256 key import now requires exactly 65 bytes with the `0x04` prefix itself, as
+  the portable backend does; a hybrid (`0x06`/`0x07`) or other prefix was previously imported as the
+  same point. Every profile already refused such keys before reaching the backend, so no verdict
+  changes.
 - The Pages bench builds this repository's source on the portable backend. Its `node:crypto` adapter
   remains only for the published signer it imports for demo issuance, and delegates to the portable
   backend.
