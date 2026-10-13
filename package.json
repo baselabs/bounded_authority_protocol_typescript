@@ -6,6 +6,15 @@
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*": "./*"
+  },
+  "sideEffects": false,
   "imports": {
     "#crypto": {
       "bap-source": {
@@ -52,6 +61,7 @@
     "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --conditions=bap-source --import tsx/esm test/permissiveness.ts",
     "test:portable": "node --test --conditions=bap-source --conditions=bap-portable --import tsx/esm test/*.test.ts test/permissiveness.ts",
+    "test:tarball": "pnpm build && node --test --import tsx/esm test/tarball.ts",
     "conformance": "tsx --conditions=bap-source conformance/run.ts",
     "conformance:v2": "tsx --conditions=bap-source conformance/run_v2.ts",
     "conformance:v3": "tsx --conditions=bap-source conformance/run_v3.ts",
