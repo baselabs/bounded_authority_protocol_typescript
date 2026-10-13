@@ -49,6 +49,7 @@
     "check:currency": "node tools/check-currency.mjs",
     "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --conditions=bap-source --import tsx/esm test/permissiveness.ts",
+    "test:portable": "node --test --conditions=bap-source --conditions=bap-portable --import tsx/esm test/*.test.ts test/permissiveness.ts",
     "conformance": "tsx --conditions=bap-source conformance/run.ts",
     "conformance:v2": "tsx --conditions=bap-source conformance/run_v2.ts",
     "conformance:v3": "tsx --conditions=bap-source conformance/run_v3.ts",
@@ -56,14 +57,18 @@
     "conformance:content-assertion": "tsx --conditions=bap-source conformance/run_content_assertion.ts",
     "conformance:strict-ed25519": "tsx --conditions=bap-source conformance/run_strict_ed25519.ts",
     "conformance:local-loopback-http": "tsx --conditions=bap-source conformance/run_local_loopback_http.ts",
+    "conformance:portable": "node --conditions=bap-source --conditions=bap-portable --import tsx/esm conformance/run_all.ts --backend=portable",
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --conditions=bap-source --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
   },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/ed25519": "3.2.0",
+    "@noble/hashes": "2.4.0"
+  },
   "devDependencies": {
     "@bounded-authority-protocol/signer": "^0.3.1",
-    "@noble/ed25519": "^3.2.0",
-    "@noble/hashes": "^2.4.0",
     "@types/node": "^26.6.5",
     "buffer": "^6.0.3",
     "esbuild": "^0.28.2",
