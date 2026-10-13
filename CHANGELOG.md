@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.7.0] — Unreleased
+
+Browser-safe builds. The package now loads and runs in browsers, Deno, Bun and workers, with no
+`node:crypto`, no `Buffer` and no other Node API outside the Node backend, and with verdicts
+identical to Node. The public API keeps its shape (synchronous, `Result<T>`); everything below is
+additive except the internal types noted under deep imports. No verdict changes.
+
+### Added
+
+- A portable crypto backend (pure JavaScript over `@noble/ed25519`, `@noble/curves` and
+  `@noble/hashes`) beside the `node:crypto` one, selected by the package's `"imports"` conditions
+  `bap-source`, `bap-portable`, `deno`, `bun`, `node`, `types`, `default`: Node.js keeps
+  `node:crypto` by default; browsers, bundlers targeting them, workers, Deno and Bun get the portable
+  backend; Node.js gets it too under `--conditions=bap-portable`. The portable Ed25519 check is the
+  explicit cofactorless equation behind the unchanged rule S1 gate (noble's own verify is cofactored in
+  both of its modes and is not used); portable P-256 passes `lowS: false`, so the profile's low-S gate
+  stays the only one; neither backend uses WebCrypto.
+- `BACKEND_ID` (`"node"` or `"portable"`, type `BackendId`): which backend this build resolved.
+- `es256VerifyStrict(message, signature, publicKey)`: the synchronous, never-throwing ES256 sibling of
+  `verifyStrict` (uncompressed on-curve P-256 key, `0 < r < n`, `0 < s <= (n - 1) / 2`, then the
+  backend). An SDK helper mirroring `REQ3-SIGNING-*`; the Elixir reference has no public counterpart.
+- An `"exports"` map (`"."`, `"./package.json"`, and a `"./*"` passthrough) and `"sideEffects": false`.
+- Scripts: `test:portable` and `conformance:portable` (the unit, mutation and conformance gates under
+  the portable backend), `conformance:local-loopback-http`, `typecheck:browser`, `guard:browser`,
+  `size`, `test:tarball`, `test:runtimes` (Deno, Bun) and `test:browser` (Playwright).
+
+### Changed
+
+- Three runtime dependencies, pinned exactly and MIT-licensed, loaded only by the portable backend:
+  `@noble/ed25519` 3.2.0, `@noble/curves` 2.4.0 (which depends on `@noble/hashes`) and
+  `@noble/hashes` 2.4.0. The package previously had none. `tools/license-check.mjs` and `NOTICE` list
+  them.
+- Node.js verdicts are unchanged. Every certified corpus's verdict digest (SHA-256 over the canonical
+  JSON of `[case id, verdict]` per case, `conformance/verdict-digests.json`) was recorded from the
+  0.6.0 source and is reproduced by both backends on Node 22.23.1 and 24.19.0, on Deno 2.5.6 and Bun
+  1.3.14, and in Chromium: v1 `c90b903a…` (283), v2 `72176430…` (268), v3 `79aa0344…` (292),
+  local-loopback-http `8b6f4ecf…` (44), role-attestation `e27f5ce5…` (40), content-assertion
+  `9207c4cc…` (154), strict-ed25519 `cf0fe815…` (2410).
+- The Pages bench builds this repository's source on the portable backend. Its `node:crypto` adapter
+  remains only for the published signer it imports for demo issuance, and delegates to the portable
+  backend.
+
+### Deep imports
+
+Deep imports such as `@bounded-authority-protocol/verifier/dist/src/v3.js` keep resolving through the
+`"./*"` passthrough, but they remain unsupported API and may be closed in a future 0.x minor; import
+from the package root. In this release the internal `importPublicKey`, `ed25519Verify`,
+`importEcPublicKey` and `es256Verify` (reachable only by deep import) take and return an opaque
+`BackendPublicKey` instead of a `node:crypto` `KeyObject`, so no published declaration references
+`node:crypto` or any DOM type.
+
+### Maintenance
+
+- The conformance runners are split into runtime-neutral cores (`conformance/core/`) with thin
+  loaders, so the same verdict logic runs on Node, Deno, Bun and in browsers; every runner holds its
+  verdict digest to the pin.
+- Guards, each with a red-proof against the real configuration: a browser typecheck
+  (`tsconfig.browser.json`); lint rules banning every Node built-in module and Node global (also
+  through `globalThis`), dynamic `import()`, `eval`, implied eval and the `Function` constructor in
+  `src/`, and allowing `@noble` only in the portable backend through verification and hash entry
+  points; a scope-aware unresolved-globals scan of the browser bundle; a packed-tarball consumer
+  typecheck with `skipLibCheck: false` under each resolution, library and condition set; and a
+  bundle-size budget at the first measurement plus 10%.
+- CI (Linux only) adds the portable-backend gates, Deno and Bun lanes, Playwright Chromium, Firefox
+  and WebKit lanes under a strict CSP, the tarball check, and `npm audit signatures`; the release gate
+  runs the same lanes. Linux WebKit is evidence for this pure-JavaScript verifier only, not for Safari.
+- The 0.6.0 playground-shim test is retargeted to the portable backend with its coverage kept.
+- The bench's demo-issuance dev dependency moves to `@bounded-authority-protocol/signer` 0.4.0.
+
 ## [0.6.0] — 2026-10-13
 
 Strict Ed25519 verification: reject small-order and non-canonical keys and points. Security

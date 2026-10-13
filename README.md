@@ -10,8 +10,11 @@ proof-of-possession authority for services and AI agents, in pure TypeScript.
 The SDK verifies the protocol's three wire profiles (contract-majors 1, 2, and 3): compact-JWS
 grants, holder proofs, consumption chains, boundary anchors, key transitions, and archived
 exports. It is a TypeScript reimplementation of the reference profiles — derived from the
-published specifications and certified conformance corpora, with zero runtime dependencies
-(Ed25519 and ES256 via `node:crypto`; canonicalization hand-rolled from the RFCs). It also
+published specifications and certified conformance corpora. It runs on Node.js, in browsers, and
+on Deno, Bun and workers with identical verdicts: on Node.js, Ed25519, ES256 and SHA-256 run on
+`node:crypto`; everywhere else a portable pure-JavaScript backend runs them over three audited,
+exactly pinned runtime dependencies (`@noble/ed25519`, `@noble/curves`, `@noble/hashes`).
+Canonicalization is hand-rolled from the RFCs. It also
 carries the protocol's byte-distinct sibling profiles for role attestations
 (`bap-role-attestation/1`, under the `roleAttestation` namespace) and content assertions
 (`bap-content-assertion/1`, under the `contentAssertion` namespace), parsed by no
@@ -28,7 +31,10 @@ redacted facts, and every failure is a single closed rejection.
 npm install @bounded-authority-protocol/verifier
 ```
 
-Requires Node.js `>= 22`. Zero runtime dependencies.
+Runs on Node.js `>= 22`, current browsers, Deno and Bun (see
+[Browsers, Deno, Bun and workers](#browsers-deno-bun-and-workers)). Three runtime dependencies,
+pinned exactly and MIT-licensed: `@noble/ed25519` 3.2.0, `@noble/curves` 2.4.0 and
+`@noble/hashes` 2.4.0, loaded only by the portable backend.
 
 ## Quickstart — verify a grant
 
@@ -90,6 +96,54 @@ torsionFree(publicKey32);         // acceptable, and [L]A = O (under 1 ms; never
 Verification itself has no subgroup check. A host MUST call `torsionFree` at key enrollment, at trust
 install, and before any deny-list or revocation comparison, so that one secret has one key encoding.
 
+The ES256 sibling is `es256VerifyStrict(message, signature64, publicKey65)`: synchronous and total
+(it never throws), it returns `true` only for an uncompressed, on-curve P-256 key, a raw `r||s`
+signature with `0 < r < n` and `0 < s <= (n - 1) / 2` (low-S), and a valid ECDSA P-256 / SHA-256
+signature over the message. It is an SDK helper that mirrors `REQ3-SIGNING-*`; the Elixir reference
+has no public counterpart yet.
+
+## Browsers, Deno, Bun and workers
+
+The package is ESM-only, has no side effects on import (`"sideEffects": false`), and uses no Node
+API outside one module. Its cryptography sits behind an internal backend that the package's
+`"imports"` conditions select, so the API stays synchronous everywhere and no WebCrypto is used:
+
+| Runtime | Condition that matches | Backend (`BACKEND_ID`) |
+|---|---|---|
+| Node.js (default) | `node` | `"node"`: `node:crypto` |
+| Node.js with `--conditions=bap-portable` | `bap-portable` | `"portable"`: `@noble` |
+| Deno | `deno` | `"portable"` |
+| Bun | `bun` | `"portable"` |
+| Browsers and bundlers targeting them, workers | `default` | `"portable"` |
+
+```ts
+import { BACKEND_ID } from "@bounded-authority-protocol/verifier";
+// "node" or "portable": which implementation this build resolved. Verdicts are the same in both.
+```
+
+Both backends sit behind the same profile gates (rule S1 for Ed25519; the point, range and low-S
+checks for ES256), the portable Ed25519 check is an explicit cofactorless one (`encode([S]B - [k]A)
+== R`, never a cofactored verify), and the portable P-256 verify leaves the low-S rule to the profile
+gate. Every certified corpus produces byte-identical verdict digests on Node 22 and 24 with either
+backend, on Deno and Bun, and in Chromium, Firefox and WebKit (Linux CI), checked case by case
+against the Node verdicts.
+
+**In-page verification is display-only, never a trust decision.** A result computed in a web page is
+for showing to a person. It must not authorize anything, feed a trust decision, or be sent anywhere as
+evidence of authority: the page's own scripts, browser extensions and injected code share its origin
+and can change both the inputs and the answer. The trusted decision stays with the host runtime that
+holds the trusted keys. As on Node, trusted keys, time and expected context are explicit inputs; a
+page must never take them from the artifact it is inspecting.
+
+The package works under a strict Content Security Policy (`default-src 'none'; script-src 'self';
+connect-src 'self'`, no `'unsafe-eval'`): it uses no `eval`, no `Function` constructor and no
+dynamic `import()`, and the browser lanes run under exactly that policy. Linux WebKit in CI is
+evidence for this pure-JavaScript verifier only, not for Safari.
+
+Bundle size (esbuild, minified, browser target, tree-shaken from the package entry): every export
+263 KB (70 KB gzip); `{ v3 }` 121 KB (36 KB gzip); `{ checkEnvelope }` (v1) 52 KB (19 KB gzip).
+CI fails a release that grows any of these by more than 10%.
+
 ## Wire contract-majors
 
 The protocol versions its wire formats as complete, parallel **contract-majors**. All three live
@@ -107,7 +161,7 @@ The `v2` namespace mirrors the full v1 surface — `v2.verifyGrant`, `v2.checkEn
 payloads. The `v3` namespace mirrors it again under the ES256 suite: `alg: "ES256"`, the
 65-byte uncompressed-SEC1 raw public-key form, the `{crv, kty, x, y}` proof JWK with its
 RFC 7638 thumbprint, and the RFC 7518 §3.4 raw `r||s` signature form with low-S enforced at
-verification (Node's crypto backend accepts the malleable high-S counterpart; the profile
+verification (both crypto backends accept the malleable high-S counterpart; the profile
 gate is load-bearing). Every v1 and v2 artifact rejects under `v3` with the single closed
 error, and vice versa.
 
@@ -309,9 +363,13 @@ suite additionally carries a per-language mutation gate that proves each closure
 **red-capable**: mechanically remove a check, watch its test fail.
 
 Linux CI verification includes strict typecheck, build, lint (including a library
-purity rule — no I/O, clock, or randomness in `src/`), license check, unit tests, the
-mutation gate, and all six conformance corpora against the vendored snapshots, on Node 22.23.1
-and Node 24.19.0.
+purity rule — no I/O, clock, or randomness in `src/` — and the browser-safety rules: no Node
+module or global, no dynamic code), a browser typecheck, a scan of the browser bundle for
+unresolved globals, a bundle-size budget, license check, unit tests, the mutation gate, and all
+seven conformance corpora against the vendored snapshots, on Node 22.23.1 and Node 24.19.0 with
+the node backend and the portable backend; the same corpora on Deno and Bun and in Playwright
+Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of the packed tarball; and
+`npm audit signatures`.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every
@@ -381,6 +439,15 @@ pnpm conformance:v3          # 292/292 + key census (vendored v3 snapshot)
 pnpm conformance:role-attestation # 40/40 + cross-profile legs (vendored sibling-profile snapshot)
 pnpm conformance:content-assertion # 131 + 9 + 14 + producer/assembly byte agreement (vendored sibling-profile snapshot)
 pnpm conformance:strict-ed25519 # 2410/2410 strict-Ed25519 verdicts (vendored additive snapshot)
+pnpm conformance:local-loopback-http # 44/44 local-loopback proof profile verdicts
+pnpm test:portable           # unit + mutation gate under --conditions=bap-portable
+pnpm conformance:portable    # every corpus under the portable backend (same verdict digests)
+pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types
+pnpm guard:browser           # browser bundle: portable backend only, no unresolved globals or eval
+pnpm size                    # browser bundle-size budget
+pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/Bun runs
+pnpm test:runtimes           # Deno and Bun conformance lanes
+pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 
