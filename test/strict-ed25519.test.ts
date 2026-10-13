@@ -13,6 +13,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import nodeCrypto from "node:crypto";
+import type { BackendPublicKey } from "../src/crypto/types.js";
 
 import { InvalidError } from "../src/error.js";
 import {
@@ -316,7 +317,9 @@ test("ed25519Verify refuses a key object that did not come through importPublicK
   // The backend would accept this honest signature; the package refuses to verify against a key whose
   // raw bytes it never gated.
   assert.equal(nodeCrypto.verify(null, Buffer.from(message), foreign, Buffer.from(signature)), true);
-  assert.equal(ed25519Verify(message, signature, foreign), false);
+  // The BackendPublicKey brand already refuses a foreign key at the type level; the cast reaches the
+  // runtime check, which must refuse it too.
+  assert.equal(ed25519Verify(message, signature, foreign as unknown as BackendPublicKey), false);
   const imported = importPublicKey(publicKey, "fp-foreign");
   assert.equal(ed25519Verify(message, signature, imported), true);
 });

@@ -6,6 +6,15 @@
 // Ok | Err, mirroring {:ok,value}|{:error,:invalid}. Facts are value-bearing, redacted, and
 // non-authorizing.
 
+import { BACKEND_ID as RESOLVED_BACKEND } from "#crypto";
+import type { BackendId } from "./crypto/types.js";
+
+// The crypto backend this build resolved: "node" (node:crypto, Node.js default conditions) or
+// "portable" (@noble: browsers, Deno, Bun, workers, and Node under --conditions=bap-portable). It
+// selects the implementation only; every protocol gate and every verdict is the same in both.
+export const BACKEND_ID: BackendId = RESOLVED_BACKEND;
+export type { BackendId } from "./crypto/types.js";
+
 export {
   // The 17 façade functions.
   untrustedKeyLocator,

@@ -1,9 +1,9 @@
-import { createPublicKey, verify as verifySig } from "node:crypto";
+import { p256Key, p256Verify } from "#crypto";
+import type { BackendPublicKey } from "./crypto/types.js";
 import { assert, fail } from "./error.js";
-import { base64urlEncode } from "./base64url.js";
-import { utf8Str } from "./json.js";
 
-// ES256 verification via node:crypto — the ECDSA-over-P-256-with-SHA-256 suite of contract-major 3
+// ES256 verification through the crypto backend ("#crypto": node:crypto on Node, @noble elsewhere;
+// src/crypto/backend.ts) — the ECDSA-over-P-256-with-SHA-256 suite of contract-major 3
 // (spec/bap-v3.md §3, RFC 7518 §3.4). The suite's raw public-key form is the 65-byte uncompressed
 // SEC1 point 0x04||x||y (REQ3-KEY-uncompressed-sec1); compressed points are invalid. The decoded
 // coordinates MUST each be less than the field prime p and MUST form a point on the curve
@@ -12,8 +12,9 @@ import { utf8Str } from "./json.js";
 // form — exactly 64 bytes, r||s, two fixed-width 32-byte unsigned big-endian integers
 // (REQ3-SIGNING-raw-rs) — and the verifier rejects r=0/s=0, r≥n, s≥n, and the HIGH-S half
 // s > (n−1)/2 (REQ3-SIGNING-range, REQ3-SIGNING-low-s) as invalid encodings BEFORE any backend
-// call. Node's OpenSSL backend ACCEPTS the malleable high-S counterpart (for a valid (r,s),
-// (r, n−s) also satisfies the verification equation), so the low-S profile gate is load-bearing:
+// call. Both backends ACCEPT the malleable high-S counterpart (for a valid (r,s), (r, n−s) also
+// satisfies the verification equation): OpenSSL natively, the portable backend through its
+// lowS: false option. So the low-S profile gate is load-bearing:
 // remove it and a third party's re-spelling of an observed signature verifies. A backend rejection
 // OR exception returns exactly InvalidError (REQ3-SIGNING-backend-reject).
 
@@ -60,20 +61,14 @@ export function validateEcPublicKey(rawKey: Uint8Array): void {
   if (!pointOnCurve(x, y)) fail("es256: point not on the curve");
 }
 
-// Import a validated 65-byte SEC1 public key as a node:crypto KeyObject via its EC JWK spelling,
-// recording the fingerprint for the census. Returns the KeyObject. Throws InvalidError on a
-// malformed key. Callers run validateEcPublicKey first (the profile's arithmetic gates precede the
-// backend); this import validates again — defense in depth, never load-bearing.
-export function importEcPublicKey(rawKey: Uint8Array, fingerprint: string): ReturnType<typeof createPublicKey> {
+// Import a validated 65-byte SEC1 public key into the backend, recording the fingerprint for the
+// census only after the import succeeds. Returns the backend key. Throws InvalidError on a malformed
+// key. Callers run validateEcPublicKey first (the profile's arithmetic gates precede the backend);
+// the backend import validates again — defense in depth, never load-bearing.
+export function importEcPublicKey(rawKey: Uint8Array, fingerprint: string): BackendPublicKey {
   assert(rawKey.length === 65, "es256: public key must be 65 bytes");
-  const jwk = {
-    kty: "EC" as const,
-    crv: "P-256" as const,
-    x: utf8Str(base64urlEncode(rawKey.subarray(1, 33))),
-    y: utf8Str(base64urlEncode(rawKey.subarray(33, 65))),
-  };
   try {
-    const key = createPublicKey({ key: jwk, format: "jwk" });
+    const key = p256Key(rawKey);
     importedFingerprints.add(fingerprint);
     return key;
   } catch {
@@ -84,12 +79,12 @@ export function importEcPublicKey(rawKey: Uint8Array, fingerprint: string): Retu
 // Verify an ES256 signature over the exact signing input. The 64-byte r||s integer-range and
 // low-S gates run BEFORE the backend (REQ3-BOUNDS-ordering: signature width and integer-range
 // checks, then the backend verification over the exact RFC 7515 signing input). DER is never a
-// wire spelling — the backend consumes the same raw P1363 form through dsaEncoding: "ieee-p1363".
+// wire spelling — the backend consumes the same raw r || s form.
 // Backend exceptions map to InvalidError (REQ3-SIGNING-backend-reject).
 export function es256Verify(
   message: Uint8Array,
   signature: Uint8Array,
-  publicKey: ReturnType<typeof createPublicKey>,
+  publicKey: BackendPublicKey,
 ): boolean {
   assert(signature.length === 64, "es256: signature must be 64 bytes");
   const r = bytesToBigInt(signature.subarray(0, 32));
@@ -98,7 +93,7 @@ export function es256Verify(
   if (s === 0n || s >= N) fail("es256: s out of range");
   if (s > HALF_N) fail("es256: high-s form (low-s required)");
   try {
-    return verifySig("sha256", Buffer.from(message), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(signature));
+    return p256Verify(publicKey, message, signature);
   } catch {
     fail("es256: backend rejected");
   }

@@ -6,6 +6,32 @@
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "imports": {
+    "#crypto": {
+      "bap-source": {
+        "bap-portable": "./src/crypto/portable.ts",
+        "default": "./src/crypto/node.ts"
+      },
+      "bap-portable": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/portable.js"
+      },
+      "deno": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/portable.js"
+      },
+      "bun": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/portable.js"
+      },
+      "node": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/node.js"
+      },
+      "types": "./dist/src/crypto/backend.d.ts",
+      "default": "./dist/src/crypto/portable.js"
+    }
+  },
   "files": [
     "dist",
     "LICENSE",
@@ -21,18 +47,18 @@
     "lint": "eslint .",
     "license-check": "node tools/license-check.mjs",
     "check:currency": "node tools/check-currency.mjs",
-    "test": "node --test --import tsx/esm test/*.test.ts",
-    "test:permissiveness": "node --test --import tsx/esm test/permissiveness.ts",
-    "conformance": "tsx conformance/run.ts",
-    "conformance:v2": "tsx conformance/run_v2.ts",
-    "conformance:v3": "tsx conformance/run_v3.ts",
-    "conformance:role-attestation": "tsx conformance/run_role_attestation.ts",
-    "conformance:content-assertion": "tsx conformance/run_content_assertion.ts",
-    "conformance:strict-ed25519": "tsx conformance/run_strict_ed25519.ts",
-    "conformance:local-loopback-http": "tsx conformance/run_local_loopback_http.ts",
-    "census": "tsx conformance/census.ts",
+    "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
+    "test:permissiveness": "node --test --conditions=bap-source --import tsx/esm test/permissiveness.ts",
+    "conformance": "tsx --conditions=bap-source conformance/run.ts",
+    "conformance:v2": "tsx --conditions=bap-source conformance/run_v2.ts",
+    "conformance:v3": "tsx --conditions=bap-source conformance/run_v3.ts",
+    "conformance:role-attestation": "tsx --conditions=bap-source conformance/run_role_attestation.ts",
+    "conformance:content-assertion": "tsx --conditions=bap-source conformance/run_content_assertion.ts",
+    "conformance:strict-ed25519": "tsx --conditions=bap-source conformance/run_strict_ed25519.ts",
+    "conformance:local-loopback-http": "tsx --conditions=bap-source conformance/run_local_loopback_http.ts",
+    "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
-    "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
+    "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --conditions=bap-source --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
   },
   "devDependencies": {
     "@bounded-authority-protocol/signer": "^0.3.1",

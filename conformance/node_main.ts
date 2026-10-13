@@ -2,6 +2,7 @@
 // runtime-neutral core, print its summary, and hold its verdict digest to the pin in
 // conformance/verdict-digests.json. Any disagreement, abort, or digest mismatch exits nonzero.
 import { readFileSync } from "node:fs";
+import { BACKEND_ID } from "../src/index.js";
 import { fsSource } from "./node_source.js";
 import { verdictDigest } from "./digest.js";
 import { CoreAbort, type Core } from "./core/types.js";
@@ -34,7 +35,7 @@ export function runCore(core: Core): void {
   for (const line of report.summary) console.log(line);
   const digest = verdictDigest(report.verdicts);
   const pin = pinnedDigests().digests[core.corpus];
-  console.log(`${core.corpus}: verdict digest ${digest} over ${report.verdicts.length} cases`);
+  console.log(`${core.corpus}: verdict digest ${digest} over ${report.verdicts.length} cases (backend ${BACKEND_ID})`);
   if (!pin || pin.sha256 !== digest || pin.cases !== report.verdicts.length) {
     console.error(`${core.corpus}: verdict digest differs from conformance/verdict-digests.json (${pin ? `${pin.sha256} over ${pin.cases}` : "no pin"})`);
     process.exit(1);

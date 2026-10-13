@@ -1,7 +1,9 @@
-import { createPublicKey, verify as verifySig } from "node:crypto";
+import { ed25519Cofactorless, ed25519Key, sha256 as backendSha256, sha256Concat as backendSha256Concat } from "#crypto";
+import type { BackendPublicKey } from "./crypto/types.js";
 import { assert, fail } from "./error.js";
 
-// Ed25519 verification via node:crypto (the crypto import boundary the two-boundary census tracks).
+// Ed25519 verification through the crypto backend ("#crypto": node:crypto on Node, @noble elsewhere;
+// src/crypto/backend.ts), the crypto import boundary the two-boundary census tracks.
 // Per spec/bap-v1.md § Signing and digest inputs + RFC 8032. The verifier validates the fixed 32-byte
 // public-key and 64-byte signature encodings, applies rule S1 (below), then delegates the cofactorless
 // equation to the backend. A backend rejection or exception returns exactly Invalid
@@ -211,26 +213,13 @@ export function verifyStrict(message: Uint8Array, signature: Uint8Array, publicK
   if (!(message instanceof Uint8Array) || !isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
   if (!strictGate(signature, publicKey)) return false;
   try {
-    return backendVerify(message, signature, createPublicKey(spkiDer(publicKey)));
+    return ed25519Cofactorless(ed25519Key(publicKey), message, signature);
   } catch {
     return false;
   }
 }
 
 // ---- the backend boundary ----
-
-// Build the SPKI DER for an Ed25519 public key: SEQUENCE { AlgId, BIT STRING <32 raw bytes> }. This
-// matches the runner's SPKI_ED25519_PREFIX (corpus_independent.mjs:27).
-const SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-function spkiDer(rawKey: Uint8Array) {
-  return { key: Buffer.concat([SPKI_PREFIX, Buffer.from(rawKey)]), format: "der", type: "spki" } as const;
-}
-
-function backendVerify(
-  message: Uint8Array, signature: Uint8Array, key: ReturnType<typeof createPublicKey>,
-): boolean {
-  return verifySig(undefined, Buffer.from(message), key, Buffer.from(signature));
-}
 
 // Census tracking: every key imported via importPublicKey is recorded here, so the conformance runner
 // can assert discovery == verify-import == index public_key_fingerprints (both directions).
@@ -244,18 +233,18 @@ export function _resetCensus(): void {
 
 // The raw 32-byte key behind each imported key object. ed25519Verify reads the key's bytes here to
 // apply the strict gate, so a key object that did not come through importPublicKey is never verified
-// against (fail closed). A WeakMap keeps this independent of the backend's key-object shape (the
-// browser shim returns its own object).
+// against (fail closed). A WeakMap keeps this independent of the backend's key-object shape (each
+// backend returns its own object).
 const RAW_KEYS = new WeakMap<object, Uint8Array>();
 
-// Import a raw 32-byte Ed25519 public key as a node:crypto KeyObject, recording the fingerprint for the
-// census. Returns the KeyObject. Throws InvalidError on a malformed key or a key that fails
-// acceptablePublicKey (non-canonical, small-order, or off the curve).
-export function importPublicKey(rawKey: Uint8Array, fingerprint: string): ReturnType<typeof createPublicKey> {
+// Import a raw 32-byte Ed25519 public key into the backend, recording the fingerprint for the census
+// only after the import succeeds. Returns the backend key. Throws InvalidError on a malformed key or a
+// key that fails acceptablePublicKey (non-canonical, small-order, or off the curve).
+export function importPublicKey(rawKey: Uint8Array, fingerprint: string): BackendPublicKey {
   assert(rawKey.length === 32, "ed25519: public key must be 32 bytes");
   assert(acceptablePublicKey(rawKey), "ed25519: public key not acceptable");
   try {
-    const key = createPublicKey(spkiDer(rawKey));
+    const key = ed25519Key(rawKey);
     RAW_KEYS.set(key, new Uint8Array(rawKey));
     importedFingerprints.add(fingerprint);
     return key;
@@ -270,31 +259,26 @@ export function importPublicKey(rawKey: Uint8Array, fingerprint: string): Return
 export function ed25519Verify(
   message: Uint8Array,
   signature: Uint8Array,
-  publicKey: ReturnType<typeof createPublicKey>,
+  publicKey: BackendPublicKey,
 ): boolean {
   assert(signature.length === 64, "ed25519: signature must be 64 bytes");
   const raw = RAW_KEYS.get(publicKey);
   if (raw === undefined || !strictGate(signature, raw)) return false;
   try {
-    return backendVerify(message, signature, publicKey);
+    return ed25519Cofactorless(publicKey, message, signature);
   } catch {
     fail("ed25519: backend rejected");
   }
 }
 
-// SHA-256 helper (FIPS 180-4), used by thumbprints + digests.
-import { createHash } from "node:crypto";
+// SHA-256 helper (FIPS 180-4), used by thumbprints + digests. The backend computes it.
 export function sha256(...parts: Uint8Array[]): Uint8Array {
-  const h = createHash("sha256");
-  for (const p of parts) h.update(Buffer.from(p));
-  return new Uint8Array(h.digest());
+  return backendSha256(...parts);
 }
 
 // SHA-256 over an ARRAY of chunks (no spread). Used by archive-verify, which hashes a caller-supplied
 // chunk list that may hold up to archive_chunks (65796) entries — beyond V8's ~65534 call-argument
 // ceiling, so the chunk list MUST be fed as an array, not spread into sha256(...chunks).
 export function sha256Concat(parts: Uint8Array[]): Uint8Array {
-  const h = createHash("sha256");
-  for (const p of parts) h.update(Buffer.from(p));
-  return new Uint8Array(h.digest());
+  return backendSha256Concat(parts);
 }

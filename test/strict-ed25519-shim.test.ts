@@ -44,6 +44,8 @@ async function loadShimBundle(): Promise<Bundle> {
     format: "esm",
     target: "es2022",
     platform: "browser",
+    // The node backend source (src/crypto/node.ts) with node:crypto aliased onto the shim, as the site build does.
+    conditions: ["bap-source"],
     alias: { "node:crypto": `${REPO}web/shim/node-crypto.ts` },
     inject: [`${REPO}web/shim/buffer-global.ts`],
     logLevel: "silent",
