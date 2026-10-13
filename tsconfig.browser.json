@@ -1,0 +1,25 @@
+{
+  // The browser typecheck (pnpm typecheck:browser): src/ as a browser bundler sees it. No Node or other
+  // ambient types, the DOM library, bundler resolution with the bap-portable condition, so "#crypto"
+  // resolves to the backend contract and src/crypto/portable.ts is checked as browser code. The node
+  // backend is the one file excluded. test/guards.test.ts extends this exact file with one fixture at a
+  // time (Buffer, process, node:crypto) and requires a diagnostic for each.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "customConditions": ["bap-portable"],
+    "rootDir": ".",
+    "outDir": "dist",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "isolatedModules": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/crypto/node.ts"]
+}

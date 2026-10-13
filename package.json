@@ -44,7 +44,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
+    "typecheck:browser": "tsc -p tsconfig.browser.json",
     "lint": "eslint .",
+    "guard:browser": "node tools/browser-guard.mjs",
     "license-check": "node tools/license-check.mjs",
     "check:currency": "node tools/check-currency.mjs",
     "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
@@ -73,6 +75,7 @@
     "buffer": "^6.0.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "semver": "^7.8.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
