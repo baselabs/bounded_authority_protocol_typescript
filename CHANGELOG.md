@@ -1,8 +1,9 @@
 # Changelog
 
-## [0.6.0] — Unreleased
+## [0.6.0] — 2026-10-13
 
-Strict Ed25519 verification: reject small-order and non-canonical keys and points. Before 1.0 the
+Strict Ed25519 verification: reject small-order and non-canonical keys and points. Security
+advisory: [GHSA-prrq-qm8j-7j67](https://github.com/baselabs/bounded_authority_protocol_typescript/security/advisories/GHSA-prrq-qm8j-7j67). Before 1.0 the
 minor position is the breaking boundary, so this release also carries the API and behavior changes
 below.
 
