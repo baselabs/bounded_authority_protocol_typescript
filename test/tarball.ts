@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { build } from "esbuild";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as Record<string, unknown>;
@@ -88,10 +89,11 @@ test("the manifest declares the exports map, the imports conditions and no side 
   assert.deepEqual(MANIFEST.exports, {
     ".": { types: "./dist/src/index.d.ts", default: "./dist/src/index.js" },
     "./package.json": "./package.json",
+    "./dist/src/crypto/*": null,
     "./*": "./*",
   });
   const crypto = (MANIFEST.imports as Record<string, Record<string, unknown>>)["#crypto"]!;
-  assert.deepEqual(Object.keys(crypto), ["bap-source", "bap-portable", "deno", "bun", "node", "types", "default"]);
+  assert.deepEqual(Object.keys(crypto), ["bap-source", "bap-portable", "deno", "bun", "workerd", "worker", "node", "types", "default"]);
 });
 
 test("the tarball ships the built backends and no source", () => {
@@ -104,7 +106,7 @@ test("the tarball ships the built backends and no source", () => {
 
 for (const moduleResolution of ["NodeNext", "Bundler"] as const) {
   for (const lib of [["ES2022"], ["ES2022", "DOM"]]) {
-    for (const conditions of [[], ["bap-portable"], ["deno"], ["bun"]]) {
+    for (const conditions of [[], ["bap-portable"], ["deno"], ["bun"], ["workerd"], ["worker"]]) {
       test(`consumer typecheck: ${moduleResolution}, lib ${lib.join("+")}, conditions [${conditions.join(",")}], skipLibCheck false, types []`, () => {
         assert.deepEqual(typecheck(moduleResolution, lib, conditions), []);
       });
@@ -115,6 +117,8 @@ for (const moduleResolution of ["NodeNext", "Bundler"] as const) {
 for (const [label, args, want] of [
   ["node (default conditions)", ["node", "main.mjs"], "node"],
   ["node --conditions=bap-portable", ["node", "--conditions=bap-portable", "main.mjs"], "portable"],
+  ["node --conditions=workerd", ["node", "--conditions=workerd", "main.mjs"], "portable"],
+  ["node --conditions=worker", ["node", "--conditions=worker", "main.mjs"], "portable"],
   ["deno", ["deno", "run", "--allow-read", "--allow-env", "main.mjs"], "portable"],
   ["bun", ["bun", "main.mjs"], "portable"],
 ] as const) {
@@ -122,6 +126,37 @@ for (const [label, args, want] of [
     const [cmd, ...rest] = args;
     const out = JSON.parse(run(cmd, [...rest], consumer).trim()) as Record<string, unknown>;
     assert.deepEqual(out, { backend: want, rfc8032: true, es256Garbage: false, deep: "function" });
+  });
+}
+
+// The backends are reachable only through "#crypto": a deep import cannot pick the ungated one.
+test("deep imports: the backends are not exported; a fully specified .js path resolves, an extensionless one does not", () => {
+  const probe = (specifier: string) => {
+    writeFileSync(join(consumer, "probe.mjs"), `import(${JSON.stringify(specifier)}).then((m) => console.log(typeof m.verifyGrant), (e) => console.log(e.code));`);
+    return run("node", ["probe.mjs"], consumer).trim();
+  };
+  for (const backend of ["node", "portable", "backend", "types", "parts"]) {
+    assert.equal(probe(`${NAME}/dist/src/crypto/${backend}.js`), "ERR_PACKAGE_PATH_NOT_EXPORTED", backend);
+  }
+  assert.equal(probe(`${NAME}/dist/src/v3.js`), "function");
+  assert.equal(probe(`${NAME}/dist/src/v3`), "ERR_MODULE_NOT_FOUND");
+});
+
+// Bundlers: which backend a bundle of the installed package carries, read from esbuild's metafile.
+for (const [label, platform, conditions, want] of [
+  ["esbuild platform node", "node", [], "node"],
+  ["esbuild platform node + workerd", "node", ["workerd"], "portable"],
+  ["esbuild platform node + worker", "node", ["worker"], "portable"],
+  ["esbuild platform browser", "browser", [], "portable"],
+  ["esbuild platform neutral", "neutral", [], "portable"],
+] as const) {
+  test(`bundler resolution: ${label} carries the ${want} backend`, async () => {
+    const result = await build({
+      stdin: { contents: `export { BACKEND_ID } from "${NAME}";`, resolveDir: consumer, loader: "js" },
+      bundle: true, write: false, format: "esm", platform, conditions: [...conditions], metafile: true, logLevel: "silent",
+    });
+    const backends = Object.keys(result.metafile.inputs).filter((p) => /dist\/src\/crypto\/(node|portable)\.js$/.test(p)).map((p) => /(node|portable)\.js$/.exec(p)![1]);
+    assert.deepEqual(backends, [want]);
   });
 }
 

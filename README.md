@@ -114,7 +114,25 @@ API outside one module. Its cryptography sits behind an internal backend that th
 | Node.js with `--conditions=bap-portable` | `bap-portable` | `"portable"`: `@noble` |
 | Deno | `deno` | `"portable"` |
 | Bun | `bun` | `"portable"` |
-| Browsers and bundlers targeting them, workers | `default` | `"portable"` |
+| Cloudflare Workers and other builds with the `workerd` or `worker` condition | `workerd`, `worker` | `"portable"` |
+| Browsers and bundlers targeting them | `default` | `"portable"` |
+
+The conditions are matched in the order `bap-portable`, `deno`, `bun`, `workerd`, `worker`, `node`,
+so a build that sets any of the first five gets the portable backend even when it also sets `node`.
+A build that sets `node` and none of them gets the node backend. Common cases:
+
+- webpack's Electron targets (`electron-main`, `electron-preload`, `electron-renderer`), which add
+  the `node` condition;
+- esbuild with `--platform=node` (with a `workerd` or `worker` condition added, the portable backend);
+- Rollup with `@rollup/plugin-node-resolve` and `exportConditions: ["node"]`;
+- Vite SSR builds, which resolve the `node` condition.
+
+To force the portable backend in any of these, add the `bap-portable` condition. `BACKEND_ID` names
+the implementation, not the platform library under it: `"node"` means `node:crypto` of the running
+runtime, whether that is linked against OpenSSL (Node.js) or BoringSSL (Electron), and it cannot tell
+the two apart. Verdicts do not depend on it, because every protocol gate runs before the backend.
+The `bap-source` condition is for this repository's own tests: its targets are in `src/`, which the
+package does not ship, so a consumer must not set it.
 
 ```ts
 import { BACKEND_ID } from "@bounded-authority-protocol/verifier";
@@ -125,8 +143,9 @@ Both backends sit behind the same profile gates (rule S1 for Ed25519; the point,
 checks for ES256), the portable Ed25519 check is an explicit cofactorless one (`encode([S]B - [k]A)
 == R`, never a cofactored verify), and the portable P-256 verify leaves the low-S rule to the profile
 gate. Every certified corpus produces byte-identical verdict digests on Node 22 and 24 with either
-backend, on Deno and Bun, and in Chromium, Firefox and WebKit (Linux CI), checked case by case
-against the Node verdicts.
+backend, on Deno and Bun, and in Chromium, checked case by case against the Node verdicts. CI runs the
+same browser lane in Chromium, Firefox and WebKit on Linux; for this release only Chromium has been
+observed (locally, Chromium 153), and no Firefox or WebKit result is claimed here.
 
 **In-page verification is display-only, never a trust decision.** A result computed in a web page is
 for showing to a person. It must not authorize anything, feed a trust decision, or be sent anywhere as
@@ -367,9 +386,9 @@ purity rule — no I/O, clock, or randomness in `src/` — and the browser-safet
 module or global, no dynamic code), a browser typecheck, a scan of the browser bundle for
 unresolved globals, a bundle-size budget, license check, unit tests, the mutation gate, and all
 seven conformance corpora against the vendored snapshots, on Node 22.23.1 and Node 24.19.0 with
-the node backend and the portable backend; the same corpora on Deno and Bun and in Playwright
-Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of the packed tarball; and
-`npm audit signatures`.
+the node backend and the portable backend; the same corpora on Deno and Bun; a browser lane that CI
+runs in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of the
+packed tarball; and `npm audit signatures`.
 
 Releases are published only from this repository's release workflow, via npm trusted
 publishing (GitHub Actions OIDC — no long-lived tokens) with npm provenance on every

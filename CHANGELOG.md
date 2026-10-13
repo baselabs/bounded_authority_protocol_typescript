@@ -11,9 +11,13 @@ additive except the internal types noted under deep imports. No verdict changes.
 
 - A portable crypto backend (pure JavaScript over `@noble/ed25519`, `@noble/curves` and
   `@noble/hashes`) beside the `node:crypto` one, selected by the package's `"imports"` conditions
-  `bap-source`, `bap-portable`, `deno`, `bun`, `node`, `types`, `default`: Node.js keeps
-  `node:crypto` by default; browsers, bundlers targeting them, workers, Deno and Bun get the portable
-  backend; Node.js gets it too under `--conditions=bap-portable`. The portable Ed25519 check is the
+  `bap-source`, `bap-portable`, `deno`, `bun`, `workerd`, `worker`, `node`, `types`, `default`:
+  Node.js keeps `node:crypto` by default; browsers, bundlers targeting them, Deno, Bun and builds with
+  the `workerd` or `worker` condition get the portable backend; Node.js gets it too under
+  `--conditions=bap-portable`. A build that sets `node` and none of the earlier conditions (webpack's
+  Electron targets, esbuild `--platform=node`, Rollup with `exportConditions: ["node"]`, Vite SSR)
+  gets the node backend. `bap-source` is a development condition for this repository's tests; its
+  targets are in `src/`, which is not shipped, so consumers must not set it. The portable Ed25519 check is the
   explicit cofactorless equation behind the unchanged rule S1 gate (noble's own verify is cofactored in
   both of its modes and is not used); portable P-256 passes `lowS: false`, so the profile's low-S gate
   stays the only one; neither backend uses WebCrypto.
@@ -35,7 +39,7 @@ additive except the internal types noted under deep imports. No verdict changes.
 - Node.js verdicts are unchanged. Every certified corpus's verdict digest (SHA-256 over the canonical
   JSON of `[case id, verdict]` per case, `conformance/verdict-digests.json`) was recorded from the
   0.6.0 source and is reproduced by both backends on Node 22.23.1 and 24.19.0, on Deno 2.5.6 and Bun
-  1.3.14, and in Chromium: v1 `c90b903a…` (283), v2 `72176430…` (268), v3 `79aa0344…` (292),
+  1.3.14, and in Chromium 153 (observed locally; CI also runs Firefox and WebKit): v1 `c90b903a…` (283), v2 `72176430…` (268), v3 `79aa0344…` (292),
   local-loopback-http `8b6f4ecf…` (44), role-attestation `e27f5ce5…` (40), content-assertion
   `9207c4cc…` (154), strict-ed25519 `cf0fe815…` (2410).
 - **API behavior change.** `sha256` (exported from the package root and the `v2` and `v3`
@@ -54,9 +58,13 @@ additive except the internal types noted under deep imports. No verdict changes.
 
 ### Deep imports
 
-Deep imports such as `@bounded-authority-protocol/verifier/dist/src/v3.js` keep resolving through the
-`"./*"` passthrough, but they remain unsupported API and may be closed in a future 0.x minor; import
-from the package root. In this release the internal `importPublicKey`, `ed25519Verify`,
+The new `"exports"` map changes which deep imports resolve. Fully specified paths with the `.js`
+extension, such as `@bounded-authority-protocol/verifier/dist/src/v3.js`, keep resolving through the
+`"./*"` passthrough. Extensionless deep paths, such as `.../dist/src/v3`, which bundlers and
+TypeScript's `node10` resolution used to complete, no longer resolve. The crypto backends
+(`dist/src/crypto/*`) are not exported at all, so the ungated backends cannot be deep-imported; they
+are reachable only through the package's own `"#crypto"` import. Deep imports remain unsupported API
+and may be closed in a future 0.x minor; import from the package root. In this release the internal `importPublicKey`, `ed25519Verify`,
 `importEcPublicKey` and `es256Verify` (reachable only by deep import) take and return an opaque
 `BackendPublicKey` instead of a `node:crypto` `KeyObject`, so no published declaration references
 `node:crypto` or any DOM type.

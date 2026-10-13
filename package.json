@@ -12,6 +12,7 @@
       "default": "./dist/src/index.js"
     },
     "./package.json": "./package.json",
+    "./dist/src/crypto/*": null,
     "./*": "./*"
   },
   "sideEffects": false,
@@ -30,6 +31,14 @@
         "default": "./dist/src/crypto/portable.js"
       },
       "bun": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/portable.js"
+      },
+      "workerd": {
+        "types": "./dist/src/crypto/backend.d.ts",
+        "default": "./dist/src/crypto/portable.js"
+      },
+      "worker": {
         "types": "./dist/src/crypto/backend.d.ts",
         "default": "./dist/src/crypto/portable.js"
       },
