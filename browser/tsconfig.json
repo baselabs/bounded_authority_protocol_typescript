@@ -1,0 +1,7 @@
+{
+  // Typecheck of the browser lane page (pnpm typecheck:browser-lane): DOM code bundled by esbuild.
+  "extends": "../tsconfig.browser.json",
+  "compilerOptions": { "rootDir": "..", "outDir": "../dist" },
+  "include": ["./*.ts", "../conformance/core/*.ts", "../conformance/digest.ts", "../src/**/*.ts"],
+  "exclude": ["../src/crypto/node.ts"]
+}
