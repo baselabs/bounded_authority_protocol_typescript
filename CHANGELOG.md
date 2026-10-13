@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.7.0] — Unreleased
+## [0.7.0] — 2026-10-13
 
 Browser-safe builds. The package now loads and runs in browsers, Deno, Bun and workers, with no
 `node:crypto`, no `Buffer` and no other Node API outside the Node backend, and with verdicts
