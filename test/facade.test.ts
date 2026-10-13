@@ -733,7 +733,8 @@ test("encode-parity key control: the generated anchor keys pass key acceptance a
   assert.equal(acceptablePublicKey(KEY_A), true);
   assert.equal(acceptablePublicKey(KEY_B), true);
   assert.notDeepEqual([...KEY_A], [...KEY_B]);
-  assert.equal(acceptablePublicKey(new Uint8Array(32).fill(7)) && acceptablePublicKey(new Uint8Array(32).fill(8)), false);
+  assert.equal(acceptablePublicKey(new Uint8Array(32).fill(7)), false);
+  assert.equal(acceptablePublicKey(new Uint8Array(32).fill(8)), false);
 });
 const Z32T = new Uint8Array(32);
 const SIG64T = new Uint8Array(64);

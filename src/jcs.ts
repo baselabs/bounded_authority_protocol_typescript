@@ -1,6 +1,6 @@
 import { fail } from "./error.js";
 import { resolve, coerceBounds, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
-import { strUtf8, type Tagged } from "./json.js";
+import { strUtf8, utf8Str, type Tagged } from "./json.js";
 
 // RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (spec/bap-v1.md,
 // REQ1-JSON-jcs-exact). Accepts only the tagged algebra. Enforces every JSON + output bound while
@@ -175,16 +175,10 @@ function isValidUtf8(bytes: Uint8Array): boolean {
   return true;
 }
 
-// A fatal UTF-8 decoder that keeps a leading U+FEFF. The shared utf8Str decoder strips a leading byte
-// order mark (the TextDecoder default), which would drop U+FEFF from the front of a string value or
-// member name; the reference passes every scalar value through. The bytes were validated above, so the
-// fatal flag is a backstop only.
-const KEEP_BOM = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-
 function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
   const out: number[] = [0x22 /* " */];
   // Decode UTF-8 to code points so \uXXXX escaping (for < 0x20 and lone surrogates) is correct.
-  const s = KEEP_BOM.decode(bytes);
+  const s = utf8Str(bytes); // keeps a leading U+FEFF; the bytes were validated above
   for (let i = 0; i < s.length; i++) {
     const cp = s.codePointAt(i)!;
     if (cp > 0xffff) {

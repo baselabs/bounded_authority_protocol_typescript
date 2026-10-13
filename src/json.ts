@@ -438,7 +438,10 @@ function asciiStr(bytes: Uint8Array): string {
 }
 
 // UTF-8 decode (TextDecoder is allowed in the library path — it is a pure transformation, not I/O).
-const DECODER = new TextDecoder("utf-8", { fatal: true });
+// ignoreBOM keeps a leading U+FEFF as the character it is: the TextDecoder default strips it, which
+// would make "\uFEFFx" compare equal to "x" while the reference rejects it. This is the one decoder for
+// string values, member names and JCS escaping.
+const DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const ENCODER = new TextEncoder();
 export function utf8Str(bytes: Uint8Array): string {
   return DECODER.decode(bytes);
