@@ -72,6 +72,9 @@ jobs:
       - name: Browser bundle guard (portable backend only; no unresolved globals, eval or Function constructor)
         run: pnpm guard:browser
 
+      - name: Browser bundle size within budget (tools/bundle-size-budget.json)
+        run: pnpm size
+
       - name: License check (the three @noble runtime dependencies and their transitive ones)
         run: pnpm license-check
 

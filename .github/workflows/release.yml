@@ -57,7 +57,7 @@ jobs:
 
       - name: Full verification gate (typecheck, lint, license, unit, permissiveness, all conformance corpora, both backends)
         run: |
-          pnpm typecheck && pnpm typecheck:browser && pnpm lint && pnpm guard:browser && pnpm license-check && \
+          pnpm typecheck && pnpm typecheck:browser && pnpm lint && pnpm guard:browser && pnpm size && pnpm license-check && \
           pnpm test && pnpm test:permissiveness && pnpm test:portable && pnpm conformance && pnpm conformance:v2 && \
           pnpm conformance:v3 && pnpm conformance:role-attestation && pnpm conformance:content-assertion && \
           pnpm conformance:strict-ed25519 && pnpm conformance:local-loopback-http && pnpm conformance:portable

@@ -56,6 +56,7 @@
     "typecheck:browser": "tsc -p tsconfig.browser.json && tsc -p browser/tsconfig.json",
     "lint": "eslint .",
     "guard:browser": "node tools/browser-guard.mjs",
+    "size": "pnpm build && node --test --import tsx/esm test/bundle-size.ts && node tools/bundle-size.mjs",
     "license-check": "node tools/license-check.mjs",
     "check:currency": "node tools/check-currency.mjs",
     "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
