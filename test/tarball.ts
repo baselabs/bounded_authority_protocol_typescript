@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync } from "node:fs";
+import { chmodSync, existsSync, statSync } from "node:fs";
 // @ts-expect-error tools/pack.mjs is untyped JavaScript
 import { pack } from "../tools/pack.mjs";
 
@@ -159,6 +159,7 @@ test("pack: packing leaves the repository's package.json byte for byte unchanged
 test("pack: an interrupted pack (an unreadable dist file) fails and leaves package.json untouched", () => {
   const before = readFileSync(join(REPO, "package.json"));
   const victim = join(REPO, "dist/src/v1.js");
+  const mode = statSync(victim).mode & 0o7777;
   chmodSync(victim, 0o000);
   let failed = false;
   try {
@@ -166,8 +167,9 @@ test("pack: an interrupted pack (an unreadable dist file) fails and leaves packa
   } catch {
     failed = true;
   } finally {
-    chmodSync(victim, 0o644);
+    chmodSync(victim, mode);
   }
+  assert.equal(statSync(victim).mode & 0o7777, mode, "the dist file's original mode is restored");
   assert.equal(failed, true, "the pack must fail on an unreadable packed file");
   assert.deepEqual(readFileSync(join(REPO, "package.json")), before);
   assert.equal(readdirSync(REPO).filter((f) => f.startsWith("package.json.")).length, 0);
