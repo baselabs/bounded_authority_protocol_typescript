@@ -53,6 +53,12 @@ changes the behavior of several public functions and of facts values (marked **B
   changes.
 ### Fixed
 
+- The thumbprint helpers that take a JWK object (`thumbprintPreimage`, `thumbprint`, `thumbprintRaw`,
+  root and `v3`) read each member exactly once, validate those values and hash the preimage
+  re-encoded from the validated raw key, as the Elixir reference does. A JWK object whose getter or
+  `Proxy` answered differently on a later read could get a key other than the validated one hashed
+  (for example the identity key). A `Proxy` whose `ownKeys` or `get` trap throws is now the closed
+  `InvalidError`.
 - `verifyStrict`, `es256VerifyStrict`, `acceptablePublicKey` and `torsionFree` return `false` for an
   exotic input whose typed-array getters throw (a `Proxy` around a `Uint8Array`, an object created
   from `Uint8Array.prototype`), as documented; 0.7.0 threw a `TypeError` for it.

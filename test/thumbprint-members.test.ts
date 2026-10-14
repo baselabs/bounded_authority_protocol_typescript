@@ -45,3 +45,45 @@ test("thumbprint helpers refuse a JWK missing a member or with a wrong kty/crv",
     assert.throws(() => v3.thumbprint(bad as typeof ecJwk), InvalidError);
   }
 });
+
+// Read once: a JWK object whose getter returns a valid member on the first reads and another value
+// later must not get the later value hashed. The thumbprint helpers read each member exactly once,
+// validate those values, and hash the preimage re-encoded from the validated raw key (as the Elixir
+// reference does: encode_public(decode_public(jwk))).
+function counting<T extends object>(jwk: T, member: string, later: string): T {
+  let reads = 0;
+  const source = jwk as unknown as Record<string, string>;
+  const out = {};
+  for (const k of Object.keys(source)) {
+    Object.defineProperty(out, k, {
+      enumerable: true,
+      get: () => (k === member && ++reads > 2 ? later : source[k]),
+    });
+  }
+  return out as T;
+}
+
+test("Ed25519 thumbprints read the JWK once: a getter that turns into the identity key is not hashed", () => {
+  const identityX = Buffer.from(Uint8Array.from({ length: 32 }, (_, i) => (i === 0 ? 1 : 0))).toString("base64url");
+  const expected = thumbprint(edJwk);
+  const raw = thumbprintRaw(edJwk);
+  assert.equal(thumbprint(counting(edJwk, "x", identityX)), expected);
+  assert.deepEqual(thumbprintRaw(counting(edJwk, "x", identityX)), raw);
+  assert.deepEqual(thumbprintPreimage(counting(edJwk, "x", identityX)), thumbprintPreimage(edJwk));
+});
+
+test("v3 thumbprints read the JWK once: a getter that turns y to all zeros is not hashed", () => {
+  const zeroY = Buffer.alloc(32).toString("base64url");
+  const expected = v3.thumbprint(ecJwk);
+  assert.equal(v3.thumbprint(counting(ecJwk, "y", zeroY)), expected);
+  assert.deepEqual(v3.thumbprintRaw(counting(ecJwk, "y", zeroY)), v3.thumbprintRaw(ecJwk));
+  assert.deepEqual(v3.thumbprintPreimage(counting(ecJwk, "y", zeroY)), v3.thumbprintPreimage(ecJwk));
+});
+
+test("a Proxy whose ownKeys or get trap throws is the closed InvalidError, not its own error", () => {
+  const trap = (): never => { throw new Error("trap"); };
+  for (const handler of [{ ownKeys: trap }, { get: trap }]) {
+    assert.throws(() => thumbprint(new Proxy({ ...edJwk }, handler) as typeof edJwk), InvalidError);
+    assert.throws(() => v3.thumbprint(new Proxy({ ...ecJwk }, handler) as typeof ecJwk), InvalidError);
+  }
+});

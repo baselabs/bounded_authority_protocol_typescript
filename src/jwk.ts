@@ -95,12 +95,15 @@ function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
-  exactMembers(jwk, ["crv", "kty", "x"]);
-  if (jwk.crv !== "Ed25519" || jwk.kty !== "OKP" || typeof jwk.x !== "string") fail("jwk: OKP Ed25519 members");
-  const raw = base64urlDecode(strUtf8(jwk.x));
+  // Each member is read exactly once into a local, those values are checked, and the preimage is
+  // re-encoded from the validated raw key (the Elixir encode_public(decode_public(jwk))), so a getter
+  // or Proxy that answers differently on a later read cannot get another key hashed.
+  const { crv, kty, x } = readMembers(jwk, ["crv", "kty", "x"]);
+  if (crv !== "Ed25519" || kty !== "OKP" || typeof x !== "string") fail("jwk: OKP Ed25519 members");
+  const raw = base64urlDecode(strUtf8(x));
   assert(raw.length === 32, "jwk: x width");
   assert(acceptablePublicKey(raw), "jwk: key not acceptable");
-  return preimageOf(jwk);
+  return preimageOf(uncheckedJwk(raw));
 }
 
 function preimageOf(jwk: OkpPublic): Uint8Array {
@@ -134,12 +137,22 @@ export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
 
 // The closed member set of a public JWK object, as the Elixir V1.Jwk and V3.EcJwk decoders require:
 // exactly the RFC 7638 required members of its key type, as own string keys, and nothing else (no
-// private `d`, no `alg`, no other member). Shared with ec_jwk.ts.
-export function exactMembers(jwk: object, members: readonly string[]): void {
+// private `d`, no `alg`, no other member). Returns each member read exactly once. Shared with
+// ec_jwk.ts.
+export function readMembers(jwk: object, members: readonly string[]): Record<string, unknown> {
   if (jwk === null || typeof jwk !== "object") fail("jwk: object required");
-  const own = Reflect.ownKeys(jwk);
-  if (own.length !== members.length || !own.every((k) => typeof k === "string" && members.includes(k))) {
-    fail("jwk: closed member set");
+  try {
+    const own = Reflect.ownKeys(jwk);
+    if (own.length !== members.length || !own.every((k) => typeof k === "string" && members.includes(k))) {
+      fail("jwk: closed member set");
+    }
+    // One read per member; a throwing getter or Proxy trap is the closed error.
+    const values: Record<string, unknown> = Object.create(null);
+    for (const name of members) values[name] = (jwk as Record<string, unknown>)[name];
+    return values;
+  } catch (e) {
+    if (e instanceof Error && e.name === "InvalidError") throw e;
+    fail("jwk: unreadable member");
   }
 }
 
