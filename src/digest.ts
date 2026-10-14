@@ -55,8 +55,8 @@ export function digestWithPrefix(
   castArguments: Tagged,
   bounds: Bounds = MAXIMUM_BOUNDS,
 ): Uint8Array {
-  // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is a structural interface; a caller
-  // can hand-craft widening overrides that bypass boundsNew). Mirrors the reference's Bounds.coerce.
+  // Re-validate caller-supplied bounds (Bounds is a structural interface; a caller can hand-craft
+  // widening overrides that bypass boundsNew). Mirrors the reference's Bounds.coerce.
   const b = coerceBounds(bounds);
   // operation: 1..operation_bytes, printable ASCII.
   const opBytes = strUtf8(operation);
@@ -117,8 +117,8 @@ function countTaggedNodes(v: Tagged): number {
   }
 }
 
-// base64url-encoded form (for comparison against proof.ba_req which is base64url). Returns
-// Ok<string> | Err (cross-vendor #21 + the bounds-ignored note: thread bounds into the digest).
+// Base64url-encoded form (for comparison against proof.ba_req which is base64url). Returns
+// Ok<string> | Err.
 export function requestDigestB64url(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Result<string> {
   return trying(() => {
     const raw = requestDigest(operation, castArguments, bounds);

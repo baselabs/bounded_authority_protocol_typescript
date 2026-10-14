@@ -21,8 +21,8 @@ import { strUtf8, utf8Str, type Tagged } from "./json.js";
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
-  // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override
-  // can widen limits past MAXIMA). Mirrors the reference's Bounds.coerce.
+  // Re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override can widen
+  // limits past MAXIMA). Mirrors the reference's Bounds.coerce.
   const b = coerceBounds(bounds);
   const parts: Uint8Array[] = [];
   emit(value, parts, b, 0, 0);
@@ -52,9 +52,9 @@ function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number,
       parts.push(value.v ? STR_TRUE : STR_FALSE);
       return nextNode(nodes, bounds);
     case "int":
-      // Cross-vendor F3: the reference guard is `when is_integer(value)` (jcs.ex:38); a non-integer
-      // int-tag value (1.5, or bool) must fail closed, not canonicalize. Number.isInteger rejects
-      // floats and booleans.
+      // The reference guard is `when is_integer(value)` (jcs.ex:38); a non-integer int-tag value
+      // (1.5, or bool) must fail closed, not canonicalize. Number.isInteger rejects floats and
+      // booleans.
       if (!Number.isInteger(value.v) || level > depth || Math.abs(value.v) > resolve(bounds, "integer_magnitude" as MaximaKey)) fail("jcs: integer bound");
       parts.push(strUtf8(formatInt(value.v)));
       return nextNode(nodes, bounds);
@@ -63,9 +63,9 @@ function emit(value: Tagged, parts: Uint8Array[], bounds: Bounds, level: number,
       parts.push(strUtf8(formatFloat(value.v)));
       return nextNode(nodes, bounds);
     case "string":
-      // The decoder already validated UTF-8 + string_bytes; re-check here so a programmatically-built
-      // over-bound value (not from the decoder) is rejected at encode, matching jcs.ex:57-59.
-      // Cross-vendor (JCS UTF-8): the reference guard is `String.valid?(value)` (jcs.ex:58) which
+      // The decoder already validated UTF-8 + string_bytes; re-check here so a
+      // programmatically-built over-bound value (not from the decoder) is rejected at encode,
+      // matching jcs.ex:57-59. the reference guard is `String.valid?(value)` (jcs.ex:58) which
       // rejects invalid UTF-8. A programmatically-built JString with invalid bytes would otherwise
       // reach escapeString → the fatal TextDecoder and throw TypeError past the closed-Result
       // contract. Validate UTF-8 here and fail closed (Err) instead.
@@ -149,10 +149,10 @@ const SHORT_ESCAPES: Record<number, string> = {
   0x5c: "\\\\",
 };
 
-// UTF-8 validity check that does NOT throw (cross-vendor JCS UTF-8): the reference's String.valid?
-// (jcs.ex:58) rejects invalid UTF-8 at encode. The fatal TextDecoder in escapeString throws TypeError on
-// invalid bytes, escaping the closed-Result contract; this gate lets jcsEncode fail closed instead.
-// Walks the byte stream validating leading/multi-byte sequences (RFC 3629).
+// UTF-8 validity check that does NOT throw: the reference's String.valid? (jcs.ex:58) rejects
+// invalid UTF-8 at encode. The fatal TextDecoder in escapeString throws TypeError on invalid bytes,
+// escaping the closed-Result contract; this gate lets jcsEncode fail closed instead. Walks the byte
+// stream validating leading/multi-byte sequences (RFC 3629).
 function isValidUtf8(bytes: Uint8Array): boolean {
   let i = 0;
   while (i < bytes.length) {

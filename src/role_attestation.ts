@@ -198,12 +198,12 @@ function parseAttestation(compact: Uint8Array, bounds: Bounds): { kid: string; c
 
 // --- the caller-supplied expected context (fail-closed shallow + magnitude parity) ---
 
-// Context validation before any deref: a null/wrong-typed struct fails closed as the single
-// error, never a native TypeError (the cross-vendor #22 discipline). The attestor window
-// endpoints and `now` are magnitude-bounded under integer_magnitude (2^53-1) and must be
-// integers — the verifyHistoricalAnchor parity (v1.ts: the Rust round-4 fix); the sibling
-// Python/Go legs shipped without it once and it was repaired the same day. A fractional
-// `now` is verdict-load-bearing: the half-open window comparison alone would admit it.
+// Context validation before any deref: a null/wrong-typed struct fails closed as the single error,
+// never a native TypeError. The attestor window endpoints and `now` are magnitude-bounded under
+// integer_magnitude (2^53-1) and must be integers — the verifyHistoricalAnchor parity (v1.ts: the
+// Rust round-4 fix); the sibling Python/Go legs shipped without it once and it was repaired the
+// same day. A fractional `now` is verdict-load-bearing: the half-open window comparison alone would
+// admit it.
 function validateExpected(expected: ExpectedAttestation): Bounds {
   if (expected === null || typeof expected !== "object") fail("verify_attestation: expected context required");
   const a = expected.attestor;
@@ -238,8 +238,8 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
 export function attestationSigningInput(attestation: AttestationProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     if (attestation === null || typeof attestation !== "object") fail("attestation_signing_input: producer required");
-    // Field types gate first (cross-vendor review m2): a non-string id or jti must reject with
-    // the closed error, never coerce through TextEncoder ("null") or throw a TypeError.
+    // Field types gate first: a non-string id or jti must reject with the closed error, never
+    // coerce through TextEncoder ("null") or throw a TypeError.
     if (typeof attestation.keyId !== "string") fail("attestation_signing_input: key_id string");
     if (typeof attestation.subjectKeyId !== "string") fail("attestation_signing_input: subject key id string");
     if (typeof attestation.jti !== "string") fail("attestation_signing_input: jti string");
@@ -272,9 +272,8 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
       ["role", { t: "string", v: strUtf8(attestation.role) }],
       ["v", { t: "int", v: VERSION }],
     ]);
-    // Producer/consumer bounds agreement (the cross-vendor finding-4 class, transferred to
-    // this surface): the EMITTED segments and projected compact must satisfy the same
-    // caller-resolved limits the decoder enforces, and the emitted number lexemes must be
+    // Producer/consumer bounds agreement: the EMITTED segments and projected compact must satisfy
+    // the same caller-resolved limits the decoder enforces, and the emitted number lexemes must be
     // decodable — the producer must not mint bytes its own consumer rejects.
     const payloadJson = jcsEncode({ t: "object", v: payload }, b);
     if (payloadJson.length > resolve(b, "json_bytes" as MaximaKey)) {

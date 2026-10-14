@@ -452,13 +452,11 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 // --- the closed-Result shape gate (ADR 0017 clauses 1-2) ---
 //
-// A wrong-typed caller value must return Err — never throw TypeError past trying() (JS
-// property derefs on null/undefined) and never be silently coerced (TextEncoder stringifies
-// non-strings: requestDigest(123) used to digest "123" and return Ok). The Python half's
-// family sweep (2026-08-18) found the class total there; the TS probe found 109 param-level
-// escapes + the coercion here, so every façade gates its arguments' SHAPES before the body
-// runs. Struct params are gated non-null-object plus the fields the body derefs before its
-// own semantic gates; deeper field semantics stay with the bodies' existing type checks.
+// A wrong-typed caller value must return Err — never throw TypeError past trying() (JS property
+// derefs on null/undefined) and never be silently coerced (TextEncoder stringifies non-strings:
+// requestDigest(123) used to digest "123" and return Ok). Every façade gates its arguments' SHAPES
+// before the body runs. Struct params are gated non-null-object plus the fields the body derefs
+// before its own semantic gates; deeper field semantics stay with the bodies' existing type checks.
 
 type Shape = "bytes" | "str" | "int" | "object" | "tagged" | { seq: Shape } | { fields: Record<string, Shape> } | { opt: Shape };
 
@@ -473,9 +471,8 @@ const SHAPE_EXPORT_INPUT: Shape = { fields: { rows: { seq: "bytes" }, startAncho
 const SHAPE_EXPECTED_CHAIN: Shape = { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } };
 const SHAPE_EXPECTED_ANCHOR: Shape = { fields: { anchorId: "str", anchoredAt: "int", chainId: "str", sequence: "int", chainHash: "bytes", keyId: "str", keyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
 const SHAPE_EXPECTED_TRANSITION: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentKeyFingerprint: "bytes", nextKeyId: "str", nextKeyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
-// Cross-vendor round 18 (codex, blocking): the nested members are FULLY specified, not
-// opaque "object" — a malformed nested struct (missing field, wrong type) must reject at
-// the gate, never reach a deref inside the hoist or body.
+// The nested members are FULLY specified, not opaque "object" — a malformed nested struct (missing
+// field, wrong type) must reject at the gate, never reach a deref inside the hoist or body.
 const SHAPE_EXPECTED_EXPORT: Shape = { fields: { chain: SHAPE_EXPECTED_CHAIN, digest: "bytes", startAnchor: SHAPE_EXPECTED_ANCHOR, endAnchor: SHAPE_EXPECTED_ANCHOR, transitions: { seq: SHAPE_EXPECTED_TRANSITION }, objectVersion: "str", bounds: SHAPE_BOUNDS_OPT } };
 
 function shapeOk(value: unknown, shape: Shape): boolean {
@@ -493,10 +490,9 @@ function shapeOk(value: unknown, shape: Shape): boolean {
   return true;
 }
 
-// Accepted margin (cross-vendor round 18, claude note): the gate walks caller sequences
-// element-by-element BEFORE the bodies' count ceilings run — inherent to entry-position
-// gating; the per-element cost is a typeof check only, and constructing an oversized
-// caller list costs the caller more than the walk costs us.
+// Accepted margin: the gate walks caller sequences element-by-element BEFORE the bodies' count
+// ceilings run — inherent to entry-position gating; the per-element cost is a typeof check only,
+// and constructing an oversized caller list costs the caller more than the walk costs us.
 function closedShape(args: unknown[], shapes: Shape[]): void {
   for (let i = 0; i < shapes.length; i++) {
     if (!shapeOk(args[i], shapes[i]!)) fail(`shape: argument ${i}`);
@@ -512,11 +508,11 @@ function closedShape(args: unknown[], shapes: Shape[]): void {
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
-    // Cross-vendor #13: the reference (v1.ex:21-34) decodes ONLY the protected segment — payload and
-    // signature are NOT decoded, interpreted, or independently size-checked. parseCompact decodes all
-    // three, so a compact with a valid protected grant header but non-canonical payload/signature
-    // bytes wrongly rejected. Mirror the reference: split into exactly 3 segments, decode protected
-    // only, validate the grant header + kid. (An invalid payload/signature does not affect the kid.)
+    // The reference (v1.ex:21-34) decodes ONLY the protected segment — payload and signature are
+    // NOT decoded, interpreted, or independently size-checked. parseCompact decodes all three, so a
+    // compact with a valid protected grant header but non-canonical payload/signature bytes wrongly
+    // rejected. Mirror the reference: split into exactly 3 segments, decode protected only,
+    // validate the grant header + kid. (An invalid payload/signature does not affect the kid.)
     const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("key_locator: compact bound");
     // Exactly 3 segments on '.' (a 2- or 4-segment input fails the closed shape).
@@ -524,17 +520,17 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
     for (let i = 0; i < compact.length; i++) if (compact[i] === DOT) dots.push(i);
     if (dots.length !== 2) fail("key_locator: three segments");
     const d0 = dots[0]!;
-    // Cross-vendor (key-locator empty segments): the reference (v1.ex:24) only requires exactly 3
-    // segments and decodes the PROTECTED segment alone — payload and signature are bound to _ and
-    // never decoded or size-checked, so empty payload/signature segments are ACCEPTED (e.g.
-    // "<protected>.." yields kid=<protected's>). Only an empty PROTECTED segment (d0 === 0) is
-    // invalid (it must base64url-decode to a header). Do NOT reject empty payload/signature.
+    // The reference (v1.ex:24) only requires exactly 3 segments and decodes the PROTECTED segment
+    // alone — payload and signature are bound to _ and never decoded or size-checked, so empty
+    // payload/signature segments are ACCEPTED (e.g. "<protected>.." yields kid=<protected's>). Only
+    // an empty PROTECTED segment (d0 === 0) is invalid (it must base64url-decode to a header). Do
+    // NOT reject empty payload/signature.
     if (d0 === 0) fail("key_locator: empty protected segment");
     const protectedText = compact.subarray(0, d0);
     if (protectedText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("key_locator: protected bound");
     const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
-    // Cross-vendor re-review Finding 3: thread the caller-resolved bounds into the JSON decode
-    // (reference v1.ex:27 Json.decode(header_bytes, bounds) — depth/total_nodes limits honor bounds).
+    // Thread the caller-resolved bounds into the JSON decode (reference v1.ex:27
+    // Json.decode(header_bytes, bounds) — depth/total_nodes limits honor bounds).
     const h = jsonDecode(protectedBytes, b);
     requireObjectExact(h, ["alg", "typ", "kid"], "grant header");
     requireStringLit(h, "alg", ALG, "grant header alg");
@@ -623,19 +619,19 @@ function decodeProofFor(compact: Uint8Array, bounds: Bounds | undefined, profile
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
     closedShape([compact, trusted, expected], ["bytes", "object", "object"]);
-    // Cross-vendor #22 (fail-closed shallow): the reference pattern-matches %TrustedIssuer{} and
-    // returns {:error, :invalid} for any malformed context struct (runtime.ex:181,196). A null OR a
-    // struct missing publicKey/keyId must fail closed — not throw a native TypeError that escapes the
-    // Result contract. Validate the trusted issuer's shape before dereferencing its fields.
+    // The reference pattern-matches %TrustedIssuer{} and returns {:error,:invalid} for any
+    // malformed context struct (runtime.ex:181,196). A null OR a struct missing publicKey/keyId
+    // must fail closed — not throw a native TypeError that escapes the Result contract. Validate
+    // the trusted issuer's shape before dereferencing its fields.
     if (trusted === null || trusted === undefined) fail("verify_grant: trusted issuer required");
     if (!(trusted.publicKey instanceof Uint8Array) || trusted.publicKey.length !== 32) fail("verify_grant: issuer key width");
     if (typeof trusted.keyId !== "string") fail("verify_grant: issuer key id");
-    // Cross-vendor #19: the reference requires is_integer(evaluation_time) and is_integer(clock_skew)
-    // (>= 0) — runtime.ex:522-523. A range-only `< 0` check accepts fractional times.
+    // The reference requires is_integer(evaluation_time) and is_integer(clock_skew) (>= 0) —
+    // runtime.ex:522-523. A range-only `< 0` check accepts fractional times.
     if (!Number.isInteger(expected.evaluationTime)) fail("verify_grant: integer evaluation time");
-    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:186) and
-    // threads it into validate_expected_grant (clock_skew <= bounds.clock_skew) + every bound-sensitive
-    // check below. A caller tightening via expected.bounds now actually takes effect.
+    // The reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:186) and threads it
+    // into validate_expected_grant (clock_skew <= bounds.clock_skew) + every bound-sensitive check
+    // below. A caller tightening via expected.bounds now actually takes effect.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(b, "clock_skew" as MaximaKey)) fail("verify_grant: skew");
     const seg = parseCompact(compact, b);
@@ -694,20 +690,19 @@ function checkEnvelopeFor(grantCompact: Uint8Array, proofCompact: Uint8Array, ex
   return trying(() => {
     closedShape([grantCompact, proofCompact, expected], ["bytes", "bytes", "object"]);
     const t = expected.trustedIssuer;
-    // Cross-vendor #22 (fail-closed shallow): a null/wrong-typed trustedIssuer (or any structured-
-    // input field) must fail closed as InvalidError, not propagate a native TypeError from the deref
-    // below. Validate the context shape before touching it. The reference returns {:error,:invalid}
-    // for all malformed input.
+    // A null/wrong-typed trustedIssuer (or any structured- input field) must fail closed as
+    // InvalidError, not propagate a native TypeError from the deref below. Validate the context
+    // shape before touching it. The reference returns {:error,:invalid} for all malformed input.
     if (t === null || t === undefined) fail("check_envelope: trusted issuer required");
     if (!(t.publicKey instanceof Uint8Array) || t.publicKey.length !== 32) fail("check_envelope: issuer key width");
     if (typeof t.keyId !== "string") fail("check_envelope: issuer key id");
-    // Cross-vendor #19: the reference requires is_integer(evaluation_time), is_integer(clock_skew)
-    // (>= 0), and proof_max_age > 0 (strictly positive) — runtime.ex:522-523,550-551. A range-only
-    // `< 0` check accepts fractional times and proofMaxAge=0. The signed-time boundary is exact.
+    // The reference requires is_integer(evaluation_time), is_integer(clock_skew) (>= 0), and
+    // proof_max_age > 0 (strictly positive) — runtime.ex:522-523,550-551. A range-only `< 0` check
+    // accepts fractional times and proofMaxAge=0. The signed-time boundary is exact.
     if (!Number.isInteger(expected.evaluationTime)) fail("check_envelope: integer evaluation time");
-    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:204) and
-    // threads it into validate_expected_request (clock_skew, proof_max_age) + parse_grant + parse_proof
-    // + every bound-sensitive claim check below. A caller tightening via expected.bounds now takes
+    // The reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:204) and threads it
+    // into validate_expected_request (clock_skew, proof_max_age) + parse_grant + parse_proof +
+    // every bound-sensitive claim check below. A caller tightening via expected.bounds now takes
     // effect across both the grant and the proof.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (!Number.isInteger(expected.clockSkew) || expected.clockSkew < 0 || expected.clockSkew > resolve(b, "clock_skew" as MaximaKey)) fail("check_envelope: skew");
@@ -739,9 +734,9 @@ function checkEnvelopeFor(grantCompact: Uint8Array, proofCompact: Uint8Array, ex
     const giat = requireInt(gobj.v.get("iat"), "iat");
     const gnbf = requireInt(gobj.v.get("nbf"), "nbf");
     const gexp = requireInt(gobj.v.get("exp"), "exp");
-    // Cross-vendor #4: checkEnvelope must enforce grant-time coherence (iat<exp, nbf<exp), mirroring
-    // the reference's coherent_times? (runtime.ex:872-875) which fires at parse time. decodeGrant and
-    // verifyGrant already check this; checkEnvelope had its own inline path that omitted it.
+    // CheckEnvelope must enforce grant-time coherence (iat<exp, nbf<exp), mirroring the reference's
+    // coherent_times? (runtime.ex:872-875) which fires at parse time. decodeGrant and verifyGrant
+    // already check this; checkEnvelope had its own inline path that omitted it.
     if (!(giat < gexp) || !(gnbf < gexp)) fail("check_envelope: grant times coherent");
     if (!(giat <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant iat");
     if (!(gnbf <= expected.evaluationTime + expected.clockSkew)) fail("check_envelope: grant nbf");
@@ -824,8 +819,8 @@ function checkEnvelopeFor(grantCompact: Uint8Array, proofCompact: Uint8Array, ex
   });
 }
 
-// 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — cross-vendor #21: mirror
-// the Elixir {:ok, binary} | {:error, :invalid} and the other 15 façade functions).
+// 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — mirror the Elixir {:ok,
+// binary} | {:error,:invalid} and the other 15 façade functions).
 /**
  * The 32-byte request digest a proof carries as `ba_req`: SHA-256 over `BAP1-REQUEST\0` and the
  * JCS of `[operation, typed(castArguments)]`.
@@ -893,9 +888,9 @@ function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
     closedShape([chain, expected], [{ fields: { rows: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } }, { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } }]);
-    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (consumption_chain.ex
-    // check_chain) and threads it into the row-count bound + every parse_row (chain_row_bytes). A
-    // caller tightening via expected.bounds now takes effect.
+    // The reference resolves Bounds.coerce(expected.bounds) once (consumption_chain.ex check_chain)
+    // and threads it into the row-count bound + every parse_row (chain_row_bytes). A caller
+    // tightening via expected.bounds now takes effect.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (typeof chain.chainId !== "string" || !isStringOrUri(chain.chainId) || expected.chainId !== chain.chainId) fail("check_chain: chain_id");
     if (expected.firstSequence !== chain.firstSequence) fail("check_chain: first_sequence");
@@ -908,11 +903,12 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     if (chain.firstSequence === 1) {
       if (!bytesEqual(expected.previousHash, DEFAULT_HASH)) fail("check_chain: genesis predecessor");
     }
-    // Cross-vendor F4: the reference's check_chain takes ChainInput{rows} + ExpectedChain and uses
-    // expected.previous_hash as BOTH the validation seed and the returned fact; the SDK's ChainInput
-    // also carries a previousHash that must equal the expected value (the non-genesis row walk would
-    // otherwise seed from expected while the input field flows unchecked into the returned facts).
-    // Validate equality in BOTH cases so chain.previousHash is never an unverified echo.
+    // The reference's check_chain takes ChainInput{rows} + ExpectedChain and uses
+    // expected.previous_hash as BOTH the validation seed and the returned fact; the SDK's
+    // ChainInput also carries a previousHash that must equal the expected value (the non-genesis
+    // row walk would otherwise seed from expected while the input field flows unchecked into the
+    // returned facts). Validate equality in BOTH cases so chain.previousHash is never an unverified
+    // echo.
     if (!bytesEqual(expected.previousHash, chain.previousHash)) fail("check_chain: previous_hash");
     let previous = expected.previousHash;
     let sequence = chain.firstSequence;
@@ -946,10 +942,10 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
     return redacted({
       version: 1 as const, chainId: chain.chainId, firstSequence: chain.firstSequence,
       lastSequence: chain.lastSequence, rowCount: chain.rowCount,
-      // Cross-vendor re-review F3 + F4: copy the VERIFIED expected.previousHash (not the caller's
-      // chain.previousHash input) into a fresh Uint8Array so a later mutation of either input buffer
-      // does not change the returned fact (the reference's Elixir binaries are immutable; TS arrays
-      // are not). The reference returns expected.previous_hash; lastHash is freshly computed.
+      // Copy the VERIFIED expected.previousHash (not the caller's chain.previousHash input) into a
+      // fresh Uint8Array so a later mutation of either input buffer does not change the returned
+      // fact (the reference's Elixir binaries are immutable; TS arrays are not). The reference
+      // returns expected.previous_hash; lastHash is freshly computed.
       previousHash: new Uint8Array(expected.previousHash), lastHash: previous,
       verification: "boundary_consistent" as const, trust: "not_evaluated" as const,
     }, "V1.ChainFacts");
@@ -1001,10 +997,10 @@ function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
     const nameBytes = strUtf8(op.name);
     if (nameBytes.length < 1 || nameBytes.length > resolve(b, "operation_bytes" as MaximaKey)) fail("grant_signing_input: operation name bytes");
     if (!/^[\x20-\x7e]+$/.test(op.name)) fail("grant_signing_input: operation name charset");
-    // The shape gate covers the scalar fields + per-operation name; selectors is a union
-    // (bare "all" string or selector objects) the walker cannot express, so gate the array
-    // here — a null/number selectors previously threw a native TypeError past the Result
-    // contract (cross-vendor review m2 sweep); item shapes fail closed in selectorToTagged.
+    // The shape gate covers the scalar fields + per-operation name; selectors is a union (bare
+    // "all" string or selector objects) the walker cannot express, so gate the array here — a
+    // null/number selectors previously threw a native TypeError past the Result contract; item
+    // shapes fail closed in selectorToTagged.
     if (!Array.isArray(op.selectors)) fail("grant_signing_input: selectors array");
     if (op.selectors.length < 1 || op.selectors.length > resolve(b, "selectors" as MaximaKey)) fail("grant_signing_input: selectors count");
     const sels: Tagged[] = op.selectors.map((s) => selectorToTagged(s, b));
@@ -1031,10 +1027,10 @@ function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
 
 // Normalize a selector input (bare "all" string or object) to the tagged form for JCS.
 function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
-  // Leaf gates for the caller-shaped selector input (the m2 sweep's repair round): a null
-  // item, a non-array path (a string path iterated as CHARACTERS and was silently minted),
-  // a non-string path member, a non-array values, or a non-tagged value previously threw a
-  // native TypeError past the Result contract or coerced into the signed grant.
+  // Leaf gates for the caller-shaped selector input: a null item, a non-array path (a string path
+  // iterated as CHARACTERS and was silently minted), a non-string path member, a non-array values,
+  // or a non-tagged value previously threw a native TypeError past the Result contract or coerced
+  // into the signed grant.
   if (s === null || s === undefined) fail("selector: shape");
   if (s !== "all" && typeof s !== "object") fail("selector: shape");
   if (s === "all" || (typeof s === "object" && s.kind === "all")) {
@@ -1377,17 +1373,16 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // Validate inputs BEFORE framing (mirrors anchored_export_codec.ex:33-57 encode →
     // validate_expected_export + parse_expected_transitions + validate_expected_key_path). The
     // parser would reject the bytes a too-large input would produce; the producer rejects earlier.
-    // BAP-09 #10/#11: resolve expected.bounds once and thread it through the encode-time bounds
-    // checks so a caller tightening via expected.bounds takes effect (matches verify_anchored_export).
+    // resolve expected.bounds once and thread it through the encode-time bounds checks so a caller
+    // tightening via expected.bounds takes effect (matches verify_anchored_export).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     validateExportInputs(input, expected, b);
-    // Row chain re-check (anchored_export_codec.ex:37-39 — ConsumptionChain.check):
-    // the rows must verify against the expected boundaries BEFORE framing, under the
-    // caller's OUTER bounds (the reference threads the outer bounds into the row walk,
-    // %{expected.chain | bounds: bounds}) — and the chain's nested bounds, when present,
-    // must coerce-equal the outer (anchored_export_codec.ex:352-354). Correctness-lens F1:
-    // resolving only the chain's own bounds let a tightened outer wrong-ACCEPT rows the
-    // reference rejects.
+    // Row chain re-check (anchored_export_codec.ex:37-39 — ConsumptionChain.check): the rows must
+    // verify against the expected boundaries BEFORE framing, under the caller's OUTER bounds (the
+    // reference threads the outer bounds into the row walk, %{expected.chain | bounds: bounds}) —
+    // and the chain's nested bounds, when present, must coerce-equal the outer
+    // (anchored_export_codec.ex:352-354). resolving only the chain's own bounds let a tightened
+    // outer wrong-ACCEPT rows the reference rejects.
     requireBoundsEqual(expected.chain.bounds, b, "encode_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "encode_anchored_export: start anchor bounds");
     requireBoundsEqual(expected.endAnchor.bounds, b, "encode_anchored_export: end anchor bounds");
@@ -1433,9 +1428,9 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
 // reference's structural gates (width, canonical form) and the signed-field match.
 function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): void {
   // The reference codec bounds every anchor compact at anchor_bytes (boundary_anchor_codec.ex:82,
-  // from the encode with-chain :40-42) — stricter than parseCompact's whole-input compact_bytes
-  // ceiling; check it BEFORE the parse (cross-vendor round 2: the producer minted archives its
-  // own verifier rejects at the frame read).
+  // from the encode with-chain:40-42) — stricter than parseCompact's whole-input compact_bytes
+  // ceiling; check it BEFORE the parse (the producer minted archives its own verifier rejects at
+  // the frame read).
   if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail(`encode_anchored_export: ${which} anchor anchor_bytes`);
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
@@ -1543,16 +1538,15 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
   return trying(() => {
     closedShape([compact, key, expected], ["bytes", SHAPE_HIST_KEY, "object"]);
     assert(key.publicKey.length === 32, "verify_historical_anchor: key width");
-    // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check, as
-    // the reference does (boundary_anchor_codec.ex parses the compact + payload under bounds).
+    // Thread expected.bounds (resolved once) through every bound-sensitive check, as the reference
+    // does (boundary_anchor_codec.ex parses the compact + payload under bounds).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     // Key-window endpoints magnitude-bounded under the resolved bounds
     // (context_validation.ex valid_time? — the Rust round-4 parity fix; without
     // this the SDKs diverge: an in-window anchored_at with a bounded
     // valid_before of 2^62 verified in TS and rejected in Rust/reference).
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
-    // Number.isInteger: fractional/NaN endpoints fail closed (cross-vendor — a
-    // real signed-anchor probe with validFrom 0.5 verified without it).
+    // Number.isInteger: fractional/NaN endpoints fail closed.
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
     if (key.validBefore !== null && (!Number.isInteger(key.validBefore) || Math.abs(key.validBefore) > mag)) fail("verify_historical_anchor: valid_before magnitude");
     if (key.validBefore !== null && key.validBefore <= key.validFrom) fail("verify_historical_anchor: valid_before ordering");
@@ -1603,7 +1597,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     closedShape([compact, oldKey, newKey, expected], ["bytes", SHAPE_HIST_KEY, SHAPE_HIST_KEY, "object"]);
     assert(oldKey.publicKey.length === 32 && newKey.publicKey.length === 32, "verify_key_transition: key width");
     if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
-    // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check.
+    // Thread expected.bounds (resolved once) through every bound-sensitive check.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     // Key-window endpoints magnitude-bounded (both keys — the Rust parity).
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
@@ -1657,17 +1651,16 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
   return trying(() => {
     closedShape([archived, keyChain, expected], [{ fields: { chunks: { seq: "bytes" }, version: "str" } }, { fields: { keys: { seq: SHAPE_HIST_KEY } } }, SHAPE_EXPECTED_EXPORT]);
-    // The count ceiling FIRST (cross-vendor: even the static-bindings walk ran
-    // unbounded caller input before it).
+    // The count ceiling FIRST (even the static-bindings walk ran unbounded caller input before it).
     const vb0 = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (expected.transitions.length > resolve(vb0, "key_transitions" as MaximaKey)) fail("verify_anchored_export: transition count bound");
     // Key-window validity BEFORE chunk processing/hashing (the reference validates
     // key shapes at :91 before validate_chunks).
     if (keyChain.keys.length !== expected.transitions.length + 1) fail("verify_anchored_export: key count bound");
-    // Key ID/public-key shape before the digest (cross-vendor round 14).
+    // Key ID/public-key shape before the digest.
     for (const k of keyChain.keys) {
       if (typeof k.keyId !== "string" || k.keyId.length === 0 || k.keyId.length > resolve(vb0, "kid_bytes" as MaximaKey) || new TextEncoder().encode(k.keyId).length > resolve(vb0, "kid_bytes" as MaximaKey)) fail("verify_anchored_export: key id shape");
-      // the reference's ASCII-unreserved key_id class, pre-hash (round 15).
+      // The reference's ASCII-unreserved key_id class, pre-hash.
       if (!/^[A-Za-z0-9._~-]*$/.test(k.keyId)) fail("verify_anchored_export: key id charset"); // ASCII-unreserved class
       if (!(k.publicKey instanceof Uint8Array) || k.publicKey.length !== 32) fail("verify_anchored_export: key width");
     }
@@ -1718,10 +1711,10 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       if (t.currentKeyFingerprint.length !== 32 || t.nextKeyFingerprint.length !== 32 || bytesEqual(t.currentKeyFingerprint, t.nextKeyFingerprint)) fail(`verify_anchored_export: transition ${i} fingerprints`);
     }
     // Static expected-side bindings (reference validate_expected_anchored_export →
-    // validate_expected_export, anchored_export_codec.ex:362-371, reached at verify :92/:387):
-    // the caller's expected anchors + transitions belong to the expected chain (cross-vendor
-    // round 2: none of the six were enforced at verify; the anchors bound only to their own
-    // expected structs and the rows/header only to the chain).
+    // validate_expected_export, anchored_export_codec.ex:362-371, reached at verify:92/:387): the
+    // caller's expected anchors + transitions belong to the expected chain (none of the six were
+    // enforced at verify; the anchors bound only to their own expected structs and the rows/header
+    // only to the chain).
     const vb = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     if (expected.startAnchor.chainId !== expected.chain.chainId) fail("verify_anchored_export: start chain_id");
     if (expected.endAnchor.chainId !== expected.chain.chainId) fail("verify_anchored_export: end chain_id");
@@ -1733,15 +1726,15 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       if (expected.transitions[i]!.chainId !== expected.chain.chainId) fail(`verify_anchored_export: transition ${i} chain_id`);
     }
     void vb;
-    // BAP-09 #10/#11: the reference resolves Bounds.coerce(expected.bounds) once (anchored_export_codec.ex:84-185)
+    // The reference resolves Bounds.coerce(expected.bounds) once (anchored_export_codec.ex:84-185)
     // and threads it into validate_chunks (archive_chunks, archive_bytes), parse_archive (frame
     // reads), and every row check. The inner anchors/transitions carry their own bounds (used by
     // their own compact parsers). A caller tightening via expected.bounds now takes effect.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-    // Cross-vendor (nested bounds pinning): the reference (anchored_export_codec.ex:352-354, :404-406)
-    // pins every nested bounds to the top-level resolved bounds via `{:ok, ^bounds} <- Bounds.coerce(x.bounds)`
-    // — a nested value that differs (or defaults to maximum when the top is tightened) is REJECTED.
-    // The SDK previously preferred the outer bounds and silently discarded the nested value; pin them
+    // The reference (anchored_export_codec.ex:352-354,:404-406) pins every nested bounds to the
+    // top-level resolved bounds via `{:ok, ^bounds} <- Bounds.coerce(x.bounds)` — a nested value
+    // that differs (or defaults to maximum when the top is tightened) is REJECTED. The SDK
+    // previously preferred the outer bounds and silently discarded the nested value; pin them
     // explicitly so a mismatch fails closed, matching the reference.
     requireBoundsEqual(expected.chain.bounds, b, "verify_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "verify_anchored_export: start anchor bounds");
@@ -1749,22 +1742,22 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     for (let i = 0; i < expected.transitions.length; i++) {
       requireBoundsEqual(expected.transitions[i]!.bounds, b, `verify_anchored_export: transition ${i} bounds`);
     }
-    // Validate the chunk list BEFORE concatenation (mirrors anchored_export_codec.ex:101-102,333-342
-    // validate_chunks): each chunk nonempty, count < archive_chunks, total ≤ archive_bytes. Hashing
-    // happens after the shape is validated.
-    // Version shape (UTF-8 BYTES via TextEncoder) + equality BEFORE the digest
-    // (cross-vendor round 12: malformed metadata should not force hashing).
+    // Validate the chunk list BEFORE concatenation (mirrors
+    // anchored_export_codec.ex:101-102,333-342 validate_chunks): each chunk nonempty, count <
+    // archive_chunks, total ≤ archive_bytes. Hashing happens after the shape is validated. Version
+    // shape (UTF-8 BYTES via TextEncoder) + equality BEFORE the digest (malformed metadata should
+    // not force hashing).
     if (typeof archived.version !== "string" || archived.version.length === 0 || archived.version.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(archived.version) || typeof expected.objectVersion !== "string" || expected.objectVersion.length === 0 || expected.objectVersion.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(expected.objectVersion) || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     validateChunks(archived.chunks, b);
-    // Stream the digest over the chunks WITHOUT materializing/spreading them (reference hash_chunks,
-    // anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat). sha256Concat feeds
-    // the chunk list as an array, never spread, so a list of up to archive_chunks (65796) entries
-    // cannot hit V8's ~65534 call-arg ceiling. An inauthentic/oversized archive is rejected at the
-    // digest compare before the parse materializes the bytes (BAP-15 Rust precedent, v1.rs:30-40).
+    // Stream the digest over the chunks WITHOUT materializing/spreading them (reference
+    // hash_chunks, anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat).
+    // sha256Concat feeds the chunk list as an array, never spread, so a list of up to
+    // archive_chunks (65796) entries cannot hit V8's ~65534 call-arg ceiling. An
+    // inauthentic/oversized archive is rejected at the digest compare before the parse materializes
+    // the bytes.
     const digest = sha256Concat(archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
-    // (the version SHAPE + equality gates ran before the digest — round 12.)
     // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
     // Loop-build (no spread) for the same V8 arg-ceiling reason.
     let total = 0;
@@ -1788,12 +1781,13 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     ]);
     const expectedHeaderBytes = jcsEncode({ t: "object", v: headerMembers }, b);
     if (!bytesEqual(parsed.headerBytes, expectedHeaderBytes)) fail("verify_anchored_export: header");
-    // Verify start + end anchors + each transition against the ordered historical key chain.
-    // A key chain of N keys spans N-1 transitions (keys[0]→[1], ..., keys[N-2]→[N-1]); a 1-key,
-    // 0-transition archive is the no-rollover case the reference accepts (validate_historical_key_shapes
-    // requires keys == transitions+1, with no minimum). The exact-count check below is the gate.
-    // Cross-vendor re-review F2: validate the key-chain length BEFORE dereferencing keys[0]/keys[N-1]
-    // so a zero-key chain fails closed (Err) instead of raising TypeError on undefined.
+    // Verify start + end anchors + each transition against the ordered historical key chain. A key
+    // chain of N keys spans N-1 transitions (keys[0]→[1],..., keys[N-2]→[N-1]); a 1-key,
+    // 0-transition archive is the no-rollover case the reference accepts
+    // (validate_historical_key_shapes requires keys == transitions+1, with no minimum). The
+    // exact-count check below is the gate. validate the key-chain length BEFORE dereferencing
+    // keys[0]/keys[N-1] so a zero-key chain fails closed (Err) instead of raising TypeError on
+    // undefined.
     if (parsed.transitions.length !== expected.transitions.length) fail("verify_anchored_export: transition count");
     if (keyChain.keys.length !== parsed.transitions.length + 1) fail("verify_anchored_export: key chain length");
     verifyAnchorCompact(parsed.start, keyChain.keys[0]!, expected.startAnchor, "verify_anchored_export start", b);
@@ -1848,10 +1842,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       version: 1 as const, objectVersion: archived.version, chainId: expected.chain.chainId,
       firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence,
       rowCount: expected.chain.rowCount,
-      // Cross-vendor (facts immutability): copy caller-owned Uint8Array fields into fresh buffers so a
-      // later mutation of the input does not change the returned facts (the reference's Elixir binaries
-      // are immutable; TS arrays are not). lastHash/digest are freshly computed. Same family as the
-      // checkChain F3 fix.
+      // Copy caller-owned Uint8Array fields into fresh buffers so a later mutation of the input
+      // does not change the returned facts (the reference's Elixir binaries are immutable; TS
+      // arrays are not). lastHash/digest are freshly computed, as in checkChain.
       previousHash: new Uint8Array(expected.chain.previousHash),
       lastHash: previous, digest,
       startAnchorId: expected.startAnchor.anchorId, startAnchoredAt: expected.startAnchor.anchoredAt,
@@ -1868,12 +1861,12 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
 // Anchor-compact verification (shared by verify_historical_anchor + the anchored-export path).
 function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor, ctx: string, bounds?: Bounds): void {
   assert(key.publicKey.length === 32, `${ctx}: key width`);
-  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check. When
-  // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
-  // the nested anchor's bounds so the top-level tightening takes effect.
+  // Thread expected.bounds (resolved once) through every bound-sensitive check. When an enclosing
+  // export passes its own resolved bounds, prefer it over the nested anchor's bounds so the
+  // top-level tightening takes effect.
   const b = bounds ?? coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-  // Key-window endpoints: integral + magnitude-bounded (the standalone path's
-  // gates — cross-vendor round 7: the archive path skipped them).
+  // Key-window endpoints: integral + magnitude-bounded (the standalone path's gates — the archive
+  // path skipped them).
   {
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
@@ -1910,12 +1903,11 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
 function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPublicKey, nextKey: HistoricalPublicKey, expected: ExpectedKeyTransition, ctx: string, bounds?: Bounds): void {
   assert(currentKey.publicKey.length === 32 && nextKey.publicKey.length === 32, `${ctx}: key width`);
   if (bytesEqual(currentKey.publicKey, nextKey.publicKey)) fail(`${ctx}: distinct keys`);
-  // BAP-09 #10/#11: thread expected.bounds (resolved once) through every bound-sensitive check. When
-  // an enclosing export passes its own resolved bounds (cross-vendor re-review F1), prefer it over
-  // the nested transition's bounds so the top-level tightening takes effect.
+  // Thread expected.bounds (resolved once) through every bound-sensitive check. When an enclosing
+  // export passes its own resolved bounds, prefer it over the nested transition's bounds so the
+  // top-level tightening takes effect.
   const b = bounds ?? coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-  // Key-window endpoints: integral + magnitude-bounded for BOTH keys (the
-  // standalone path's gates — cross-vendor round 7).
+  // Key-window endpoints: integral + magnitude-bounded for BOTH keys.
   {
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(currentKey.validFrom) || !Number.isInteger(nextKey.validFrom) || Math.abs(currentKey.validFrom) > mag || Math.abs(nextKey.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
@@ -2052,16 +2044,13 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
 // Validate the chunk list BEFORE concatenation (anchored_export_codec.ex:333-342 validate_chunks):
 // at least one chunk, each chunk nonempty, count < archive_chunks, running total ≤ archive_bytes.
 function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
-  // Chunk elements must be Uint8Array (cross-vendor round 17 family symmetry:
-  // Python gates bytes-like; a runtime str chunk hashed as UTF-8 and coerced
-  // to zero bytes at materialization — fails closed downstream, but reject it
-  // at the shape gate).
+  // Chunk elements must be Uint8Array.
   for (const c of chunks) {
     if (!(c instanceof Uint8Array)) fail("verify_anchored_export: chunk type");
   }
   if (chunks.length === 0) fail("archive: no chunks");
-  // Cross-vendor re-review Finding 2: the reference's validate_chunks guard is `count < archive_chunks`
-  // on the recursive clause (start 0), accepting up to archive_chunks INCLUSIVE. Use `>` not `>=`.
+  // The reference's validate_chunks guard is `count < archive_chunks` on the recursive clause
+  // (start 0), accepting up to archive_chunks INCLUSIVE. Use `>` not `>=`.
   if (chunks.length > resolve(bounds, "archive_chunks" as MaximaKey)) fail("archive: chunk count");
   let total = 0;
   for (let i = 0; i < chunks.length; i++) {
@@ -2072,21 +2061,21 @@ function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
   }
 }
 
-// Cross-vendor (nested bounds pinning): the reference pins nested expected.bounds to the top-level
-// resolved bounds (anchored_export_codec.ex:352-354 `{:ok, ^bounds} <- Bounds.coerce(x.bounds)`).
-// When a nested bounds is present, it must coerce cleanly AND resolve to the same value as `top`
-// for every limit — otherwise a caller could tighten the top level while a nested struct widens or
-// drifts silently. Absent nested bounds is the documented default-to-maximum case (the caller omits
-// the field), which the reference also pins: Bounds.coerce(%{}) == maximum, so pin to top only when
-// top != maximum (a tightened top rejects the default-maximum nested). When top IS maximum, an absent
+// The reference pins nested expected.bounds to the top-level resolved bounds
+// (anchored_export_codec.ex:352-354 `{:ok, ^bounds} <- Bounds.coerce(x.bounds)`). When a nested
+// bounds is present, it must coerce cleanly AND resolve to the same value as `top` for every limit
+// — otherwise a caller could tighten the top level while a nested struct widens or drifts silently.
+// Absent nested bounds is the documented default-to-maximum case (the caller omits the field),
+// which the reference also pins: Bounds.coerce(%{}) == maximum, so pin to top only when top !=
+// maximum (a tightened top rejects the default-maximum nested). When top IS maximum, an absent
 // nested bounds is accepted (both resolve to maximum).
 function requireBoundsEqual(nested: Bounds | undefined, top: Bounds, ctx: string): void {
   if (nested === undefined) {
     // Absent nested bounds: valid only if the top coerces EQUAL to maximum (no tightening).
-    // Identity overrides (an explicit override whose value equals the maximum — boundsNew
-    // documents them as "identity no-op") merge to the full maximum struct in the reference
-    // (bounds.ex merge), so the pin's struct equality accepts: gate on EFFECTIVE tightening,
-    // not override-map size (cross-vendor finding: map-size gating wrong-rejected identity).
+    // Identity overrides (an explicit override whose value equals the maximum — boundsNew documents
+    // them as "identity no-op") merge to the full maximum struct in the reference (bounds.ex
+    // merge), so the pin's struct equality accepts: gate on EFFECTIVE tightening, not override-map
+    // size.
     for (const [mk, v] of top.overrides) {
       if (v !== MAXIMA[mk]) fail(`${ctx}: nested bounds absent under tightened top`);
     }

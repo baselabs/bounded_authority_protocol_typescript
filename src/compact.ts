@@ -20,8 +20,8 @@ const DOT = 0x2e;
 // Parse + bound a compact input into 3 segments. Validates the segment count, bounds, canonical
 // base64url of each segment, and decodes protected + payload (signature kept raw after decode).
 export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): CompactSegments {
-  // Cross-vendor F2: re-validate caller-supplied bounds (a hand-crafted Bounds can widen limits past
-  // MAXIMA, bypassing boundsNew). Mirrors the reference's Bounds.coerce on every entry point.
+  // Re-validate caller-supplied bounds (a hand-crafted Bounds can widen limits past MAXIMA,
+  // bypassing boundsNew). Mirrors the reference's Bounds.coerce on every entry point.
   const b = coerceBounds(bounds);
   if (input.length > resolve(b, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
   if (input.length === 0) fail("compact: empty");
@@ -57,12 +57,12 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
 
 const DOTB = new Uint8Array([DOT]);
 
-// scan_compact — faithful port of the reference CompactJws.scan (compact_jws.ex:16-27): the
+// Scan_compact — faithful port of the reference CompactJws.scan (compact_jws.ex:16-27): the
 // shape+size gate that `ath`/`hash` run BEFORE hashing a compact. It validates structure + bounds
 // only — NOT base64url canonicity (canonicity is the full verify path's job via parseCompact). The
 // producer ath (proof_signing_input) and the verify grant-hash both gate on this so a non-compact
 // grant (wrong segment count, oversized, dotted signature) is rejected rather than hashed. Mirrors
-// the Rust scan_compact gate added in the BAP-15 closeout.
+// the Rust scan_compact gate added in the Rust SDK.
 export function scanCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): void {
   const b = coerceBounds(bounds);
   if (input.length > resolve(b, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
