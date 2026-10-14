@@ -204,7 +204,7 @@ function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
     } else if (cp === 0x7f) {
       // DEL (0x7f): RFC 8785 serializes strings per ECMAScript JSON.stringify, which escapes only
       // U+0000–U+001F plus quote (0x22) and backslash (0x5c) — so raw DEL is RFC-COMPLIANT, NOT an
-      // RFC deviation. The Elixir reference (the contract per AGENTS rule 7) emits RAW 0x7f here
+      // RFC deviation. The Elixir reference (whose bytes are the contract) emits RAW 0x7f here
       // (jcs.ex:147 has no DEL case, so the general codepoint branch passes it through raw), and the
       // SDK matches those bytes for identical signed inputs and request digests. Verified:
       // Jcs.encode("x<DEL>y") -> [34,120,127,121,34].

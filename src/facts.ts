@@ -1,6 +1,7 @@
 // Value-bearing, redacted, non-authorizing facts (spec/bap-v1.md § Public verification contract,
-// REQ1-VERIFY-facts-redacted, REQ1-VERIFY-facts-not-credentials). No generic encoder, no `toJSON`,
-// no authorization/decision method (AGENTS rule 1). Grant/Envelope/Export carry
+// REQ1-VERIFY-facts-redacted, REQ1-VERIFY-facts-not-credentials). No authorization/decision
+// method: verification is not authority. Their rendering, encoding and string conversion are set in
+// redact.ts (the facts protocol). Grant/Envelope/Export carry
 // `authorization: "not_evaluated"`; Chain/Anchor/Transition carry `trust: "not_evaluated"`.
 
 // GrantFacts (spec/bap-v1.md): version, issuer, grant_id, issuer-key fingerprint (raw 32),

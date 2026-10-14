@@ -1,9 +1,9 @@
 // The single closed error value. Mirrors the Elixir {:error, :invalid} — no reason, no partial.
-// AGENTS rule 1: verification is not authority; rule 3: fail closed. Every public façade function
+// Verification is not authority, and every check fails closed. Every public façade function
 // returns Ok<T> | Err on this. A GENUINE protocol rejection throws/returns InvalidError; a runner/SDK
 // bug (TypeError, RangeError, uncaught library throw) is a distinct class that must NOT map to Invalid
-// (mirrors the Node runner's InvalidError whitelist discipline, corpus_independent.mjs:88-102 — only a
-// genuine protocol rejection maps to INVALID; everything else is a bug).
+// (the conformance runners follow the same discipline: only a genuine protocol rejection maps to
+// INVALID; everything else is a bug).
 /**
  * The package's single error class (`name: "InvalidError"`). Thrown by the primitives on invalid
  * input; the result-returning functions convert it into `{ ok: false }`.

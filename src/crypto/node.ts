@@ -24,8 +24,8 @@ export function sha256Concat(parts: readonly Uint8Array[]): Uint8Array {
   return new Uint8Array(h.digest());
 }
 
-// The SPKI DER for an Ed25519 public key: SEQUENCE { AlgId, BIT STRING <32 raw bytes> }. This matches
-// the reference runner's SPKI_ED25519_PREFIX (corpus_independent.mjs:27).
+// The SPKI DER for an Ed25519 public key: SEQUENCE { AlgId, BIT STRING <32 raw bytes> }. The 12-byte
+// prefix is the RFC 8410 SubjectPublicKeyInfo header for Ed25519.
 const SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 export function ed25519Key(raw32: Uint8Array): BackendPublicKey {

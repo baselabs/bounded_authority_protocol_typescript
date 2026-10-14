@@ -3,7 +3,7 @@
 // functions, the dispatch structs and the primitives the public contract names (spec/bap-v1.md §
 // Public verification contract). Every export is listed in docs/reference.md.
 //
-// No `authorized`/`decision` surface (AGENTS rule 1); every function returns Result<T> =
+// No `authorized`/`decision` surface (verification is not authority); every function returns Result<T> =
 // Ok | Err, mirroring {:ok,value}|{:error,:invalid}. Facts are value-bearing, redacted, and
 // non-authorizing.
 

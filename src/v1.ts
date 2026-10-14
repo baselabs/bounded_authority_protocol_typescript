@@ -245,9 +245,9 @@ function requireStringLit(obj: Extract<Tagged, { t: "object" }>, key: string, li
   if (!v || v.t !== "string" || utf8Str(v.v) !== lit) fail(`${ctx}: ${key}=${lit}`);
 }
 
-// Well-formed UTF-8 string check (mirrors the official String.valid?). Lone surrogates from a
+// Well-formed UTF-8 string check (mirrors the Elixir reference's String.valid?). Lone surrogates from a
 // \uXXXX escape survive JSON.parse and the JCS round-trip, so byte-length checks alone do not catch
-// them; the official rejects such strings (corpus_independent.mjs:1732).
+// them; the Elixir reference rejects such strings.
 function isWellFormed(s: string): boolean {
   const anyStr = s as string & { isWellFormed?: () => boolean };
   return typeof anyStr.isWellFormed === "function"

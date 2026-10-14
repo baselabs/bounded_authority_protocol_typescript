@@ -77,8 +77,7 @@ function node(ctx: DecodeCtx): void {
   ctx.nodes++;
 }
 
-// Per-node-type depth gate (mirrors the official Jcs.encode/Json.decode model, corpus_independent
-// .mjs:1913): root value at level 0; a SCALAR is valid at level <= depth; a CONTAINER is valid at
+// Per-node-type depth gate (mirrors the Elixir reference's Jcs.encode/Json.decode model): root value at level 0; a SCALAR is valid at level <= depth; a CONTAINER is valid at
 // level < depth (its children sit at level+1). A uniform `level > depth` gate wrongly accepts a
 // container at the deepest legal scalar level.
 function parseValue(ctx: DecodeCtx, level: number): Tagged {

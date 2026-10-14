@@ -71,8 +71,8 @@ export function digestWithPrefix(
   const projected = typedProject(castArguments);
   const array: Tagged = { t: "array", v: [{ t: "string", v: opBytes }, projected] };
   // Per-node bounds on the TYPED projection (not the raw args): `typed` deepens/triples the tree, so
-  // the depth boundary is ~15 (not 32) and total_nodes is reachable inline. Mirrors the official
-  // Jcs.encode per-node gate (corpus_independent.mjs:1913 withinJsonBounds + countJsonNodes).
+  // the depth boundary is ~15 (not 32) and total_nodes is reachable inline. Mirrors the Elixir
+  // reference's per-node JCS gate.
   if (!withinTaggedBounds(array, 0, b)) fail("request_digest: cast_arguments bounds");
   if (countTaggedNodes(array) > resolve(b, "total_nodes" as MaximaKey)) fail("request_digest: total_nodes");
   // JCS over the projection, enforcing jcs_bytes bound.

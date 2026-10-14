@@ -22,7 +22,7 @@ import { redacted } from "./redact.js";
 // Derived from the normative sources alone (ADR 0014's no-derivation bar): the profile spec +
 // the certified 40-case corpus at conformance/corpus-role-attestation.
 //
-// Verification is not authority (AGENTS rule 1): facts carry trust "not_evaluated" and NO
+// Verification is not authority: facts carry trust "not_evaluated" and NO
 // authorization marker — the anchor-facts posture ADR 0036 D5 fixes for this profile.
 
 const ALG = "EdDSA";
