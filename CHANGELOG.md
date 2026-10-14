@@ -4,7 +4,15 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
-No verdict changes.
+No verification verdict changes.
+
+### Added
+
+- The P-256 key helpers in the `v3` namespace, with the root's Ed25519 names and shapes:
+  `v3.jwkFromPublicKey(raw65)` (the public EC JWK object, type `v3.EcPublic`), `v3.thumbprintPreimage`,
+  `v3.thumbprintRaw` and `v3.publicKeyThumbprintRaw`. Like the Elixir `V3.EcJwk` functions, each
+  throws `InvalidError` for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the
+  `0x04` prefix, coordinates below p, on the curve).
 
 ### Changed
 
@@ -16,6 +24,10 @@ No verdict changes.
   `ContentAssertionFacts<redacted>`) and `ContentAssertion.V1.DecodedContentAssertion`. The hook is a
   non-enumerable symbol property: field access, `Object.keys`, spreading and `JSON.stringify` are
   unchanged.
+- `v3.jwkEncodePublic` and `v3.thumbprint` now refuse, with `InvalidError`, a key or JWK whose point
+  is not an acceptable P-256 key, as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
+  `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as given.
+  No conformance verdict changes.
 
 ### Fixed
 

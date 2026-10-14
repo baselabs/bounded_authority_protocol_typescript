@@ -47,7 +47,7 @@ These primitives throw the package's single error class, `InvalidError` (its `na
 | `base64urlDecode` | the input is not canonical unpadded base64url, or decodes past the optional maximum |
 | `boundsNew` | a limit name is unknown, or a value is not an integer, is not positive, widens a maximum, or changes a fixed width |
 | `parseSelector` (root, `v2`, `v3`) | the object is not a valid selector for that major |
-| `jwkEncodePublic`, `jwkFromPublicKey`, `thumbprint`, `thumbprintRaw`, `thumbprintPreimage`, `publicKeyThumbprintRaw` | the Ed25519 key is not 32 bytes or not acceptable (`v3.jwkEncodePublic` checks only the 65-byte width, and `v3.thumbprint` hashes the JWK members as given) |
+| `jwkEncodePublic`, `jwkFromPublicKey`, `thumbprint`, `thumbprintRaw`, `thumbprintPreimage`, `publicKeyThumbprintRaw` | the Ed25519 key is not 32 bytes or not acceptable (their `v3` forms: the key or JWK is not an acceptable P-256 point) |
 | `sha256` | any part is not a `Uint8Array` |
 | `fail`, `assert` | always, or when the condition is false (helpers for code built on the same contract) |
 

@@ -3,7 +3,11 @@ import { fail, assert, type Result, trying } from "./error.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { parseCompact, assembleSegments, scanCompact, type SigningInput, type CompactSegments } from "./compact.js";
-import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./ec_jwk.js";
+import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic } from "./ec_jwk.js";
+import {
+  publicJwk, checkedThumbprint, checkedThumbprintPreimage, checkedThumbprintRaw, checkedPublicKeyThumbprintRaw,
+  type EcPublic,
+} from "./ec_jwk.js";
 import { importEcPublicKey, es256Verify, validateEcPublicKey, _resetCensus } from "./es256.js";
 import { sha256, sha256Concat } from "./ed25519.js";
 import { digestWithPrefix, typedProject } from "./digest.js";
@@ -2303,7 +2307,14 @@ function requireBoundsEqual(nested: Bounds | undefined, top: Bounds, ctx: string
 // ec_jwk.js, not the v1/v2 OKP ones). parseSelector/selectorMatches/Selector and the three domain
 // separators are declared here (v3-owned); the rest are the shared modules, imported exactly as
 // the v1/v2 façades import them.
-export { jwkEncodePublic, jwkDecodePublic, thumbprint, sha256, base64urlDecode, base64urlEncode };
+export { jwkEncodePublic, jwkDecodePublic, sha256, base64urlDecode, base64urlEncode };
+// The public P-256 JWK and thumbprint helpers, the v3 mirror of the root's Ed25519 ones; each refuses a
+// key that is not an acceptable P-256 point.
+export {
+  publicJwk as jwkFromPublicKey, checkedThumbprintPreimage as thumbprintPreimage, checkedThumbprint as thumbprint,
+  checkedThumbprintRaw as thumbprintRaw, checkedPublicKeyThumbprintRaw as publicKeyThumbprintRaw,
+};
+export type { EcPublic };
 export { boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA };
 export { uriNormalize, typedProject };
 export type { Bounds, SigningInput, MaximaKey };

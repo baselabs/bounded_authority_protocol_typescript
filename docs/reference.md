@@ -647,11 +647,39 @@ It has the same function list as `v2`, with these key and signature forms:
   uncompressed SEC1 P-256 point `0x04 || x || y`, with both coordinates below the field prime and
   the point on the curve;
 - signatures are raw 64-byte `r || s` with `0 < r < n` and `0 < s <= (n - 1) / 2`;
-- `v3.jwkEncodePublic(raw65)` returns the canonical JSON of `{crv: "P-256", kty: "EC", x, y}`,
-  `v3.jwkDecodePublic(bytes)` returns the raw 65-byte key after full point validation, and
-  `v3.thumbprint({ crv: "P-256", kty: "EC", x, y })` returns the base64url RFC 7638 thumbprint.
+- the key helpers are the P-256 forms, with the root's names and shapes. Each throws `InvalidError`
+  for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the `0x04` prefix, both
+  coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it:
 
-Example: [Contract-majors 2 and 3](guides/contract-majors.md#major-3-es256).
+| Function | Returns |
+|---|---|
+| `v3.jwkFromPublicKey(raw65)` | the `v3.EcPublic` object `{ crv: "P-256"; kty: "EC"; x: string; y: string }` |
+| `v3.jwkEncodePublic(raw65, bounds?)` | that JWK as canonical JSON bytes |
+| `v3.jwkDecodePublic(bytes, bounds?)` | `Result<Uint8Array>`: the raw 65-byte key of exactly that JWK |
+| `v3.thumbprintPreimage(jwk)` | the RFC 7638 preimage `{"crv","kty","x","y"}` |
+| `v3.thumbprint(jwk)` | its unpadded base64url SHA-256: the `holderThumbprint` of a v3 grant |
+| `v3.thumbprintRaw(jwk)` | the same digest as 32 raw bytes |
+| `v3.publicKeyThumbprintRaw(raw65)` | the raw thumbprint straight from a raw key: the `keyFingerprint` of v3 anchors and transitions |
+
+```ts
+import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
+import { v3 } from "@bounded-authority-protocol/verifier";
+
+const { x, y } = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
+
+const jwk: v3.EcPublic = v3.jwkFromPublicKey(raw);
+assert.deepEqual(jwk, { crv: "P-256", kty: "EC", x, y });
+assert.equal(new TextDecoder().decode(v3.jwkEncodePublic(raw)), `{"crv":"P-256","kty":"EC","x":"${x}","y":"${y}"}`);
+assert.deepEqual(Buffer.from(v3.publicKeyThumbprintRaw(raw)).toString("base64url"), v3.thumbprint(jwk));
+
+const offCurve = Buffer.from(raw);
+offCurve[64] = offCurve[64]! ^ 1;
+assert.throws(() => v3.jwkFromPublicKey(offCurve), { name: "InvalidError" });
+```
+
+Example in context: [Contract-majors 2 and 3](guides/contract-majors.md#major-3-es256).
 
 ## The `roleAttestation` namespace
 

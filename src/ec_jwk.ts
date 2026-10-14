@@ -23,11 +23,13 @@ export interface EcPublic {
 // Encode a raw 65-byte SEC1 P-256 public key as the canonical EC JCS JSON bytes.
 /**
  * The canonical JSON bytes of the public EC JWK `{crv: "P-256", kty: "EC", x, y}` for a raw
- * 65-byte SEC1 key. Throws `InvalidError` for a key that is not 65 bytes.
+ * 65-byte SEC1 key. Throws `InvalidError` for a key that is not an acceptable P-256 point (65 bytes,
+ * the 0x04 prefix, both coordinates below p, on the curve), as the Elixir `V3.EcJwk.encode_public`.
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
-  assert(rawKey.length === 65, "jwk.encode_public: public key width must be 65");
+  assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk.encode_public: public key width must be 65");
+  validateEcPublicKey(rawKey);
   const jwk = jwkFromPublicKey(rawKey);
   // The encoded form is the JCS of {crv, kty, x, y} in lexicographic order. Build the tagged object.
   const members = new Map<string, never>([
@@ -124,4 +126,71 @@ export function thumbprintRaw(jwk: EcPublic): Uint8Array {
 // Raw 32-byte thumbprint directly from a raw 65-byte SEC1 public key.
 export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(jwkFromPublicKey(rawKey));
+}
+
+// ---- the public v3 helpers (exported through the v3 namespace) ----
+// Each refuses, with the closed InvalidError, a key that is not an acceptable P-256 point: the internal
+// structural helpers above serve the profile code, which validates keys at its own gates.
+
+// The raw 65-byte point behind a public EC JWK, after full validation.
+function acceptableJwkPoint(jwk: EcPublic): Uint8Array {
+  if (jwk === null || typeof jwk !== "object") fail("jwk: object required");
+  if (jwk.crv !== "P-256" || jwk.kty !== "EC" || typeof jwk.x !== "string" || typeof jwk.y !== "string") fail("jwk: P-256 EC members");
+  const x = base64urlDecode(strUtf8(jwk.x));
+  const y = base64urlDecode(strUtf8(jwk.y));
+  if (x.length !== 32 || y.length !== 32) fail("jwk: coordinate width");
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(x, 1);
+  raw.set(y, 33);
+  validateEcPublicKey(raw);
+  return raw;
+}
+
+/**
+ * The public EC JWK object `{crv: "P-256", kty: "EC", x, y}` of a raw 65-byte uncompressed SEC1 key.
+ * Throws `InvalidError` for a key that is not an acceptable P-256 point.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
+export function publicJwk(rawKey: Uint8Array): EcPublic {
+  assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk: public key width");
+  validateEcPublicKey(rawKey);
+  return jwkFromPublicKey(rawKey);
+}
+
+/**
+ * The RFC 7638 thumbprint preimage of a public P-256 JWK: the canonical JSON of `{crv, kty, x, y}`.
+ * Throws `InvalidError` for a JWK whose point is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
+export function checkedThumbprintPreimage(jwk: EcPublic): Uint8Array {
+  acceptableJwkPoint(jwk);
+  return thumbprintPreimage(jwk);
+}
+
+/**
+ * The RFC 7638 thumbprint of a public P-256 JWK as unpadded base64url (the form a v3 grant's
+ * `holderThumbprint` takes). Throws `InvalidError` for a JWK whose point is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
+export function checkedThumbprint(jwk: EcPublic): string {
+  return utf8Str(base64urlEncode(sha256(checkedThumbprintPreimage(jwk))));
+}
+
+/**
+ * The RFC 7638 thumbprint of a public P-256 JWK as 32 raw bytes. Throws `InvalidError` for a JWK
+ * whose point is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
+export function checkedThumbprintRaw(jwk: EcPublic): Uint8Array {
+  return sha256(checkedThumbprintPreimage(jwk));
+}
+
+/**
+ * The raw 32-byte RFC 7638 thumbprint of a raw 65-byte P-256 key (a v3 key fingerprint, as anchors
+ * and transitions carry). Throws `InvalidError` for a key that is not an acceptable P-256 point.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
+export function checkedPublicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
+  return thumbprintRaw(publicJwk(rawKey));
 }

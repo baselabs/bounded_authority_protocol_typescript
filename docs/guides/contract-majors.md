@@ -136,10 +136,10 @@ function es256Sign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
   return signature;
 }
 // The 65-byte uncompressed SEC1 point and the EC JWK of a P-256 public key.
-function p256Public(key: KeyObject): { raw: Uint8Array; jwk: { crv: "P-256"; kty: "EC"; x: string; y: string } } {
+function p256Public(key: KeyObject): { raw: Uint8Array; jwk: v3.EcPublic } {
   const { x, y } = key.export({ format: "jwk" });
   const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
-  return { raw, jwk: { crv: "P-256", kty: "EC", x: x!, y: y! } };
+  return { raw, jwk: v3.jwkFromPublicKey(raw) }; // refuses a point that is not an acceptable P-256 key
 }
 const message = (i: SigningInput): Uint8Array => Buffer.concat([i.protectedSegment, Buffer.from("."), i.payloadSegment]);
 
@@ -201,12 +201,12 @@ assert.deepEqual(
 );
 ```
 
-In the v3 namespace, `jwkEncodePublic`, `jwkDecodePublic` and `thumbprint` are the P-256 forms:
-`v3.jwkEncodePublic(raw65)` returns the canonical JWK JSON bytes, `v3.jwkDecodePublic(bytes)`
-returns the 65-byte key, and `v3.thumbprint(jwk)` takes the four-member EC JWK object. The root
-`jwkFromPublicKey`, `thumbprintRaw`, `thumbprintPreimage` and `publicKeyThumbprintRaw` are the
-Ed25519 forms for majors 1 and 2. The v3 namespace exports no `EcPublic` type; spell the JWK
-object as shown above.
+The v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the
+root's Ed25519 ones for majors 1 and 2: `v3.jwkFromPublicKey(raw65)` returns the `v3.EcPublic` JWK
+object, `v3.thumbprint`, `v3.thumbprintRaw` and `v3.thumbprintPreimage` take that object,
+`v3.publicKeyThumbprintRaw(raw65)` gives the raw fingerprint anchors and transitions carry,
+`v3.jwkEncodePublic(raw65)` returns the canonical JWK JSON bytes and `v3.jwkDecodePublic(bytes)` the
+65-byte key. Each refuses a point that is not an acceptable P-256 key.
 
 ## Choosing a major
 

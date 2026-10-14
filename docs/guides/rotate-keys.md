@@ -26,11 +26,10 @@ function enrollEd25519(publicKey: Uint8Array): Uint8Array {
   return publicKeyThumbprintRaw(publicKey); // the 32-byte RFC 7638 thumbprint: a stable key identity
 }
 
-// P-256 (major 3): the JWK decode applies the full point validation (65 bytes, 0x04 prefix,
-// coordinates below p, on the curve).
-function enrollP256(publicKey: Uint8Array): boolean {
-  if (publicKey.length !== 65) return false;
-  return v3.jwkDecodePublic(v3.jwkEncodePublic(publicKey)).ok;
+// P-256 (major 3): the v3 key helpers refuse anything that is not an acceptable point (65 bytes,
+// 0x04 prefix, coordinates below p, on the curve) with InvalidError.
+function enrollP256(publicKey: Uint8Array): Uint8Array {
+  return v3.publicKeyThumbprintRaw(publicKey); // the 32-byte RFC 7638 thumbprint of the P-256 key
 }
 
 const ed = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
@@ -40,10 +39,10 @@ assert.throws(() => enrollEd25519(new Uint8Array(32))); // the all-zero small-or
 
 const ec = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
 const ecKey = Buffer.concat([Buffer.from([0x04]), Buffer.from(ec.x!, "base64url"), Buffer.from(ec.y!, "base64url")]);
-assert.equal(enrollP256(ecKey), true);
+assert.equal(enrollP256(ecKey).length, 32);
 const offCurve = Buffer.from(ecKey);
 offCurve[64] = offCurve[64]! ^ 1; // flip one bit of y
-assert.equal(enrollP256(offCurve), false);
+assert.throws(() => enrollP256(offCurve), { name: "InvalidError" });
 ```
 
 ## Rotate an issuer key
