@@ -175,3 +175,13 @@ test("utf8Str refuses invalid UTF-8 with InvalidError and decodes valid text unc
   }
   assert.equal(decode(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61, 0xe2, 0x82, 0xac])), "﻿a€");
 });
+
+// Through utf8Str, invalid UTF-8 in a target URI is the closed result of both normalizers (0.7.0
+// threw the platform TypeError past the Result).
+test("uriNormalize and localLoopbackHttpUriNormalize return the closed result on invalid UTF-8", async () => {
+  const { localLoopbackHttpUriNormalize } = await import("../src/uri.js");
+  for (const bad of [[0xff], [0x68, 0x74, 0xc3]]) {
+    assert.deepEqual(uriNormalize(Uint8Array.from(bad)), { ok: false });
+    assert.deepEqual(localLoopbackHttpUriNormalize(Uint8Array.from(bad)), { ok: false });
+  }
+});

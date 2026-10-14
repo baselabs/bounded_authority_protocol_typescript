@@ -39,8 +39,11 @@ changes the behavior of several public functions and of facts values (marked **B
   is not an acceptable P-256 key, as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
   `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as given.
   No conformance verdict changes.
-- `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other decoder; 0.7.0 let
-  the platform `TypeError` of its fatal `TextDecoder` through. No conformance verdict changes.
+- **Breaking:** `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other
+  decoder; 0.7.0 let the platform `TypeError` of its fatal `TextDecoder` through. Through it,
+  `uriNormalize` and `localLoopbackHttpUriNormalize` now return the closed `{ ok: false }` for an
+  input that is not valid UTF-8, where 0.7.0 threw that `TypeError` past the `Result`. No conformance
+  verdict changes.
 
 - **Breaking:** `thumbprintPreimage`, `thumbprint` and `thumbprintRaw` (Ed25519, package root) and
   their `v3` forms refuse, with `InvalidError`, a JWK object with any member outside the RFC 7638
