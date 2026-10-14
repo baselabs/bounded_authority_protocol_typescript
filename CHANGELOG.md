@@ -55,6 +55,8 @@ No verification verdict changes.
   executed), and so do `LICENSE` and `NOTICE` (they ship in the tarball the package job installs).
   `test/ci-paths.test.ts` fails if an ignored glob matches a file a check reads.
 - TSDoc on every exported function, so editors show its contract on hover.
+- Released entries below no longer use internal process wording (review and sweep labels, internal
+  names for CI policy and the first publish); every factual statement is kept.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
   bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3
   (signer 0.5.0 signs majors 1, 2 and 3); the v2 example passed an untagged selector bound;
@@ -262,8 +264,8 @@ release is also the package-major step for the identifier-admission tightening b
 
 ### Fixed
 
-- **Producer/consumer bounds agreement on emitted bytes** (the cross-vendor finding-4 class,
-  transferred from the protocol repository's repair patch 0.6.1): `attestationSigningInput`
+- **Producer/consumer bounds agreement on emitted bytes** (the class the protocol repository's
+  repair patch 0.6.1 fixed): `attestationSigningInput`
   now enforces the caller-resolved limits on what it EMITS — encoded and decoded
   `segment_bytes`, `json_bytes`, `jcs_bytes` over the emitted payload JSON, and the
   projected `compact_bytes` (segments + separators + the 86-char signature encoding) — so the
@@ -281,19 +283,18 @@ release is also the package-major step for the identifier-admission tightening b
 The role-attestation release (ADR 0036 Decision 1.8: the first `0.x.0` bearing the
 `bap-role-attestation/1` profile). Additive public surface — the `roleAttestation` namespace —
 with zero verdict changes on existing input (all four certified corpora agree at unchanged
-counts); the Result-contract sweep closes crash-past-`Result` and silent-coercion defects on
-malformed caller context across the v1/v2/v3 façades.
+counts); malformed caller context now fails closed instead of crashing past `Result` or being
+silently coerced, across the v1/v2/v3 façades.
 ### Fixed
 
-- **Malformed caller context now fails closed on every contract-major surface** (the
-  owner-authorized sweep of the cross-vendor review's m1/m2 findings, first closed for the
-  role-attestation profile at its landing). `bounds.ts`'s `coerceBounds` and the leaf
+- **Malformed caller context now fails closed on every contract-major surface** (first closed
+  for the role-attestation profile when it landed). `bounds.ts`'s `coerceBounds` and the leaf
   `resolve` reject a structurally malformed `Bounds` object — a non-object, a missing
   maximum table, or an `overrides` that is missing, `null`, a bare array of non-pairs, or a
   string — with the single closed error instead of throwing a native `TypeError` past the
   `Result` contract, and `untrustedKeyLocator` in v1/v2/v3 now COERCES its caller bounds
   (it resolved them ahead of any coercion, so a forged widening override was honored — the
-  cross-vendor F2 class surviving in exactly one surface). Pinning note: a hand-rolled
+  only surface where that remained). Pinning note: a hand-rolled
   non-`Map` `ReadonlyMap` implementation now fails closed rather than iterating — an
   undocumented shape no documented producer ever emitted. The producers gain the field-level
   shape gates they lacked: `grantSigningInput` in v1/v2/v3 (previously a `null`/numeric
@@ -305,8 +306,8 @@ malformed caller context across the v1/v2/v3 façades.
   minted into the signed grant (`path: "abc"` → `["a","b","c"]` — a scope rewrite), numeric
   path members coerced to strings, and null selector/value/`values` items threw native
   `TypeError`s. No verdict changes on legal input: all four certified corpora, the census
-  legs, and the pre-existing suites are unchanged; the context-fail-closed suite (new,
-  RED-first) carries the 8+1 malformed-bounds shapes × 14 surfaces, the legal-bounds
+  legs, and the pre-existing suites are unchanged; the new context-fail-closed suite carries the
+  8+1 malformed-bounds shapes × 14 surfaces, the legal-bounds
   controls, and the grant/anchor/selector junk-field matrices across v1/v2/v3.
 
 ### Added
@@ -341,19 +342,19 @@ malformed caller context across the v1/v2/v3 façades.
   cross-profile rejection in both directions. Wired into CI and the release lane's
   verification gate (`pnpm conformance:role-attestation`).
 - Permissiveness mutation-gate battery for the profile's named closures (14 defect-injection
-  entries; twelve red-proven within the battery's run with exactly one targeted test each, two
-  adjudicated by injection): attestor window-endpoint magnitude, non-integer `now` (a
+  entries; twelve proven red-capable within the battery's run with exactly one targeted test each,
+  two settled by direct defect injection): attestor window-endpoint magnitude, non-integer `now` (a
   fractional now inside the window would otherwise verify), self-attestation ×2 (each leg
   discriminated on the wire, behind no other gate), containment ×2, the half-open now window,
   kid binding, subject raw-byte binding, role closed set, canonical payload bytes, the
-  signature gate, the protected-header canonical gate, and the `nbf`/`exp` integer tags. Two
-  adjudications from the injection driver, both verified rather than assumed: the `v`
+  signature gate, the protected-header canonical gate, and the `nbf`/`exp` integer tags. The two
+  injected cases: the `v`
   integer-tag distinction is byte-level redundant (JCS re-encodes `1.0` to `1`, so the
   canonical gate subsumes float lexemes for `v` — relaxing the tag check changed zero
   verdicts), while float `nbf`/`exp` endpoints are canonical (`1000.5` re-encodes
-  byte-identically) and carry their own red-proven closure. The first cross-vendor review
-  pass caught the two missing closures (header canonical, window integer tags) plus a
-  double-encoded test header; all repaired with re-run red proofs and the full battery.
+  byte-identically) and carry their own red-capable closure. Two closures (header canonical,
+  window integer tags) and a double-encoded test header were added or corrected before release,
+  each with its red proof and the full battery re-run.
 - `SigningInputKind` gains `role_attestation` (the `assembleSegments` kind list; assembly for
   every existing kind is byte-unchanged) — the TypeScript form of ADR 0036 D7's labeled
   kind touch.
@@ -382,7 +383,7 @@ malformed caller context across the v1/v2/v3 façades.
   byte-synced from the monorepo; `conformance/run_v3.ts` recomputes every verdict (292/292
   agree) and runs the census legs (curated == index two-way; discovery ⊆ declared;
   verify-import ⊇ expected-verify keys).
-- Corpus-repair rotation (same slice): the certified v3 corpus was repaired upstream — the
+- Corpus-repair rotation (in the same release): the certified v3 corpus was repaired upstream — the
   signing-input case files had carried v2-shaped 32-byte Ed25519 public keys, so their
   valid-class cases were mislabeled verdict invalid; inputs were re-keyed to v3 EC shapes and
   expected re-derived. The vendored snapshot was re-synced byte-for-byte (`rsync -a --delete`),
@@ -402,8 +403,8 @@ malformed caller context across the v1/v2/v3 façades.
 - CI: a third conformance lane (`pnpm conformance:v3`) on every OS of the tri-platform matrix;
   `.gitattributes` extends the byte-exact eol exemption to `conformance/corpus-v3/**`. The
   release lane now runs the same three-corpus verification gate before staging (it had been
-  left at v1+v2 when the corpus landed) and enforces tag/manifest version match — the signer
-  lane's guard, back-ported.
+  left at v1+v2 when the corpus landed) and enforces tag/manifest version match, as the signer's
+  release lane does.
 - **The verifier bench** — this package's public GitHub Pages site: the real verify path
   running in the visitor's browser. A static bundle built from this repository's verifier
   source plus the published signer package (demo issuance only; no backend, deploy-only
@@ -416,17 +417,17 @@ malformed caller context across the v1/v2/v3 façades.
 
 ## [0.2.2] — 2026-09-17
 
-No library-code change — toolchain and documentation alignment with the protocol family's
+No library-code change — toolchain and documentation alignment with the protocol repository's
 2026-09-17 state (BAP 0.4.1, the tri-platform build bar, the dependency-currency gate).
 
 - BAP 0.4.1 (published 2026-09-17; no wire-format or public-API change): the vendored
   v1, v2, and local-loopback conformance snapshots were compared byte-for-byte against
   the monorepo's `priv/conformance` at `main` — no delta, so no corpus rotation was
   required.
-- Tri-platform CI (the family build bar): the verify battery now runs on ubuntu-24.04,
+- Tri-platform CI: the verify battery now runs on ubuntu-24.04,
   macos-latest, and windows-latest — observed green on all three lanes — and a
   `.gitattributes` eol policy keeps the byte-exact corpora conversion-free on any clone.
-- Dependency-currency gate (latest-first, the family ADR 0032 shape):
+- Dependency-currency gate (latest-first, the shape of the protocol repository's ADR 0032):
   `tools/check-currency.mjs` classifies `pnpm outdated` data with the canonical
   `semver` range resolver — in-range resolvable drift fails (never pinnable),
   deliberate pins cover only out-of-range latests and carry inline reasons
@@ -434,7 +435,7 @@ No library-code change — toolchain and documentation alignment with the protoc
   unverifiable currency state fails closed. Dev dependencies refreshed to latest:
   tsx 4.23.13, @types/node 26.6.1, eslint 10.10.0, typescript-eslint 8.70.0,
   semver 7.8.5 (the gate's resolver).
-- Node toolchain pinned in lockstep: `.tool-versions` (asdf, 22.23.1 — the family pin)
+- Node toolchain pinned in lockstep: `.tool-versions` (asdf, 22.23.1)
   and CI's `node-version` agree; `engines.node >= 22` stays the consumer-facing floor.
   The release lane pins its Node exactly (24.19.0, matching the signer's lane) and
   SHA-pins `pnpm/action-setup` like every other action.
@@ -445,7 +446,7 @@ No library-code change — toolchain and documentation alignment with the protoc
 ## [0.2.1] — 2026-09-14
 
 - The first provenance-bound release of this package: identical library content to 0.2.0
-  (which was terminal-seeded during the graduation rename and carries no registry
+  (which was published from a local checkout during the rename and carries no registry
   attestation), published through this repository's release workflow under npm trusted
   publishing — the workflow stages with a signed provenance statement and a human approves
   under 2FA.
@@ -465,7 +466,7 @@ No library-code change — toolchain and documentation alignment with the protoc
 
 - **Package renamed `@bounded-authority/verifier` → `@bounded-authority-protocol/verifier`**
   before the second publication (the scope now matches the protocol repository naming). The
-  `@bounded-authority/verifier` 0.1.0 seed stays on the registry permanently and is
+  `@bounded-authority/verifier` 0.1.0 release stays on the registry permanently and is
   deprecated with a pointer to this package.
 - README rewritten as the package landing page (wire contract-majors section, tagged-algebra
   quickstart for `v2.checkEnvelope`, consumer-oriented conformance and versioning sections).
@@ -476,7 +477,7 @@ No library-code change — toolchain and documentation alignment with the protoc
 
 - First npm publication. Wire contract-majors 1 (283 certified conformance vectors) and 2
   (268 vectors, `lte`/`gte` range selectors) in one package; zero runtime dependencies;
-  published as the SDK's graduated per-repository publish surface (the seed publish executed
-  from the repository checkout under the owner's npm session; every subsequent release
-  publishes from the release workflow via npm trusted publishing with provenance).
+  published from this package's own repository (this first publish ran from a local checkout;
+  every later release publishes from the release workflow via npm trusted publishing with
+  provenance).
 
