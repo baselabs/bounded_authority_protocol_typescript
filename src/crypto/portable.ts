@@ -4,7 +4,7 @@
 // package API does not change shape.
 //
 // Ed25519 is an explicit COFACTORLESS check, encode([S]B - [k]A) == R compared byte for byte, moved
-// from the 0.6.0 playground shim (web/shim/node-crypto.ts). Rule S1 mandates the cofactorless equation,
+// from the 0.6.0 playground shim (web/shim/node-crypto.ts, since removed). Rule S1 mandates the cofactorless equation,
 // and noble's own verify is cofactored in BOTH of its modes (zip215 true and false accept signatures
 // with a torsion component in R or A that the cofactor multiplication cancels), so neither can stand in
 // for it: test/backend-contract.test.ts and test/portable-nonvacuity.test.ts pin that reason. The

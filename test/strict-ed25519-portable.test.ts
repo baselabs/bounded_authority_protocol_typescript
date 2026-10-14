@@ -4,8 +4,8 @@
 // playground shim, which the portable backend replaced) bundles src/ed25519.ts for the browser the way
 // a consumer's bundler does under the bap-portable condition (no alias, no injected Buffer), loads the
 // bundle, and holds it to the strict corpus's verify cases and to the mixed-order pin that makes noble's
-// own verify unfit for the job. The bench page's remaining node:crypto adapter (web/shim/node-crypto.ts,
-// kept only for the published signer it imports) is held to delegate to the same backend.
+// own verify unfit for the job. (The bench page's node:crypto adapter, which this suite also held to the
+// backend, was removed when the bench moved to the browser-safe signer 0.5.0.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -15,7 +15,6 @@ import { verify as nobleVerify, hashes } from "@noble/ed25519";
 import { sha512 } from "@noble/hashes/sha2.js";
 
 import { ed25519Cofactorless, ed25519Key } from "../src/crypto/portable.js";
-import { createPublicKey as shimCreatePublicKey, verifyEd25519 as shimVerify } from "../web/shim/node-crypto.js";
 // @ts-expect-error tools/browser-guard.mjs is untyped JavaScript
 import { scanUnresolvedGlobals } from "../tools/browser-guard.mjs";
 import {
@@ -123,7 +122,6 @@ test("honestA-mixedR: noble verify (zip215 true AND false) accepts it, the porta
   assert.equal(verifyStrictReference(publicKey, signature, message), false, "rule S1 refuses");
   assert.equal(bundle.verifyStrict(message, signature, publicKey), false, "the portable bundle refuses");
   assert.equal(ed25519Cofactorless(ed25519Key(publicKey), message, signature), false, "the backend alone refuses");
-  assert.equal(shimVerify(null, message, shimKey(publicKey), signature), false, "the bench adapter refuses");
   // Control: the same key and message, signed honestly, verify through the portable bundle.
   const honest = signHonest(new Uint8Array(32).fill(8), message);
   assert.equal(bundle.verifyStrict(message, honest, publicKey), true);
@@ -131,10 +129,8 @@ test("honestA-mixedR: noble verify (zip215 true AND false) accepts it, the porta
 });
 // The portable backend on its own (the tests above reach it behind the byte-level gate). Two of its
 // checks are not redundant with that gate when the backend is called directly, and each has a tripwire
-// here; the bench adapter (web/shim/node-crypto.ts) must give the same answers, because it delegates.
+// here.
 
-const shimKey = (raw: Uint8Array) =>
-  shimCreatePublicKey({ key: Uint8Array.from([...Buffer.from("302a300506032b6570032100", "hex"), ...raw]) });
 const direct = (message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean => {
   try {
     return ed25519Cofactorless(ed25519Key(publicKey), message, signature);
@@ -149,11 +145,9 @@ test("backend direct: an honest signature verifies; S + L (the malleable twin) i
   const message = enc("portable-direct");
   const honest = signHonest(seed, message);
   assert.equal(direct(message, honest, publicKey), true);
-  assert.equal(shimVerify(null, message, shimKey(publicKey), honest), true, "the bench adapter agrees");
   const twin = concat(honest.subarray(0, 32), bigToLe(leToBig(honest.subarray(32)) + L, 32));
   // [S + L]B = [S]B, so the cofactorless equation alone would accept the twin: the S < L check is load-bearing.
   assert.equal(direct(message, twin, publicKey), false);
-  assert.equal(shimVerify(null, message, shimKey(publicKey), twin), false, "the bench adapter agrees");
 });
 
 test("backend direct: a non-canonical alias key is refused by the strict point decode of the backend itself", () => {
@@ -164,7 +158,6 @@ test("backend direct: a non-canonical alias key is refused by the strict point d
   const forged = forgeUnderSmallOrderKey(alias, (n) => enc(`portable-alias-${n}`));
   assert.throws(() => ed25519Key(alias));
   assert.equal(direct(forged.message, forged.signature, alias), false);
-  assert.equal(shimVerify(null, forged.message, shimKey(alias), forged.signature), false, "the bench adapter agrees");
 });
 
 test("the portable bundle's choke point applies the byte gate to an imported key: R = identity, S + L, noncanonical R", async () => {

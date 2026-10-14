@@ -6,12 +6,16 @@
 //
 // The two package specifiers a sample may import are rewritten to this repository's source
 // (@bounded-authority-protocol/verifier) and to the installed signer dev dependency
-// (@bounded-authority-protocol/signer). A fence tagged anything other than `ts` (bash, json, text) is
+// (@bounded-authority-protocol/signer). A sample that imports the signer runs in a child Node process
+// against this repository's BUILT package (dist/, so pnpm test builds first) without the bap-source
+// condition: the signer loads its own published verifier, whose "#crypto" map would send bap-source to
+// source files a published package does not ship. A fence tagged anything other than `ts` (bash, json, text) is
 // not executed; `typescript`, `js` and `javascript` fences are refused so no sample can escape this
 // harness by its tag.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,6 +23,7 @@ import ts from "typescript";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const VERIFIER_SOURCE = join(REPO, "src", "index.ts");
+const VERIFIER_BUILT = join(REPO, "dist", "src", "index.js");
 const SIGNER_ENTRY = realpathSync(fileURLToPath(import.meta.resolve("@bounded-authority-protocol/signer")));
 const SIGNER_TYPES = SIGNER_ENTRY.replace(/\.js$/, ".d.ts");
 const SPECIFIERS: Record<string, { run: string; types: string }> = {
@@ -62,13 +67,16 @@ function samplesOf(file: string): Sample[] {
 const SAMPLES = docFiles().flatMap(samplesOf);
 const label = (s: Sample): string => `${s.doc}:${s.line}`;
 
-function rewrite(code: string, target: "run" | "types"): string {
+function rewrite(code: string, target: "run" | "built" | "types"): string {
   return code.replace(/from "(@bounded-authority-protocol\/[^"]*)"/g, (whole, specifier: string) => {
     const mapped = SPECIFIERS[specifier];
     assert.ok(mapped !== undefined, `unsupported package import ${specifier}`);
-    return target === "run" ? `from "${mapped.run}"` : whole;
+    if (target === "types") return whole;
+    if (target === "built" && specifier === "@bounded-authority-protocol/verifier") return `from "${pathToFileURL(VERIFIER_BUILT).href}"`;
+    return `from "${mapped.run}"`;
   });
 }
+const usesSigner = (s: Sample): boolean => s.code.includes('from "@bounded-authority-protocol/signer"');
 
 test("the docs carry samples (a known-positive for the fence scan)", () => {
   assert.ok(SAMPLES.some((s) => s.doc === "README.md"), "README.md has no ts sample");
@@ -154,8 +162,17 @@ for (const sample of SAMPLES) {
     const dir = mkdtempSync(join(tmpdir(), "bap-docs-run-"));
     try {
       const file = join(dir, "sample.mts");
-      writeFileSync(file, rewrite(sample.code, "run"));
-      await import(pathToFileURL(file).href);
+      if (!usesSigner(sample)) {
+        writeFileSync(file, rewrite(sample.code, "run"));
+        await import(pathToFileURL(file).href);
+        return;
+      }
+      assert.ok(existsSync(VERIFIER_BUILT), "dist/ is missing: run pnpm build first (pnpm test does)");
+      writeFileSync(file, rewrite(sample.code, "built"));
+      // The parent's conditions (bap-portable under test:portable), minus bap-source.
+      const conditions = process.execArgv.filter((a) => a.startsWith("--conditions=") && a !== "--conditions=bap-source");
+      const child = spawnSync(process.execPath, [...conditions, "--import", "tsx/esm", file], { cwd: REPO, encoding: "utf8" });
+      assert.equal(child.status, 0, `${label(sample)} failed:\n${child.stderr}`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

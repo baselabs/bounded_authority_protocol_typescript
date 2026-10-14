@@ -436,7 +436,7 @@ in the [changelog](CHANGELOG.md).
 ```bash
 pnpm install
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
-pnpm test                    # unit, struct and facade tests, and every docs sample
+pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 and the key census (vendored v1 snapshot)
 pnpm conformance:v2          # 268/268 and the key census (vendored v2 snapshot)

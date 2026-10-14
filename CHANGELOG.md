@@ -4,7 +4,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
-Documentation only. No library behavior, public API or verdict changes.
+No library behavior, public API or verdict changes.
 
 ### Documentation
 
@@ -24,6 +24,18 @@ Documentation only. No library behavior, public API or verdict changes.
   `NOTICE` named the retired `@bounded-authority/verifier` package; the bench page said the
   package has zero runtime dependencies (it has three since 0.7.0) and that the verifier never sees
   keys (it takes public keys).
+
+### Maintenance
+
+- The bench's demo issuance moves to `@bounded-authority-protocol/signer` 0.5.0 (the dependency
+  currency gate had failed since its release). Signer 0.5.0 is browser-safe, so the bench's
+  `node:crypto` adapter and `Buffer` injection (`web/shim/`) and the `buffer` dev dependency are
+  removed, with the adapter's legs of `test/strict-ed25519-portable.test.ts`. The bench bundle is
+  now built by `web/build.mjs`, which sets only the `bap-portable` condition and resolves
+  `#crypto` to the source backend for this repository's `src/` alone: a global `bap-source`
+  condition would send the signer's published verifier to unshipped source files.
+- For the same reason, the docs sample that imports the signer runs in a child process against the
+  built package without `bap-source`, so `pnpm test` and `pnpm test:portable` now build first.
 
 ## [0.7.0] — 2026-10-13
 

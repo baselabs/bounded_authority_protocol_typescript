@@ -68,9 +68,9 @@
     "size": "pnpm build && node --test --import tsx/esm test/bundle-size.ts && node tools/bundle-size.mjs",
     "license-check": "node tools/license-check.mjs",
     "check:currency": "node tools/check-currency.mjs",
-    "test": "node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
+    "test": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/*.test.ts",
     "test:permissiveness": "node --test --conditions=bap-source --import tsx/esm test/permissiveness.ts",
-    "test:portable": "node --test --conditions=bap-source --conditions=bap-portable --import tsx/esm test/*.test.ts test/permissiveness.ts",
+    "test:portable": "pnpm build && node --test --conditions=bap-source --conditions=bap-portable --import tsx/esm test/*.test.ts test/permissiveness.ts",
     "test:tarball": "pnpm build && node --test --import tsx/esm test/tarball.ts",
     "test:runtimes": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/runtimes.ts",
     "test:browser": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/browser.ts",
@@ -84,7 +84,7 @@
     "conformance:portable": "node --conditions=bap-source --conditions=bap-portable --import tsx/esm conformance/run_all.ts --backend=portable",
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
-    "build:site": "node web/build.mjs && esbuild web/main.ts --bundle --conditions=bap-source,bap-portable --minify --format=iife --target=es2022 --outfile=site-dist/app.js --alias:node:crypto=./web/shim/node-crypto.ts --inject:./web/shim/buffer-global.ts"
+    "build:site": "node web/build.mjs"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",
@@ -92,9 +92,8 @@
     "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
-    "@bounded-authority-protocol/signer": "^0.4.0",
+    "@bounded-authority-protocol/signer": "^0.5.0",
     "@types/node": "^26.6.5",
-    "buffer": "^6.0.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
