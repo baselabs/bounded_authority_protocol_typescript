@@ -94,8 +94,9 @@ changes the behavior of several public functions and of facts values (marked **B
   (0.7.0 today), in a fresh consumer with Node's type stripping, so the docs cannot claim
   published behavior that is not published.
 - The README quickstart names its file, the setup commands (including `npm pkg set type=module`) and
-  the run command, and `engines.node` is `>=22.23.1`, the oldest Node version CI tests (it was
-  `>=22`, which no check covered); `test/engines.test.ts` keeps the floor equal to CI's lowest pin.
+  the run command, and says a `.ts` file runs directly on Node 22.18 or later (or through `tsx`).
+  `engines.node` stays `>=22`; `test/engines.test.ts` pins it and checks every CI Node pin satisfies
+  it.
 - `SECURITY.md`: report vulnerabilities through GitHub private vulnerability reporting (the
   Security tab, "Report a vulnerability"), with the supported versions.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare

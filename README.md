@@ -43,8 +43,8 @@ once, and deciding whether to execute belong to your service.
 npm install @bounded-authority-protocol/verifier@0.7.0
 ```
 
-The package is ESM-only. It needs Node.js 22.23.1 or later (`engines`: the oldest version CI tests;
-CI also runs 24.19.0), or a current browser, Deno (CI: 2.5.6) or Bun (CI: 1.3.14). Its three runtime dependencies are
+The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.19.0), or a
+current browser, Deno (CI: 2.5.6) or Bun (CI: 1.3.14). Its three runtime dependencies are
 exactly pinned and MIT-licensed: `@noble/ed25519` 3.2.0, `@noble/curves` 2.4.0 and
 `@noble/hashes` 2.4.0, used only by the portable backend (browsers, Deno, Bun, workers).
 
@@ -64,10 +64,10 @@ npm pkg set type=module
 npm install @bounded-authority-protocol/verifier@0.7.0
 ```
 
-Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Node.js runs
-TypeScript files directly from 22.18 on by stripping the types, so every Node version the package
-supports runs it (checked as written on 22.23.1 and 24.19.0). With another runtime, run
-`npx tsx quickstart.ts`. It prints nothing when every assertion holds.
+Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`
+file directly needs Node.js 22.18 or later, which strips the types (checked as written on 22.23.1 and
+24.19.0); on an older Node 22, or another runtime, run `npx tsx quickstart.ts`. It prints nothing
+when every assertion holds.
 
 ```ts
 import assert from "node:assert/strict";
