@@ -361,14 +361,19 @@ Facts are plain readonly objects. They carry identifiers, times and digests, nev
 selector values, signatures, JWK containers or nonces, and none of them is a credential. No facts
 type has an "allowed" or decision field.
 
-Facts render redacted: Node's `util.inspect` and `console.log` print a facts value as
-`#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the major and type, and
-`RoleAttestation.V1.AttestationFacts`, `ContentAssertion.V1.ContentAssertionFacts` or
-`ContentAssertion.V1.DecodedContentAssertion` for the sibling profiles), the same text as the Elixir
-reference. The rendering is a non-enumerable hook; reading fields, `Object.keys`, spreading and
-`JSON.stringify` see the fields as before.
+New in 0.8.0 (unreleased): facts follow the profile's redaction rule ("fixed redacted rendering and
+no generic encoder, string, or enumeration protocol"). Every field reads by name, unchanged. Every
+generic rendering gives the fixed text `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the
+major and type; `RoleAttestation.V1.AttestationFacts` and `ContentAssertion.V1.ContentAssertionFacts`
+for the sibling profiles), the Elixir reference's text: Node's, Deno's and Bun's inspection
+(`console.log`, `util.inspect`), `String()`, template literals and `JSON.stringify`. Nothing
+enumerates: `Object.keys`, `for...in` and spreading see no field. Facts are frozen. A decoded content
+assertion is not a facts value: its fields stay enumerable and only its inspection is redacted.
 
-```ts
+To log or store facts, copy the fields you need by name, for example
+`const { grantId, invocationId } = envelopeFacts` (a rest element `...rest` captures nothing).
+
+```ts since=0.8.0
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { inspect } from "node:util";
@@ -386,9 +391,14 @@ const grant = assembleCompact(input.value, sign(null, Buffer.concat([input.value
 assert.ok(grant.ok);
 const facts = verifyGrant(grant.value, { keyId: "k", publicKey: raw }, { issuer: "https://issuer.example", audience: "https://api.example", evaluationTime: 50, clockSkew: 0 });
 assert.ok(facts.ok);
-assert.equal(inspect(facts.value), "#BoundedAuthorityProtocol.V1.GrantFacts<redacted>");
-assert.equal(facts.value.grantId, "g-1"); // fields read as before
-assert.equal(JSON.parse(JSON.stringify(facts.value)).grantId, "g-1");
+const rendering = "#BoundedAuthorityProtocol.V1.GrantFacts<redacted>";
+assert.equal(inspect(facts.value), rendering);
+assert.equal(String(facts.value), rendering);
+assert.equal(JSON.stringify({ facts: facts.value }), JSON.stringify({ facts: rendering }));
+assert.deepEqual(Object.keys(facts.value), []);
+assert.equal(facts.value.grantId, "g-1"); // fields read by name
+const { grantId, issuer } = facts.value; // copy what you log or store, by name
+assert.deepEqual({ grantId, issuer }, { grantId: "g-1", issuer: "https://issuer.example" });
 ```
 
 | Type | Returned by | Fields |
@@ -758,7 +768,7 @@ Types:
   `verification: "not_evaluated"`.
 - `ContentAssertionFacts`: the producer fields plus `version: 1`, `attestorKeyFingerprint`,
   `digest` (SHA-256 of the compact), `verification: "signature_and_window"` and
-  `trust: "not_evaluated"`. It renders redacted ([Facts and decoded types](#facts-and-decoded-types)).
+  `trust: "not_evaluated"`. It follows the facts redaction rule ([Facts and decoded types](#facts-and-decoded-types)).
 
 ```ts
 import assert from "node:assert/strict";

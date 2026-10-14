@@ -216,6 +216,17 @@ function sanitize(v: unknown): unknown {
   }
   return v;
 }
+// Facts enumerate nothing and serialize to their redacted rendering (the profile's redaction rule).
+// The fact sheet is a display for the person at the page, so it reads each field by name.
+function factFields(facts: object): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const name of Object.getOwnPropertyNames(facts)) {
+    const value = (facts as Record<string, unknown>)[name];
+    if (typeof value !== "function") out[name] = value;
+  }
+  return out;
+}
+
 function rawJsonBox(facts: unknown): string {
   return `<pre class="codebox">${esc(JSON.stringify(sanitize(facts), null, 2))}</pre>`;
 }
@@ -299,7 +310,7 @@ function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof
   const at = checkEnvelope(grant, proof, exp as never);
   if (at.ok) {
     setVerdict("ok", "ENVELOPE OK — cryptographic facts returned");
-    $("facts-body").innerHTML = rawJsonBox(at.value);
+    $("facts-body").innerHTML = rawJsonBox(factFields(at.value));
     $("tamper-hint").className = "hint";
     $("tamper-hint").textContent = "Now try to sneak one past — every button below produces a real, closed INVALID.";
     return;

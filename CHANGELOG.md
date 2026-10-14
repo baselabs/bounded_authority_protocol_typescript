@@ -17,14 +17,24 @@ changes the behavior of several public functions and of facts values (marked **B
 
 ### Changed
 
-- Every facts value renders redacted under Node's `util.inspect` and `console.log`, as the profile
-  requires ("fixed redacted rendering", `REQ1-VERIFY-facts-redacted`), with the Elixir reference's
-  text: `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` and likewise for `EnvelopeFacts`,
-  `ChainFacts`, `AnchorFacts`, `KeyTransitionFacts` and `AnchoredExportFacts` of each major,
-  `RoleAttestation.V1.AttestationFacts`, `ContentAssertion.V1.ContentAssertionFacts` (previously
-  `ContentAssertionFacts<redacted>`) and `ContentAssertion.V1.DecodedContentAssertion`. The hook is a
-  non-enumerable symbol property: field access, `Object.keys`, spreading and `JSON.stringify` are
-  unchanged.
+- **Breaking:** facts values follow the profile's redaction rule ("fixed redacted rendering and no
+  generic encoder, string, or enumeration protocol", `REQ1-VERIFY-facts-redacted`; the
+  content-assertion profile's "Inspection MUST redact values"), uniformly for every facts type:
+  `GrantFacts`, `EnvelopeFacts`, `ChainFacts`, `AnchorFacts`, `KeyTransitionFacts` and
+  `AnchoredExportFacts` of each major, `AttestationFacts` and `ContentAssertionFacts`.
+  - Fields still read by name, with the same values and types.
+  - Inspection (Node, Deno and Bun), `String()`, template literals and `JSON.stringify` all give the
+    fixed text `#BoundedAuthorityProtocol.<Module><redacted>`, the Elixir reference's Inspect text
+    (for example `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>`; content-assertion facts printed
+    `ContentAssertionFacts<redacted>` in 0.7.0).
+  - `Object.keys`, `for...in` and spreading enumerate no field, and facts values are frozen.
+
+  **Migration:** code that serialized, spread or iterated facts gets the redacted text or nothing.
+  Copy the fields you log or store by name (`const { grantId, invocationId } = facts`, or an explicit
+  object of the fields you need). For `contentAssertion.verifySuccessor`, store and pass back the
+  facts fields by name; a reconstructed plain object with those fields is accepted as before.
+  `DecodedContentAssertion` is not a facts value: its fields stay enumerable and only its inspection
+  is redacted. No conformance verdict changes.
 - `v3.jwkEncodePublic` and `v3.thumbprint` now refuse, with `InvalidError`, a key or JWK whose point
   is not an acceptable P-256 key, as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
   `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as given.

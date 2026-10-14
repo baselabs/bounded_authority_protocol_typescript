@@ -1,10 +1,14 @@
-// Facts render redacted (spec/bap-v1.md: "Facts are value-bearing and redacted, with fixed redacted
-// rendering and no generic encoder, string, or enumeration protocol"; REQ1-VERIFY-facts-redacted). The
-// rendering is Node's inspect hook, with the same text as the Elixir reference's Inspect
-// implementations (#BoundedAuthorityProtocol.<Module><redacted>). Field access, enumeration of the
-// fields and JSON.stringify are unchanged: the package adds no encoder, string or enumeration protocol,
-// and the hook is a non-enumerable symbol property. Every facts value here comes from a real
-// verification over freshly signed artifacts, for every facts type of every major and sibling profile.
+// Facts follow the profile's redaction rule (spec/bap-v1.md: "Facts are value-bearing and redacted,
+// with fixed redacted rendering and no generic encoder, string, or enumeration protocol"; the
+// content-assertion profile: "Inspection MUST redact values"). Every facts type, of every major and
+// sibling profile:
+//   - value-bearing: each field reads by name, unchanged;
+//   - fixed redacted rendering: util.inspect, String(), template literals and JSON.stringify all
+//     yield #BoundedAuthorityProtocol.<Module><redacted> (the Elixir reference's Inspect text);
+//   - no enumeration: Object.keys, for-in and spreading see nothing.
+// The decoded content assertion is not a facts type: it keeps the redacted inspection the Elixir
+// reference gives it, and its fields stay enumerable. Every value here comes from a real
+// verification over freshly signed artifacts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomUUID, sign, type KeyObject } from "node:crypto";
@@ -139,19 +143,45 @@ test("every facts type is covered: six per major and the three sibling-profile v
   assert.equal(CASES.length, 21);
 });
 
+const FIELD: Record<string, string> = {
+  GrantFacts: "grantId", EnvelopeFacts: "invocationId", ChainFacts: "chainId", AnchorFacts: "anchorId",
+  KeyTransitionFacts: "transitionId", AnchoredExportFacts: "objectVersion", AttestationFacts: "jti",
+  ContentAssertionFacts: "sub", DecodedContentAssertion: "sub",
+};
+
 for (const [name, facts] of CASES) {
-  test(`${name} renders as #BoundedAuthorityProtocol.${name}<redacted>; fields and JSON unchanged`, () => {
-    const rendering = `#BoundedAuthorityProtocol.${name}<redacted>`;
+  const rendering = `#BoundedAuthorityProtocol.${name}<redacted>`;
+  const type = name.split(".").pop()!;
+  const field = FIELD[type]!;
+  const value = (facts as Record<string, unknown>)[field];
+
+  test(`${name}: inspection renders ${rendering}`, () => {
     assert.equal(inspect(facts), rendering);
     assert.equal(inspect({ ok: true, value: facts }, { breakLength: Infinity }), `{ ok: true, value: ${rendering} }`);
-    // The hook is a non-enumerable symbol: keys, spreading and JSON see only the fields.
-    const descriptor = Object.getOwnPropertyDescriptor(facts, INSPECT);
-    assert.ok(descriptor !== undefined && descriptor.enumerable === false);
-    const fields = Object.keys(facts);
-    assert.ok(fields.length > 3 && fields.every((k) => typeof k === "string"));
-    const plain = { ...facts } as Record<string | symbol, unknown>;
-    assert.equal(plain[INSPECT], undefined);
-    assert.equal(JSON.stringify(facts), JSON.stringify(plain));
-    assert.ok(JSON.stringify(facts).length > rendering.length, "JSON still carries the fields");
+    assert.equal(typeof value, "string", `${field} reads by name`);
+    assert.ok((value as string).length > 0);
+  });
+
+  if (type === "DecodedContentAssertion") {
+    test(`${name}: a decoded value keeps enumerable fields and plain JSON`, () => {
+      assert.ok(Object.keys(facts).includes(field));
+      assert.equal(JSON.parse(JSON.stringify(facts))[field], value);
+    });
+    continue;
+  }
+
+  test(`${name}: JSON, String() and template literals yield the rendering; nothing enumerates; fields read by name`, () => {
+    assert.equal(JSON.stringify(facts), JSON.stringify(rendering));
+    assert.equal(JSON.stringify({ facts }), JSON.stringify({ facts: rendering }));
+    assert.equal(String(facts), rendering);
+    assert.equal(`${facts}`, rendering);
+    assert.deepEqual(Object.keys(facts), []);
+    const forIn: string[] = [];
+    for (const k in facts) forIn.push(k);
+    assert.deepEqual(forIn, []);
+    assert.deepEqual({ ...facts }, {});
+    assert.ok(Object.isFrozen(facts));
+    assert.equal((facts as Record<string, unknown>)[field], value);
+    assert.equal(typeof (facts as Record<string, unknown>).version, "number");
   });
 }

@@ -81,9 +81,11 @@ before the attestor key's `validFrom` and `exp` is not after its `validBefore` (
 most 8,192 bytes, and content at most 65,536 bytes (`content_bytes`, which you can tighten).
 
 `ContentAssertionFacts` repeats the signed fields and adds the attestor key fingerprint and
-`digest`, the SHA-256 of the exact assertion bytes. Node's `console.log` and `util.inspect` print
-these facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>`; read
-fields directly.
+`digest`, the SHA-256 of the exact assertion bytes. Read fields by name: inspection prints the
+facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>`, and in
+0.8.0 (unreleased) `JSON.stringify` gives that text too and nothing enumerates (see the
+[reference](../reference.md#facts-and-decoded-types)). To keep facts for a later `verifySuccessor`,
+store their fields by name.
 
 ## Successors
 

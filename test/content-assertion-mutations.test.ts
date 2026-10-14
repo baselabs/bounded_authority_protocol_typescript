@@ -22,6 +22,8 @@ function sign(producer=p):Uint8Array {
   const message=Buffer.from(`${utf8Str(si.protectedSegment)}.${utf8Str(si.payloadSegment)}`);
   return take(original.assembleCompact(si,new Uint8Array(crypto.sign(null,message,k.privateKey))));
 }
+// Facts enumerate nothing (the redaction rule); a stored copy is made field by field.
+const stored=(f:ContentAssertionFacts):ContentAssertionFacts=>Object.fromEntries(Object.getOwnPropertyNames(f).map(k=>[k,(f as unknown as Record<string,unknown>)[k]]).filter(([,v])=>typeof v!=="function")) as unknown as ContentAssertionFacts;
 const compact=sign();
 const old=take(original.verifyAssertion(compact,expected));
 const next=take(original.verifyAssertion(sign({...p,jti:"urn:example:b",gen:2,prev:old.digest,iat:1200,nbf:1200}),expected));
@@ -59,12 +61,12 @@ const cases:Mutation[]=[
  {name:"canonical payload",needle:'assert(equal(jcsEncode(p,b),payloadBytes),"canonical payload");',rejected:a=>!a.decodeAssertion(rewrite(()=>{},"payload")).ok},
  {name:"protected profile",needle:'assert(string(h.v.get("alg"))==="EdDSA" && string(h.v.get("typ"))===TYP,"protected profile");',rejected:a=>!a.decodeAssertion(rewrite(h=>{h.typ="ba+role-attestation";})).ok},
  {name:"content byte ceiling",needle:'assert(content.length>=1 && content.length<=resolve(b,"content_bytes"),"content byte bound");',rejected:a=>!a.contentDigest(new Uint8Array(65537)).ok},
- {name:"successor markers",needle:'assert(f.version===1 && f.verification==="signature_and_window" && f.trust==="not_evaluated","facts markers");',rejected:a=>!a.verifySuccessor(old,{...next,trust:"evaluated"} as unknown as ContentAssertionFacts,MAXIMUM_BOUNDS).ok},
- {name:"successor context",needle:'assert(predecessor.iss===successor.iss && predecessor.aud===successor.aud && predecessor.sub===successor.sub && predecessor.profile===successor.profile && equal(predecessor.profileDigest,successor.profileDigest),"successor context");',rejected:a=>!a.verifySuccessor(old,{...next,aud:"urn:other"},MAXIMUM_BOUNDS).ok},
- {name:"successor generation",needle:'assert(predecessor.gen<resolve(b,"integer_magnitude") && successor.gen===predecessor.gen+1,"successor generation");',rejected:a=>!a.verifySuccessor(old,{...next,gen:3},MAXIMUM_BOUNDS).ok},
- {name:"successor predecessor",needle:'assert(equal(successor.prev,predecessor.digest),"predecessor digest");',rejected:a=>!a.verifySuccessor(old,{...next,prev:new Uint8Array(32).fill(9)},MAXIMUM_BOUNDS).ok},
- {name:"successor issuance time",needle:'assert(successor.iat>=predecessor.iat,"successor issuance time");',rejected:a=>!a.verifySuccessor(old,{...next,iat:999},MAXIMUM_BOUNDS).ok},
- {name:"successor artifact identity",needle:'assert(successor.jti!==predecessor.jti,"distinct artifact");',rejected:a=>!a.verifySuccessor(old,{...next,jti:old.jti},MAXIMUM_BOUNDS).ok},
+ {name:"successor markers",needle:'assert(f.version===1 && f.verification==="signature_and_window" && f.trust==="not_evaluated","facts markers");',rejected:a=>!a.verifySuccessor(old,{...stored(next),trust:"evaluated"} as unknown as ContentAssertionFacts,MAXIMUM_BOUNDS).ok},
+ {name:"successor context",needle:'assert(predecessor.iss===successor.iss && predecessor.aud===successor.aud && predecessor.sub===successor.sub && predecessor.profile===successor.profile && equal(predecessor.profileDigest,successor.profileDigest),"successor context");',rejected:a=>!a.verifySuccessor(old,{...stored(next),aud:"urn:other"},MAXIMUM_BOUNDS).ok},
+ {name:"successor generation",needle:'assert(predecessor.gen<resolve(b,"integer_magnitude") && successor.gen===predecessor.gen+1,"successor generation");',rejected:a=>!a.verifySuccessor(old,{...stored(next),gen:3},MAXIMUM_BOUNDS).ok},
+ {name:"successor predecessor",needle:'assert(equal(successor.prev,predecessor.digest),"predecessor digest");',rejected:a=>!a.verifySuccessor(old,{...stored(next),prev:new Uint8Array(32).fill(9)},MAXIMUM_BOUNDS).ok},
+ {name:"successor issuance time",needle:'assert(successor.iat>=predecessor.iat,"successor issuance time");',rejected:a=>!a.verifySuccessor(old,{...stored(next),iat:999},MAXIMUM_BOUNDS).ok},
+ {name:"successor artifact identity",needle:'assert(successor.jti!==predecessor.jti,"distinct artifact");',rejected:a=>!a.verifySuccessor(old,{...stored(next),jti:old.jti},MAXIMUM_BOUNDS).ok},
 ];
 for(const c of cases) test(`content assertion mutation killed: ${c.name}`,async()=>{
   assert.equal(c.rejected(original),true,"unmodified source must refuse");
