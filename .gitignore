@@ -7,3 +7,6 @@ dist/
 # Site build output and browser-session artifacts
 site-dist/
 .playwright-mcp/
+
+# The manifest saved by tools/pack-manifest.mjs while a pack runs (restored by postpack)
+package.json.prepack

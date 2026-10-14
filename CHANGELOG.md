@@ -6,6 +6,15 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 No library behavior, public API or verdict changes.
 
+### Fixed
+
+- The published `package.json` no longer carries the development condition `bap-source` in its
+  `"#crypto"` import map. In 0.7.0 its targets were `./src/crypto/*.ts`, which the package does not
+  ship, so any consumer build or tool that set `bap-source` (for example through a dependency's own
+  development setup) failed with a missing module. `tools/pack-manifest.mjs` strips it at
+  `prepack` and restores the repository's manifest at `postpack`; the tarball check now fails if
+  any `exports` or `imports` target in the packed manifest is not a packed file.
+
 ### Documentation
 
 - README rewritten for a first read: what the package is and is not, a quickstart that issues and

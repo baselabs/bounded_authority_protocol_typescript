@@ -106,6 +106,36 @@ test("the tarball ships the built backends and no source", () => {
   assert.ok(!files.some((f) => f.startsWith("package/src/") || f.startsWith("package/test/") || f.startsWith("package/conformance/")), "no source, tests or corpora");
 });
 
+// The packed package.json must point only at packed files: every string target of "exports" and
+// "imports" (wildcard targets by their fixed prefix) is in the tarball. The repository's own
+// development condition (bap-source, targets in src/) is stripped at pack time (tools/pack-manifest.mjs).
+function targets(value: unknown, out: string[] = []): string[] {
+  if (typeof value === "string") out.push(value);
+  else if (value !== null && typeof value === "object") for (const v of Object.values(value)) targets(v, out);
+  return out;
+}
+test("pack check: every exports and imports target in the packed package.json is a packed file", () => {
+  const files = new Set(run("tar", ["-tzf", tarball], scratch).split("\n").filter(Boolean));
+  const packed = JSON.parse(run("tar", ["-xzOf", tarball, "package/package.json"], scratch)) as Record<string, unknown>;
+  const all = [...targets(packed.exports), ...targets(packed.imports)];
+  assert.ok(all.includes("./dist/src/crypto/portable.js"), "the walk must see the #crypto targets");
+  const missing = all.filter((t) => {
+    assert.ok(t.startsWith("./"), `target ${t} is relative`);
+    const path = `package/${t.slice(2)}`;
+    if (!t.includes("*")) return !files.has(path);
+    const prefix = path.slice(0, path.indexOf("*"));
+    return ![...files].some((f) => f.startsWith(prefix));
+  });
+  assert.deepEqual(missing, []);
+  const crypto = (packed.imports as Record<string, Record<string, unknown>>)["#crypto"]!;
+  assert.deepEqual(Object.keys(crypto), ["bap-portable", "deno", "bun", "workerd", "worker", "node", "types", "default"]);
+});
+
+test("pack check: packing leaves the repository's package.json unchanged", () => {
+  assert.deepEqual(JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")), MANIFEST);
+  assert.equal(readdirSync(REPO).filter((f) => f.startsWith("package.json.")).length, 0, "no pack backup left behind");
+});
+
 for (const moduleResolution of ["NodeNext", "Bundler"] as const) {
   for (const lib of [["ES2022"], ["ES2022", "DOM"]]) {
     for (const conditions of [[], ["bap-portable"], ["deno"], ["bun"], ["workerd"], ["worker"]]) {
@@ -119,6 +149,9 @@ for (const moduleResolution of ["NodeNext", "Bundler"] as const) {
 for (const [label, args, want] of [
   ["node (default conditions)", ["node", "main.mjs"], "node"],
   ["node --conditions=bap-portable", ["node", "--conditions=bap-portable", "main.mjs"], "portable"],
+  // A consumer build or tool that happens to set this repository's development condition still
+  // resolves the shipped backend: the packed manifest carries no bap-source branch.
+  ["node --conditions=bap-source", ["node", "--conditions=bap-source", "main.mjs"], "node"],
   ["node --conditions=workerd", ["node", "--conditions=workerd", "main.mjs"], "portable"],
   ["node --conditions=worker", ["node", "--conditions=worker", "main.mjs"], "portable"],
   ["deno", ["deno", "run", "--allow-read", "--allow-env", "main.mjs"], "portable"],

@@ -199,8 +199,9 @@ To force the portable backend in any of these, add the `bap-portable` condition.
 the implementation, not the platform library under it: `"node"` means `node:crypto` of the running
 runtime, whether that is linked against OpenSSL (Node.js) or BoringSSL (Electron), and it cannot
 tell the two apart. Verdicts do not depend on it, because every protocol gate runs before the
-backend. The `bap-source` condition is for this repository's own tests: its targets are in `src/`,
-which the package does not ship, so a consumer must not set it.
+backend. In 0.7.0 the published map also carried this repository's development condition,
+`bap-source`, whose targets are in `src/`, which the package does not ship: a build that set it
+failed to resolve. The next release strips it when the package is packed.
 
 ```ts
 import assert from "node:assert/strict";
