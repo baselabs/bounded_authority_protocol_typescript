@@ -15,8 +15,11 @@ No library behavior, public API or verdict changes.
   `docs/reference.md`.
 - Every `ts` sample in the README and in `docs/` is now typechecked against the source and run on
   both backends by `pnpm test` (`test/docs-samples.test.ts`), which also fails if the reference
-  misses a public export or if its bounds table drifts from `MAXIMA`. CI no longer skips pushes
-  that change only Markdown.
+  misses a public export or if its bounds table drifts from `MAXIMA`.
+- CI's push skip list is narrowed to the paths no check reads (`CHANGELOG.md`,
+  `.github/ISSUE_TEMPLATE/**`): README.md and `docs/` changes now run CI (their samples are
+  executed), and so do `LICENSE` and `NOTICE` (they ship in the tarball the package job installs).
+  `test/ci-paths.test.ts` fails if an ignored glob matches a file a check reads.
 - TSDoc on every exported function, so editors show its contract on hover.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
   bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3

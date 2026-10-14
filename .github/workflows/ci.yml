@@ -3,10 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
-    # Markdown is not ignored: pnpm test typechecks and runs every ts sample in README.md and docs/
-    # (test/docs-samples.test.ts), so a docs-only change can break the build.
+    # Skip a push that changes only paths no check reads (CI minutes). README.md and docs/ are NOT
+    # skipped: pnpm test typechecks and runs their samples; LICENSE and NOTICE ship in the tarball the
+    # package job installs. test/ci-paths.test.ts fails if a glob here matches a file a check reads.
     paths-ignore:
-      - "LICENSE*"
+      - "CHANGELOG.md"
       - ".github/ISSUE_TEMPLATE/**"
   pull_request:
 
