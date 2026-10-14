@@ -48,7 +48,7 @@ These primitives throw the package's single error class, `InvalidError` (its `na
 | `base64urlDecode` | the input is not canonical unpadded base64url, or decodes past the optional maximum |
 | `boundsNew` | a limit name is unknown, or a value is not an integer, is not positive, widens a maximum, or changes a fixed width |
 | `parseSelector` (root, `v2`, `v3`) | the object is not a valid selector for that major |
-| `jwkEncodePublic`, `jwkFromPublicKey`, `thumbprint`, `thumbprintRaw`, `thumbprintPreimage`, `publicKeyThumbprintRaw` | the Ed25519 key is not 32 bytes or not acceptable, or a JWK object has a member besides `crv`, `kty` and `x` (their `v3` forms: the key or JWK is not an acceptable P-256 point, or the JWK has a member besides `crv`, `kty`, `x` and `y`) |
+| `jwkEncodePublic`, `jwkFromPublicKey`, `thumbprint`, `thumbprintRaw`, `thumbprintPreimage`, `publicKeyThumbprintRaw` | the Ed25519 key is not 32 bytes or not acceptable; new in 0.8.0 (unreleased), also when a JWK object has a member besides `crv`, `kty` and `x`. Their `v3` forms, new in 0.8.0 (unreleased) except `v3.jwkEncodePublic` and `v3.thumbprint`: the key or JWK is not an acceptable P-256 point, or the JWK has a member besides `crv`, `kty`, `x` and `y` (in 0.7.0, `v3.jwkEncodePublic` checks only the 65-byte width and `v3.thumbprint` nothing) |
 | `sha256` | any part is not a `Uint8Array` |
 | `utf8Str` | the bytes are not valid UTF-8 (new in 0.8.0 (unreleased); 0.7.0 throws the platform `TypeError`) |
 | `fail`, `assert` | always, or when the condition is false (helpers for code built on the same contract) |
