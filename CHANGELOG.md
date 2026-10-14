@@ -59,9 +59,12 @@ changes the behavior of several public functions and of facts values (marked **B
 - The published `package.json` no longer carries the development condition `bap-source` in its
   `"#crypto"` import map. In 0.7.0 its targets were `./src/crypto/*.ts`, which the package does not
   ship, so any consumer build or tool that set `bap-source` (for example through a dependency's own
-  development setup) failed with a missing module. `tools/pack-manifest.mjs` strips it at
-  `prepack` and restores the repository's manifest at `postpack`; the tarball check now fails if
-  any `exports` or `imports` target in the packed manifest is not a packed file.
+  development setup) failed with a missing module. `tools/pack.mjs` (`pnpm pack:release`) builds the
+  tarball from a staging copy whose `package.json` has no development condition, never writing the
+  working tree; the tarball check and the release workflow both use it, and the release publishes
+  the file it packed (`npm stage publish <file>`) only if its SHA-256 equals the one the verify job
+  checked. The tarball check fails if any `exports` or `imports` target in the packed manifest is
+  not a packed file.
 
 ### Documentation
 

@@ -8,5 +8,5 @@ dist/
 site-dist/
 .playwright-mcp/
 
-# The manifest saved by tools/pack-manifest.mjs while a pack runs (restored by postpack)
-package.json.prepack
+# The tarball tools/pack.mjs writes by default
+build-pack/

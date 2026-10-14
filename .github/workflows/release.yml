@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    outputs:
+      tarball_sha256: ${{ steps.pack.outputs.sha256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,6 +61,15 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The release tarball, packed from a staging copy with the published manifest (tools/pack.mjs;
+      # it never writes the working tree). The tarball lane below checks exactly this file, and the
+      # publish job publishes a tarball only if its SHA-256 equals this one.
+      - name: Pack the release tarball
+        id: pack
+        run: |
+          node tools/pack.mjs --out build-pack > pack.json
+          node --input-type=module -e "const { readFileSync, appendFileSync } = await import('node:fs'); const p = JSON.parse(readFileSync('pack.json', 'utf8')); appendFileSync(process.env.GITHUB_OUTPUT, \`file=\${p.file}\\nsha256=\${p.sha256}\\n\`); console.log(\`packed \${p.file} sha256 \${p.sha256}\`);"
+
       - name: Full verification gate (typecheck, lint, license, unit, permissiveness, all conformance corpora, both backends)
         run: |
           pnpm typecheck && pnpm typecheck:browser && pnpm lint && pnpm guard:browser && pnpm size && pnpm license-check && \
@@ -66,7 +77,9 @@ jobs:
           pnpm conformance:v3 && pnpm conformance:role-attestation && pnpm conformance:content-assertion && \
           pnpm conformance:strict-ed25519 && pnpm conformance:local-loopback-http && pnpm conformance:portable
 
-      - name: Runtime lanes (Deno, Bun) and the packed tarball
+      - name: Runtime lanes (Deno, Bun) and the packed release tarball
+        env:
+          BAP_TARBALL: ${{ steps.pack.outputs.file }}
         run: pnpm test:runtimes && pnpm test:tarball
 
       - name: Browser lanes (Chromium, Firefox, WebKit under the strict CSP)
@@ -122,8 +135,21 @@ jobs:
         run: |
           node --input-type=module -e "const tag = process.env.GITHUB_REF_NAME.replace(/^v/, ''); const pkg = (await import('./package.json', { with: { type: 'json' } })).default.version; if (pkg !== tag) { console.error(\`tag v\${tag} does not match package.json version \${pkg}\`); process.exit(1); } console.log(\`tag v\${tag} matches package.json \${pkg}\`);"
 
-      # Trusted publishing: npm exchanges this workflow's OIDC token for a
-      # one-time publish grant. No NPM_TOKEN secret exists anywhere.
+      # The same tarball the verify job checked: packed by the same script from the same tree (npm
+      # packs with fixed file times and order), and refused unless the SHA-256 matches.
+      - name: Pack the release tarball and match the verified hash
+        id: pack
+        env:
+          VERIFIED_SHA256: ${{ needs.verify.outputs.tarball_sha256 }}
+        run: |
+          node tools/pack.mjs --out build-pack > pack.json
+          node --input-type=module -e "const { readFileSync, appendFileSync } = await import('node:fs'); const p = JSON.parse(readFileSync('pack.json', 'utf8')); if (p.sha256 !== process.env.VERIFIED_SHA256) { console.error(\`tarball sha256 \${p.sha256} differs from the verified \${process.env.VERIFIED_SHA256}\`); process.exit(1); } appendFileSync(process.env.GITHUB_OUTPUT, \`file=\${p.file}\\n\`); console.log(\`publishing \${p.file} sha256 \${p.sha256}\`);"
+
+      # Trusted publishing: npm exchanges this workflow's OIDC token for a one-time publish grant. No
+      # NPM_TOKEN secret exists anywhere. Publishing the tarball file runs no package scripts and takes
+      # the manifest from the tarball, so the registry metadata is the packed manifest. Node 24.19.0
+      # bundles npm 11.17.0, which has `npm stage`. The path is absolute (tools/pack.mjs prints it so):
+      # npm reads a relative "dir/file.tgz" as a GitHub shorthand.
       - name: Stage publish to npm with provenance (human approval required)
         if: steps.existing.outputs.published == 'false'
-        run: npm stage publish --provenance
+        run: npm stage publish "${{ steps.pack.outputs.file }}" --provenance

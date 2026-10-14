@@ -17,6 +17,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync } from "node:fs";
+// @ts-expect-error tools/pack.mjs is untyped JavaScript
+import { pack } from "../tools/pack.mjs";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as Record<string, unknown>;
@@ -58,8 +62,9 @@ console.log(JSON.stringify({ backend: BACKEND_ID, rfc8032: rfc, es256Garbage: es
 `;
 
 test.before(() => {
-  run("pnpm", ["pack", "--pack-destination", scratch], REPO);
-  tarball = join(scratch, readdirSync(scratch).find((f) => f.endsWith(".tgz"))!);
+  // The tarball the release publishes: BAP_TARBALL when the release workflow packed it already,
+  // otherwise packed here by the same script (tools/pack.mjs).
+  tarball = process.env.BAP_TARBALL ?? (pack(join(scratch, "packed")) as { file: string }).file;
   mkdirSync(consumer);
   writeFileSync(join(consumer, "package.json"), JSON.stringify({ name: "bap-consumer", private: true, type: "module", dependencies: { [NAME]: `file:${tarball}` } }));
   // --prefer-offline, not --offline: a fresh CI runner has no pnpm metadata cache for the
@@ -131,9 +136,35 @@ test("pack check: every exports and imports target in the packed package.json is
   assert.deepEqual(Object.keys(crypto), ["bap-portable", "deno", "bun", "workerd", "worker", "node", "types", "default"]);
 });
 
-test("pack check: packing leaves the repository's package.json unchanged", () => {
+const sha256 = (file: string): string => createHash("sha256").update(readFileSync(file)).digest("hex");
+
+test("pack: packing leaves the repository's package.json byte for byte unchanged", () => {
   assert.deepEqual(JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")), MANIFEST);
-  assert.equal(readdirSync(REPO).filter((f) => f.startsWith("package.json.")).length, 0, "no pack backup left behind");
+  assert.equal(readdirSync(REPO).filter((f) => f.startsWith("package.json.")).length, 0, "no manifest copy left behind");
+});
+
+test("pack: an interrupted pack (an unreadable dist file) fails and leaves package.json untouched", () => {
+  const before = readFileSync(join(REPO, "package.json"));
+  const victim = join(REPO, "dist/src/v1.js");
+  chmodSync(victim, 0o000);
+  let failed = false;
+  try {
+    run("node", [join(REPO, "tools/pack.mjs"), "--out", join(scratch, "interrupted")], REPO);
+  } catch {
+    failed = true;
+  } finally {
+    chmodSync(victim, 0o644);
+  }
+  assert.equal(failed, true, "the pack must fail on an unreadable packed file");
+  assert.deepEqual(readFileSync(join(REPO, "package.json")), before);
+  assert.equal(readdirSync(REPO).filter((f) => f.startsWith("package.json.")).length, 0);
+  assert.equal(existsSync(join(scratch, "interrupted")) ? readdirSync(join(scratch, "interrupted")).length : 0, 0, "no tarball");
+});
+
+test("pack: packing again gives the same bytes as the tarball checked here (the release compares this hash)", (t) => {
+  const again = (pack(join(scratch, "again")) as { file: string; sha256: string });
+  assert.equal(again.sha256, sha256(tarball));
+  t.diagnostic(`checked tarball ${tarball.split("/").pop()} sha256 ${again.sha256}`);
 });
 
 for (const moduleResolution of ["NodeNext", "Bundler"] as const) {

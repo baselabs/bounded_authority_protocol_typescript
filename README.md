@@ -451,6 +451,7 @@ pnpm conformance:portable    # every corpus under the portable backend (same ver
 pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types
 pnpm guard:browser           # browser bundle: portable backend only, no unresolved globals or eval
 pnpm size                    # browser bundle-size budget
+pnpm pack:release            # the release tarball, packed from a staging copy (build first)
 pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/Bun runs
 pnpm test:runtimes           # Deno and Bun conformance lanes (BAP_RUNTIMES=deno,bun)
 pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)

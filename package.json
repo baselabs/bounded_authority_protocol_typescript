@@ -61,8 +61,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "node tools/pack-manifest.mjs prepack",
-    "postpack": "node tools/pack-manifest.mjs postpack",
+    "pack:release": "node tools/pack.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:browser": "tsc -p tsconfig.browser.json && tsc -p browser/tsconfig.json",
     "lint": "eslint .",
