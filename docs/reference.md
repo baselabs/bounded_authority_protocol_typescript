@@ -429,7 +429,8 @@ or 3).
 - **`jcsEncode(value, bounds?): Uint8Array`** encodes a `Tagged` value as RFC 8785 canonical JSON
   (members sorted by UTF-16 code units, ECMAScript number text). Throws `InvalidError`.
 - **`strUtf8(text): Uint8Array`** and **`utf8Str(bytes): string`** convert between strings and UTF-8;
-  `utf8Str` throws `InvalidError` on invalid UTF-8.
+  `utf8Str` throws `InvalidError` on invalid UTF-8 (new in 0.8.0 (unreleased); 0.7.0 throws the
+  platform `TypeError`).
 
 ### Selectors and digests
 
@@ -516,6 +517,10 @@ assert.deepEqual(jwkDecodePublic(new TextEncoder().encode(`{"crv":"Ed25519","d":
 - **`torsionFree(publicKey): boolean`**: acceptable and `[L]A = O`; for key enrollment, not per request.
 - **`es256VerifyStrict(message, signature, publicKey): boolean`**: ES256 with a 65-byte uncompressed
   on-curve key, a raw 64-byte `r || s` signature, `0 < r < n` and low-S. Never throws.
+
+All four return `false` for any input that is not valid. New in 0.8.0 (unreleased): that also holds for an exotic input whose typed-array getters throw (a
+`Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
+`TypeError` for one.
 
 Examples: [Strict Ed25519](../README.md#strict-ed25519-rule-s1) and
 [Contract-majors 2 and 3](guides/contract-majors.md#major-3-es256).
@@ -662,7 +667,9 @@ It has the same function list as `v2`, with these key and signature forms:
 - signatures are raw 64-byte `r || s` with `0 < r < n` and `0 < s <= (n - 1) / 2`;
 - the key helpers are the P-256 forms, with the root's names and shapes. Each throws `InvalidError`
   for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the `0x04` prefix, both
-  coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it:
+  coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it. 0.7.0 has only
+  `v3.jwkEncodePublic` (width check only), `v3.jwkDecodePublic` and `v3.thumbprint` (no point check);
+  the other four, and the point checks, are new in 0.8.0 (unreleased):
 
 | Function | Returns |
 |---|---|
@@ -674,7 +681,7 @@ It has the same function list as `v2`, with these key and signature forms:
 | `v3.thumbprintRaw(jwk)` | the same digest as 32 raw bytes |
 | `v3.publicKeyThumbprintRaw(raw65)` | the raw thumbprint straight from a raw key: the `keyFingerprint` of v3 anchors and transitions |
 
-```ts
+```ts since=0.8.0
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { v3 } from "@bounded-authority-protocol/verifier";

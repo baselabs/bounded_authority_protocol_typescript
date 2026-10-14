@@ -14,12 +14,13 @@
 // harness by its tag.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
+import semver from "semver";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const VERIFIER_SOURCE = join(REPO, "src", "index.ts");
@@ -188,3 +189,42 @@ for (const sample of SAMPLES) {
     }
   });
 }
+
+// Release step for the docs: replace every "0.8.0 (unreleased)" (or the version being released) with
+// the bare version. The `since=` fences stay; once that version is published they run here against it.
+//
+// The reader path: every sample that does not need an unreleased version runs exactly as a reader runs
+// it, against the PUBLISHED package from npm, so the docs cannot claim published behavior that is not
+// published. A sample that needs a newer release is fenced `ts since=<version>` and its prose says
+// "new in <version> (unreleased)"; once that version is published, the same sample runs here against
+// it. The consumer is a fresh directory with "type": "module", the published verifier and the signer
+// version this repository tests with, installed by npm; each sample runs with Node's own TypeScript
+// type stripping, under the backend condition of this run (bap-portable under test:portable).
+const PUBLISHED = execFileSync("npm", ["view", "@bounded-authority-protocol/verifier", "version"], { encoding: "utf8" }).trim();
+const SIGNER_VERSION = (JSON.parse(readFileSync(join(SIGNER_ENTRY, "..", "..", "..", "package.json"), "utf8")) as { version: string }).version;
+const READER = SAMPLES.filter((s) => s.since === undefined || semver.lte(s.since, PUBLISHED));
+let consumer = "";
+
+test("reader path: install the published package in a fresh consumer", () => {
+  assert.ok(semver.valid(PUBLISHED), `npm reports a published version (${PUBLISHED})`);
+  assert.ok(READER.some((s) => s.doc === "README.md"), "the README quickstart is on the reader path");
+  consumer = mkdtempSync(join(tmpdir(), "bap-docs-reader-"));
+  writeFileSync(join(consumer, "package.json"), JSON.stringify({
+    name: "bap-docs-reader", private: true, type: "module",
+    dependencies: { "@bounded-authority-protocol/verifier": PUBLISHED, "@bounded-authority-protocol/signer": SIGNER_VERSION },
+  }));
+  execFileSync("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"], { cwd: consumer, stdio: "ignore" });
+});
+
+for (const sample of READER) {
+  test(`docs sample on the published package (reader path): ${label(sample)}`, () => {
+    assert.ok(consumer !== "", "the consumer was installed");
+    const file = join(consumer, `sample-${sample.doc.replace(/[^A-Za-z0-9]/g, "_")}-${sample.line}.mts`);
+    writeFileSync(file, sample.code);
+    const conditions = process.execArgv.filter((a) => a === "--conditions=bap-portable");
+    const child = spawnSync(process.execPath, [...conditions, file], { cwd: consumer, encoding: "utf8" });
+    assert.equal(child.status, 0, `${label(sample)} fails on the published ${PUBLISHED}:\n${child.stderr}`);
+  });
+}
+
+test.after(() => { if (consumer !== "") rmSync(consumer, { recursive: true, force: true }); });

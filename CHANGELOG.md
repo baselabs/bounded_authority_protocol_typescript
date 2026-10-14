@@ -83,6 +83,11 @@ changes the behavior of several public functions and of facts values (marked **B
 - TSDoc on every exported function, so editors show its contract on hover.
 - Released entries below no longer use internal process wording (review and sweep labels, internal
   names for CI policy and the first publish); every factual statement is kept.
+- New APIs and behavior of this release are marked "new in 0.8.0 (unreleased)" in the README and
+  `docs/` (one find-and-replace at release), and their samples are fenced `ts since=0.8.0`. The
+  samples test also runs every sample without that marker against the published package from npm
+  (0.7.0 today), in a fresh consumer with Node's type stripping, so the docs cannot claim
+  published behavior that is not published.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
   bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3
   (signer 0.5.0 signs majors 1, 2 and 3); the v2 example passed an untagged selector bound;

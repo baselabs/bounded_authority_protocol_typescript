@@ -159,6 +159,10 @@ assert.equal(torsionFree(publicKey32), true); // acceptable, and [L]A = O
 assert.equal(acceptablePublicKey(new Uint8Array(32)), false);
 ```
 
+New in 0.8.0 (unreleased): the "never throws" above also holds for an exotic input whose typed-array getters throw (a
+`Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
+`TypeError` for one.
+
 Verification itself has no subgroup check. A host MUST call `torsionFree` at key enrollment, at
 trust install, and before any deny-list or revocation comparison, so that one secret has one key
 encoding. It runs one scalar multiplication in BigInt arithmetic (under a millisecond on a current
@@ -201,7 +205,7 @@ runtime, whether that is linked against OpenSSL (Node.js) or BoringSSL (Electron
 tell the two apart. Verdicts do not depend on it, because every protocol gate runs before the
 backend. In 0.7.0 the published map also carried this repository's development condition,
 `bap-source`, whose targets are in `src/`, which the package does not ship: a build that set it
-failed to resolve. The next release strips it when the package is packed.
+failed to resolve. New in 0.8.0 (unreleased): the packed manifest no longer carries it.
 
 ```ts
 import assert from "node:assert/strict";
