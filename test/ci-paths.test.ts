@@ -1,11 +1,9 @@
-// CI skips pushes that change only paths in ci.yml's push.paths-ignore (a CI-minutes decision). A skip
-// is safe only for a path no check reads, so this guard fails when an ignored glob matches any tracked
-// file a check reads:
-//   - every Markdown file the docs-sample test executes (README.md, docs/**/*.md);
-//   - every file of the packed package (npm pack --dry-run, scripts ignored), which the tarball check
-//     installs and runs;
-//   - every tracked file under the source, test, conformance, tool, browser and site directories, and the
-//     root configuration the checks load.
+// CI skips pushes that change only paths in a trigger's paths-ignore list (a CI-minutes decision). A
+// skip is safe only for a path no check reads, so this guard reads every paths-ignore list of every
+// trigger in ci.yml with a YAML parser (any quoting, any indent) and fails when a glob matches any
+// tracked file outside UNREAD. Every tracked file is taken to be read by some check (source, tests,
+// corpora, tools, configuration, the docs Markdown whose samples run, and the files packed into the
+// tarball the package job installs) unless it is listed here with the reason no check reads it.
 // GitHub filter globs: `*` stays within one path segment, `**` crosses segments, `**/` also matches none.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,28 +11,24 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const CHECKED_DIRS = ["src/", "test/", "conformance/", "tools/", "browser/", "web/", "docs/", ".github/workflows/"];
-const CHECKED_ROOT_FILES = [
-  "README.md", "package.json", "pnpm-lock.yaml", "tsconfig.json", "tsconfig.build.json", "tsconfig.browser.json",
-  "tsconfig.web.json", "eslint.config.js", ".tool-versions",
-];
+const UNREAD: Record<string, string> = {
+  "CHANGELOG.md": "release notes: no check, test, build or pack step reads them",
+};
 
-export function pushPathsIgnore(workflow: string): string[] {
-  const lines = workflow.split("\n");
-  const push = lines.findIndex((l) => /^ {2}push:\s*$/.test(l));
-  assert.ok(push >= 0, "ci.yml has no push trigger");
+export function ignoredGlobs(workflow: string): string[] {
+  const doc = parse(workflow) as { on?: unknown };
+  const on = doc.on;
+  assert.ok(on !== null && typeof on === "object", "the workflow has an `on` mapping");
   const globs: string[] = [];
-  let inList = false;
-  for (const line of lines.slice(push + 1)) {
-    if (/^ {2}\S/.test(line) || /^\S/.test(line)) break; // the next trigger or top-level key
-    if (/^ {4}paths-ignore:\s*$/.test(line)) { inList = true; continue; }
-    if (!inList) continue;
-    const item = /^ {6}- "([^"]+)"\s*$/.exec(line);
-    if (item !== null) { globs.push(item[1]!); continue; }
-    if (/^\s*#/.test(line)) continue;
-    if (/^ {4}\S/.test(line)) break;
+  for (const trigger of Object.values(on as Record<string, unknown>)) {
+    if (trigger === null || typeof trigger !== "object") continue;
+    const list = (trigger as Record<string, unknown>)["paths-ignore"];
+    if (list === undefined) continue;
+    assert.ok(Array.isArray(list) && list.every((g) => typeof g === "string"), "paths-ignore is a list of strings");
+    globs.push(...(list as string[]));
   }
   return globs;
 }
@@ -52,26 +46,20 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${out}$`);
 }
 
-function readByChecks(): Set<string> {
-  const tracked = execFileSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
-  const read = new Set<string>();
-  for (const file of tracked) {
-    if (CHECKED_ROOT_FILES.includes(file) || CHECKED_DIRS.some((d) => file.startsWith(d))) read.add(file);
-  }
-  const [packed] = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: REPO, encoding: "utf8" })) as Array<{ files: Array<{ path: string }> }>;
-  for (const { path } of packed!.files) read.add(path);
-  return read;
+export function violations(globs: string[], tracked: string[]): string[] {
+  return globs.flatMap((glob) => tracked.filter((f) => globToRegExp(glob).test(f) && !(f in UNREAD)).map((f) => `${glob} skips ${f}`));
 }
 
-test("no push.paths-ignore glob in ci.yml matches a file a check reads", () => {
-  const read = readByChecks();
-  for (const known of ["README.md", "docs/reference.md", "src/index.ts", "LICENSE", "NOTICE", "package.json"]) {
-    assert.ok(read.has(known), `the read set must see ${known}`);
+const TRACKED = execFileSync("git", ["ls-files"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
+
+test("every paths-ignore glob in ci.yml matches only tracked files no check reads", () => {
+  for (const known of ["README.md", "docs/reference.md", "src/index.ts", "LICENSE", "CHANGELOG.md"]) {
+    assert.ok(TRACKED.includes(known), `the tracked-file walk must see ${known}`);
   }
-  const globs = pushPathsIgnore(readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8"));
-  assert.ok(globs.length > 0, "ci.yml declares no push.paths-ignore: the parser found nothing");
-  const violations = globs.flatMap((glob) => [...read].filter((f) => globToRegExp(glob).test(f)).map((f) => `${glob} skips ${f}`));
-  assert.deepEqual(violations, []);
+  const globs = ignoredGlobs(readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8"));
+  assert.ok(globs.length > 0, "ci.yml declares no paths-ignore: the parser found nothing");
+  assert.ok(globs.some((g) => globToRegExp(g).test("CHANGELOG.md")), "known positive: CHANGELOG.md is skipped");
+  assert.deepEqual(violations(globs, TRACKED), []);
 });
 
 test("the glob reading follows GitHub filter rules", () => {
@@ -81,4 +69,23 @@ test("the glob reading follows GitHub filter rules", () => {
   assert.equal(globToRegExp("**.md").test("README.md"), true);
   assert.equal(globToRegExp("*.md").test("docs/a.md"), false);
   assert.equal(globToRegExp("LICENSE*").test("LICENSE"), true);
+});
+
+// Planted forms a line-based reading missed: unquoted and single-quoted globs at another indent, on
+// two triggers.
+const PLANTED = `name: CI
+on:
+    push:
+        branches: [main]
+        paths-ignore:
+            - docs/**
+            - 'README.md'
+    pull_request:
+      paths-ignore: ["LICENSE*"]
+`;
+test("planted paths-ignore forms (unquoted, single-quoted, flow list, any indent) are read and caught", () => {
+  const globs = ignoredGlobs(PLANTED);
+  assert.deepEqual([...globs].sort(), ["LICENSE*", "README.md", "docs/**"]);
+  const found = violations(globs, TRACKED);
+  for (const f of ["README.md", "LICENSE", "docs/reference.md"]) assert.ok(found.some((v) => v.endsWith(` skips ${f}`)), f);
 });
