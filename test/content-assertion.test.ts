@@ -141,9 +141,6 @@ test("producer and assembly are closed under caller bounds and malformed inputs"
   assert.equal(f.ca.assertionDigest(strUtf8("invalid")).ok,false);
 });
 
-// Facts enumerate nothing (the redaction rule); a stored copy is made field by field.
-const stored=(f:ContentAssertionFacts):ContentAssertionFacts=>Object.fromEntries(Object.getOwnPropertyNames(f).map(k=>[k,(f as unknown as Record<string,unknown>)[k]]).filter(([,v])=>typeof v!=="function")) as unknown as ContentAssertionFacts;
-
 test("successors bind exact context/history; expired predecessors and changed signer remain usable", () => {
   const f=fixture(); const old=value(f.ca.verifyAssertion(f.compact,f.expected)); const k2=key();
   const p2={...f.producer,attestorKeyId:"assertor-2",jti:"urn:example:assertion:2",gen:2,prev:old.digest,iat:2100,nbf:2100,exp:3000,contentDigest:new Uint8Array(32).fill(11)};
@@ -153,9 +150,10 @@ test("successors bind exact context/history; expired predecessors and changed si
     {profileDigest:new Uint8Array(32)},{gen:3},{prev:new Uint8Array(32).fill(9)},{iat:999,nbf:999},{jti:old.jti},
     {trust:"evaluated"},{verification:"not_evaluated"},{digest:new Uint8Array(31)},{attestorKeyFingerprint:new Uint8Array(31)},
     {version:2},{gen:1},{iat:NaN},{attestorKeyId:""}])
-    assert.equal(f.ca.verifySuccessor(old,{...stored(next),...changes} as ContentAssertionFacts,MAXIMUM_BOUNDS).ok,false,JSON.stringify(changes));
-  // Control: the unchanged stored copy is accepted, so each refusal above is the change's.
-  assert.deepEqual(f.ca.verifySuccessor(stored(old),stored(next),MAXIMUM_BOUNDS),{ok:true,value:undefined});
+    assert.equal(f.ca.verifySuccessor(old,{...next,...changes} as ContentAssertionFacts,MAXIMUM_BOUNDS).ok,false,JSON.stringify(changes));
+  // Control: plain copies of the facts (as stored and reconstructed) are accepted, so each refusal
+  // above is the change's.
+  assert.deepEqual(f.ca.verifySuccessor({...old},{...next},MAXIMUM_BOUNDS),{ok:true,value:undefined});
   assert.equal(f.ca.verifySuccessor(value(f.ca.decodeAssertion(f.compact)) as unknown as ContentAssertionFacts,next,MAXIMUM_BOUNDS).ok,false);
   assert.equal(f.ca.verifySuccessor(null as unknown as ContentAssertionFacts,next,MAXIMUM_BOUNDS).ok,false);
 });

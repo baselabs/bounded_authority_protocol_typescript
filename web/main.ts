@@ -216,15 +216,10 @@ function sanitize(v: unknown): unknown {
   }
   return v;
 }
-// Facts enumerate nothing and serialize to their redacted rendering (the profile's redaction rule).
-// The fact sheet is a display for the person at the page, so it reads each field by name.
+// JSON.stringify of a facts value throws (the profile's redaction rule); the fact sheet is a display
+// for the person at the page, so it shows a plain copy of the fields.
 function factFields(facts: object): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const name of Object.getOwnPropertyNames(facts)) {
-    const value = (facts as Record<string, unknown>)[name];
-    if (typeof value !== "function") out[name] = value;
-  }
-  return out;
+  return { ...facts };
 }
 
 function rawJsonBox(facts: unknown): string {

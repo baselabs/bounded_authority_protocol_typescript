@@ -1,14 +1,17 @@
-// Facts follow the profile's redaction rule (spec/bap-v1.md: "Facts are value-bearing and redacted,
-// with fixed redacted rendering and no generic encoder, string, or enumeration protocol"; the
-// content-assertion profile: "Inspection MUST redact values"). Every facts type, of every major and
-// sibling profile:
-//   - value-bearing: each field reads by name, unchanged;
-//   - fixed redacted rendering: util.inspect, String(), template literals and JSON.stringify all
-//     yield #BoundedAuthorityProtocol.<Module><redacted> (the Elixir reference's Inspect text);
-//   - no enumeration: Object.keys, for-in and spreading see nothing.
+// Facts follow the profile's redaction rule as the Elixir reference implements it (spec/bap-v1.md:
+// "value-bearing and redacted, with fixed redacted rendering and no generic encoder, string, or
+// enumeration protocol"; the content-assertion profile: "Inspection MUST redact values"). Elixir
+// facts are maps: fields read and copy normally, Inspect renders #BoundedAuthorityProtocol.<Module>
+// <redacted>, and with no Jason.Encoder and no String.Chars, JSON encoding and to_string fail
+// loudly. Here, for every facts type of every major and sibling profile:
+//   - fields are ordinary enumerable, read-only properties of a frozen value: they read, spread,
+//     structuredClone and compare (deepStrictEqual) by content;
+//   - inspection (the Node, Deno and Bun hook) renders the fixed redacted text;
+//   - JSON.stringify, String(), template literals and other primitive conversion throw InvalidError
+//     naming the redaction rule.
 // The decoded content assertion is not a facts type: it keeps the redacted inspection the Elixir
-// reference gives it, and its fields stay enumerable. Every value here comes from a real
-// verification over freshly signed artifacts.
+// reference gives it and plain behavior otherwise. Every value comes from a real verification over
+// freshly signed artifacts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, randomUUID, sign, type KeyObject } from "node:crypto";
@@ -148,6 +151,7 @@ const FIELD: Record<string, string> = {
   KeyTransitionFacts: "transitionId", AnchoredExportFacts: "objectVersion", AttestationFacts: "jti",
   ContentAssertionFacts: "sub", DecodedContentAssertion: "sub",
 };
+const RULE = /REQ1-VERIFY-facts-redacted/;
 
 for (const [name, facts] of CASES) {
   const rendering = `#BoundedAuthorityProtocol.${name}<redacted>`;
@@ -155,33 +159,38 @@ for (const [name, facts] of CASES) {
   const field = FIELD[type]!;
   const value = (facts as Record<string, unknown>)[field];
 
-  test(`${name}: inspection renders ${rendering}`, () => {
+  test(`${name}: inspection renders ${rendering}; fields read, spread and clone by content`, () => {
     assert.equal(inspect(facts), rendering);
     assert.equal(inspect({ ok: true, value: facts }, { breakLength: Infinity }), `{ ok: true, value: ${rendering} }`);
     assert.equal(typeof value, "string", `${field} reads by name`);
-    assert.ok((value as string).length > 0);
+    assert.ok(Object.keys(facts).includes(field), "fields are enumerable");
+    const copy = { ...facts } as Record<string, unknown>;
+    assert.equal(copy[field], value);
+    assert.deepStrictEqual(copy, facts, "a spread copy equals the facts by content");
+    const cloned = structuredClone(facts) as Record<string, unknown>;
+    assert.deepStrictEqual(cloned, copy, "structuredClone preserves the content");
   });
 
   if (type === "DecodedContentAssertion") {
-    test(`${name}: a decoded value keeps enumerable fields and plain JSON`, () => {
-      assert.ok(Object.keys(facts).includes(field));
+    test(`${name}: a decoded value keeps plain JSON and string conversion`, () => {
       assert.equal(JSON.parse(JSON.stringify(facts))[field], value);
+      assert.equal(String(facts), "[object Object]");
     });
     continue;
   }
 
-  test(`${name}: JSON, String() and template literals yield the rendering; nothing enumerates; fields read by name`, () => {
-    assert.equal(JSON.stringify(facts), JSON.stringify(rendering));
-    assert.equal(JSON.stringify({ facts }), JSON.stringify({ facts: rendering }));
-    assert.equal(String(facts), rendering);
-    assert.equal(`${facts}`, rendering);
-    assert.deepEqual(Object.keys(facts), []);
-    const forIn: string[] = [];
-    for (const k in facts) forIn.push(k);
-    assert.deepEqual(forIn, []);
-    assert.deepEqual({ ...facts }, {});
+  test(`${name}: JSON.stringify, String() and template literals throw InvalidError naming the rule; frozen`, () => {
+    assert.throws(() => JSON.stringify(facts), (e: Error) => e.name === "InvalidError" && RULE.test(e.message));
+    assert.throws(() => JSON.stringify({ nested: facts }), (e: Error) => e.name === "InvalidError");
+    assert.throws(() => String(facts), (e: Error) => e.name === "InvalidError" && RULE.test(e.message));
+    assert.throws(() => `${facts}`, (e: Error) => e.name === "InvalidError");
     assert.ok(Object.isFrozen(facts));
-    assert.equal((facts as Record<string, unknown>)[field], value);
     assert.equal(typeof (facts as Record<string, unknown>).version, "number");
   });
 }
+
+test("two different grants give facts that differ by content (deepStrictEqual is not vacuous)", () => {
+  const a = majorFacts(v1, edKey).GrantFacts!, b = majorFacts(v1, edKey).GrantFacts!;
+  assert.notDeepStrictEqual(a, b);
+  assert.deepStrictEqual(a, { ...a });
+});

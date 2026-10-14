@@ -149,10 +149,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   function facts(f: ca.ContentAssertionFacts, a: Artifact): ca.ContentAssertionFacts {
     const o = a.facts_overrides ?? {};
     for (const k of Object.keys(o)) assert.ok(["verification", "trust", "digest"].includes(k), `unknown facts override ${k}`);
-    // Facts enumerate nothing (the profile's redaction rule), so a stored copy is made field by field,
-    // as a host reconstructing facts from storage does.
-    const stored = Object.fromEntries(Object.getOwnPropertyNames(f).map((k) => [k, (f as unknown as Record<string, unknown>)[k]]).filter(([, v]) => typeof v !== "function"));
-    return {...stored, ...o, ...(o.digest === undefined ? {} : {digest: raw(o.digest as string)})} as ca.ContentAssertionFacts;
+    return {...f, ...o, ...(o.digest === undefined ? {} : {digest: raw(o.digest as string)})} as ca.ContentAssertionFacts;
   }
   for (const c of successors) {
     const p = verify(c.predecessor), s = verify(c.successor);

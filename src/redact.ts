@@ -1,32 +1,38 @@
-// The facts protocol (spec/bap-v1.md: "Facts are value-bearing and redacted, with fixed redacted
-// rendering and no generic encoder, string, or enumeration protocol", REQ1-VERIFY-facts-redacted; the
-// content-assertion profile: "Inspection MUST redact values"). A facts value:
-//   - is value-bearing: every field reads by name, as a non-enumerable, read-only property;
-//   - has a fixed redacted rendering: Node's, Deno's and Bun's inspection (the
-//     nodejs.util.inspect.custom hook), String(), template literals and JSON.stringify (toJSON) all
-//     yield #BoundedAuthorityProtocol.<Module><redacted>, the Elixir reference's Inspect text;
-//   - enumerates nothing: Object.keys, for-in and spreading see no field.
-// The value is frozen.
+import { fail } from "./error.js";
+
+// The facts protocol, as the Elixir reference implements it (spec/bap-v1.md: "Facts are value-bearing
+// and redacted, with fixed redacted rendering and no generic encoder, string, or enumeration
+// protocol", REQ1-VERIFY-facts-redacted; the content-assertion profile: "Inspection MUST redact
+// values"). Elixir facts are maps whose fields read and copy normally; their Inspect renders
+// #BoundedAuthorityProtocol.<Module><redacted>, and with no Jason.Encoder and no String.Chars, JSON
+// encoding and to_string fail loudly. A facts value here is therefore:
+//   - a frozen (shallowly: the Uint8Array fields stay ordinary byte arrays) object whose fields are
+//     ordinary enumerable, read-only properties, so they read, spread, structuredClone and compare
+//     by content;
+//   - rendered redacted by Node's, Deno's and Bun's inspection (the nodejs.util.inspect.custom hook);
+//     browser developer tools ignore that hook and may show the fields;
+//   - not serializable or stringifiable: toJSON (so JSON.stringify), toString and Symbol.toPrimitive
+//     (so String(), template literals and +) throw InvalidError naming the rule.
+// The hooks are non-enumerable symbol or method properties, so copies carry the fields only.
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 
 const hidden = (value: unknown): PropertyDescriptor => ({ value, enumerable: false, writable: false, configurable: false });
 
 export function redacted<T extends object>(fields: T, module: string): T {
   const rendering = `#BoundedAuthorityProtocol.${module}<redacted>`;
-  const render = (): string => rendering;
-  const facts = {};
-  for (const [name, value] of Object.entries(fields)) Object.defineProperty(facts, name, hidden(value));
-  Object.defineProperties(facts, {
-    toJSON: hidden(render),
-    toString: hidden(render),
-    [Symbol.toPrimitive]: hidden(render),
-    [INSPECT]: hidden(render),
+  const refuse = (what: string) => (): never =>
+    fail(`${rendering}: facts have no ${what} (REQ1-VERIFY-facts-redacted); read the fields you need by name`);
+  Object.defineProperties(fields, {
+    [INSPECT]: hidden(() => rendering),
+    toJSON: hidden(refuse("JSON encoding")),
+    toString: hidden(refuse("string conversion")),
+    [Symbol.toPrimitive]: hidden(refuse("primitive conversion")),
   });
-  return Object.freeze(facts) as T;
+  return Object.freeze(fields);
 }
 
 // Redacted inspection only, for a decoded (not verified) value that the Elixir reference also
-// inspects as redacted: its fields stay ordinary enumerable data.
+// inspects as redacted.
 export function redactedInspection<T extends object>(value: T, module: string): T {
   const rendering = `#BoundedAuthorityProtocol.${module}<redacted>`;
   Object.defineProperty(value, INSPECT, hidden(() => rendering));

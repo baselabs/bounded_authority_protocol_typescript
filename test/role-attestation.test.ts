@@ -96,7 +96,7 @@ test("role attestation round-trips both roles and returns anchor-posture facts",
     // The facts contract (ADR 0036 D5): the anchor posture — trust not_evaluated, NO
     // authorization marker (critical rule 1 reserves it to grant/envelope/export facts).
     assert.deepEqual(
-      Object.getOwnPropertyNames(facts).filter((k) => typeof (facts as unknown as Record<string, unknown>)[k] !== "function").sort(),
+      Object.keys(facts).sort(),
       [
         "attestorKeyFingerprint", "attestorKeyId", "expiresAt", "jti", "notBefore",
         "role", "subjectKeyFingerprint", "subjectKeyId", "trust", "verification", "version",

@@ -362,16 +362,22 @@ selector values, signatures, JWK containers or nonces, and none of them is a cre
 type has an "allowed" or decision field.
 
 New in 0.8.0 (unreleased): facts follow the profile's redaction rule ("fixed redacted rendering and
-no generic encoder, string, or enumeration protocol"). Every field reads by name, unchanged. Every
-generic rendering gives the fixed text `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the
-major and type; `RoleAttestation.V1.AttestationFacts` and `ContentAssertion.V1.ContentAssertionFacts`
-for the sibling profiles), the Elixir reference's text: Node's, Deno's and Bun's inspection
-(`console.log`, `util.inspect`), `String()`, template literals and `JSON.stringify`. Nothing
-enumerates: `Object.keys`, `for...in` and spreading see no field. Facts are frozen. A decoded content
-assertion is not a facts value: its fields stay enumerable and only its inspection is redacted.
+no generic encoder, string, or enumeration protocol") the way the Elixir reference does:
 
-To log or store facts, copy the fields you need by name, for example
-`const { grantId, invocationId } = envelopeFacts` (a rest element `...rest` captures nothing).
+- Fields are ordinary read-only properties. They read, spread, `structuredClone` and compare by
+  content as before. A facts value is frozen shallowly: its `Uint8Array` fields are ordinary byte
+  arrays.
+- In Node, Deno and Bun inspection (`console.log`, `util.inspect`), a facts value renders as the
+  fixed text `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the major and type;
+  `RoleAttestation.V1.AttestationFacts` and `ContentAssertion.V1.ContentAssertionFacts` for the
+  sibling profiles), the Elixir reference's text. Browser developer tools do not use that hook and
+  may show the fields.
+- `JSON.stringify`, `String()`, template literals and other conversions to a primitive throw
+  `InvalidError` naming the rule, as Elixir's JSON encoding and `to_string` fail for facts.
+
+To log or store facts, copy the fields you need: `{ ...facts }` or
+`const { grantId, invocationId } = envelopeFacts` gives a plain object that serializes normally. A
+decoded content assertion is not a facts value: only its inspection is redacted.
 
 ```ts since=0.8.0
 import assert from "node:assert/strict";
@@ -391,14 +397,13 @@ const grant = assembleCompact(input.value, sign(null, Buffer.concat([input.value
 assert.ok(grant.ok);
 const facts = verifyGrant(grant.value, { keyId: "k", publicKey: raw }, { issuer: "https://issuer.example", audience: "https://api.example", evaluationTime: 50, clockSkew: 0 });
 assert.ok(facts.ok);
-const rendering = "#BoundedAuthorityProtocol.V1.GrantFacts<redacted>";
-assert.equal(inspect(facts.value), rendering);
-assert.equal(String(facts.value), rendering);
-assert.equal(JSON.stringify({ facts: facts.value }), JSON.stringify({ facts: rendering }));
-assert.deepEqual(Object.keys(facts.value), []);
-assert.equal(facts.value.grantId, "g-1"); // fields read by name
-const { grantId, issuer } = facts.value; // copy what you log or store, by name
-assert.deepEqual({ grantId, issuer }, { grantId: "g-1", issuer: "https://issuer.example" });
+assert.equal(inspect(facts.value), "#BoundedAuthorityProtocol.V1.GrantFacts<redacted>");
+assert.throws(() => JSON.stringify(facts.value), { name: "InvalidError" });
+assert.throws(() => String(facts.value), { name: "InvalidError" });
+assert.equal(facts.value.grantId, "g-1"); // fields read as before
+const { grantId, issuer } = facts.value; // copy what you log or store
+assert.equal(JSON.stringify({ grantId, issuer }), '{"grantId":"g-1","issuer":"https://issuer.example"}');
+assert.deepStrictEqual({ ...facts.value }, facts.value); // a copy equals the facts by content
 ```
 
 | Type | Returned by | Fields |

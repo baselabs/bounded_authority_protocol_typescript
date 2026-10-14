@@ -19,26 +19,25 @@ changes the behavior of several public functions and of facts values (marked **B
 
 - **Breaking:** facts values follow the profile's redaction rule ("fixed redacted rendering and no
   generic encoder, string, or enumeration protocol", `REQ1-VERIFY-facts-redacted`; the
-  content-assertion profile's "Inspection MUST redact values"), uniformly for every facts type:
-  `GrantFacts`, `EnvelopeFacts`, `ChainFacts`, `AnchorFacts`, `KeyTransitionFacts` and
-  `AnchoredExportFacts` of each major, `AttestationFacts` and `ContentAssertionFacts`.
-  - Fields still read by name, with the same values and types.
-  - Inspection (Node, Deno and Bun), `String()`, template literals and `JSON.stringify` all give the
-    fixed text `#BoundedAuthorityProtocol.<Module><redacted>`, the Elixir reference's Inspect text
-    (for example `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>`; content-assertion facts printed
-    `ContentAssertionFacts<redacted>` in 0.7.0).
-  - `Object.keys`, `for...in` and spreading enumerate no field, and facts values are frozen.
+  content-assertion profile's "Inspection MUST redact values") as the Elixir reference implements it,
+  uniformly for every facts type: `GrantFacts`, `EnvelopeFacts`, `ChainFacts`, `AnchorFacts`,
+  `KeyTransitionFacts` and `AnchoredExportFacts` of each major, `AttestationFacts` and
+  `ContentAssertionFacts`.
+  - Fields are unchanged ordinary properties: they read, spread, `structuredClone` and compare
+    (`deepStrictEqual`) by content as before. The value is frozen (shallowly).
+  - Node, Deno and Bun inspection (`console.log`, `util.inspect`) renders the fixed text
+    `#BoundedAuthorityProtocol.<Module><redacted>`, the Elixir reference's Inspect text (for example
+    `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>`; content-assertion facts printed
+    `ContentAssertionFacts<redacted>` in 0.7.0). Browser developer tools may still show the fields.
+  - `JSON.stringify(facts)`, `String(facts)`, template literals and other primitive conversions now
+    throw `InvalidError` naming the rule, as Elixir's JSON encoding and `to_string` fail for facts.
 
-  **Migration:** code that serialized, spread or iterated facts gets the redacted text or nothing.
-  Copy the fields you log or store by name (`const { grantId, invocationId } = facts`, or an explicit
-  object of the fields you need). For `contentAssertion.verifySuccessor`, store and pass back the
-  facts fields by name; a reconstructed plain object with those fields is accepted as before.
-  `DecodedContentAssertion` is not a facts value: its fields stay enumerable and only its inspection
-  is redacted. No conformance verdict changes.
-- `v3.jwkEncodePublic` and `v3.thumbprint` now refuse, with `InvalidError`, a key or JWK whose point
-  is not an acceptable P-256 key, as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
-  `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as given.
-  No conformance verdict changes.
+  **Migration:** `JSON.stringify(facts)` and `String(facts)` (and a template literal or `+` with a
+  facts value) now throw. To log, store or send facts, copy their fields into a plain object
+  (`{ ...facts }` or `const { grantId, invocationId } = facts`) and serialize that; Uint8Array fields
+  need your own encoding, as before. `contentAssertion.verifySuccessor` accepts such a reconstructed
+  plain object. `DecodedContentAssertion` is not a facts value: only its inspection is redacted. No
+  conformance verdict changes.
 - **Breaking:** `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other
   decoder; 0.7.0 let the platform `TypeError` of its fatal `TextDecoder` through. Through it,
   `uriNormalize` and `localLoopbackHttpUriNormalize` now return the closed `{ ok: false }` for an
