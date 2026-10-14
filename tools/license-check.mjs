@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Dependency-license check for @bounded-authority/verifier (ADR 0014 Decision 8). Since 0.7.0 the SDK
+// Dependency-license check for @bounded-authority-protocol/verifier (ADR 0014 Decision 8). Since 0.7.0 the SDK
 // has three runtime dependencies, all exactly pinned and MIT-licensed: @noble/ed25519, @noble/curves
 // and @noble/hashes, loaded only by the portable crypto backend (browsers, Deno, Bun, and Node under
 // --conditions=bap-portable); the node backend uses node:crypto. This gate fails if any runtime

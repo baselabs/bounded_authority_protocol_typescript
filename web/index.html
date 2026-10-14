@@ -46,17 +46,17 @@
     <p class="kicker"><span class="wordmark hero-mark"><i>[</i>BAP<i>]</i></span> Bounded Authority Protocol · the verifier package</p>
     <h1>The resource’s side of BAP:<br><em>check the envelope, keep the facts</em>.</h1>
     <p class="lede">Somewhere between your MCP server and the caller, a question has to be answered
-    without trusting anyone: <strong>is this request authorized — provably?</strong> The verifier
+    without trusting anyone: <strong>does this request carry a valid grant and proof for exactly this call?</strong> The verifier
     package answers it deterministically: issuer signature, holder binding, operation match, time
     window — cryptographic facts, no reason codes, no oracles. This page runs the real package.</p>
     <div class="hero-actions">
       <a class="btn primary" href="#bench"><svg class="ic"><use href="#i-terminal"/></svg> Open the bench</a>
       <a class="btn ghost" href="#install">npm i @bounded-authority-protocol/verifier</a>
     </div>
-    <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier never sees keys — only bytes. The demo envelope below is minted
+    <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier never sees private keys — only public keys and bytes. The demo envelope below is minted
     in your browser by the signer package; this package just judges it.</p>
     <ul class="badges">
-      <li>npm 0.7.0</li><li>CI: green on Linux</li><li>pure, deterministic verify path</li>
+      <li>npm 0.7.0</li><li>tested in Linux CI</li><li>pure, deterministic verify path</li>
     </ul>
   </div>
 </section>
@@ -206,7 +206,7 @@
 
 <section class="wrap" id="install">
   <div class="sec-head"><h2>Install</h2></div>
-  <pre class="code slim">npm i @bounded-authority-protocol/verifier    # Node >= 22, zero runtime dependencies</pre>
+  <pre class="code slim">npm i @bounded-authority-protocol/verifier    # Node >= 22, browsers, Deno, Bun; three pinned @noble dependencies</pre>
 </section>
 </main>
 

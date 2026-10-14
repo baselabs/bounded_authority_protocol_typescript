@@ -1,4 +1,4 @@
-// ESLint config for @bounded-authority/verifier — the library-path purity gate (ADR 0014 Decision 8)
+// ESLint config for @bounded-authority-protocol/verifier — the library-path purity gate (ADR 0014 Decision 8)
 // and, since 0.7.0, the browser-safety gate. test/guards.test.ts holds every rule below to a probe that
 // must trip it, linted against THIS file.
 //
