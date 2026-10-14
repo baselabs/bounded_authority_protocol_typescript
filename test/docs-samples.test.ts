@@ -47,21 +47,24 @@ function docFiles(): string[] {
   return out;
 }
 
-// A fence opens with ``` and an info string at any indent (a sample inside a list item is indented);
-// its content is dedented by that indent, and it closes at a ``` line with the same indent. The first
-// word of the info string is the language; `ts since=<version>` marks a sample that needs that
-// release (see the reader-path test below).
+// A fence opens with three or more backticks or tildes and an info string, at any indent (a sample
+// inside a list item is indented); its content is dedented by that indent, and it closes at a line of
+// the same character, at least as long, with the same indent (CommonMark). The first word of the
+// info string is the language; `ts since=<version>` marks a sample that needs that release (see the
+// reader-path test below).
 function samplesOf(file: string): Sample[] {
   const lines = readFileSync(file, "utf8").split("\n");
   const samples: Sample[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = /^( *)```(.*)$/.exec(lines[i]!);
+    const open = /^( *)(`{3,}|~{3,})(.*)$/.exec(lines[i]!);
     if (open === null) continue;
     const indent = open[1]!;
-    const [tag = "", ...attributes] = open[2]!.trim().split(/\s+/);
+    const marker = open[2]!;
+    const [tag = "", ...attributes] = open[3]!.trim().split(/\s+/);
+    const closes = new RegExp(`^${indent}${marker[0] === "\`" ? "\`" : "~"}{${marker.length},}\\s*$`);
     const start = i;
     i++;
-    while (i < lines.length && lines[i] !== `${indent}\`\`\``) i++;
+    while (i < lines.length && !closes.test(lines[i]!)) i++;
     assert.ok(i < lines.length, `${relative(REPO, file)}:${start + 1}: unterminated fence`);
     assert.ok(!["typescript", "js", "javascript", "mjs", "mts", "tsx"].includes(tag),
       `${relative(REPO, file)}:${start + 1}: tag code samples \`ts\` so they are executed`);
