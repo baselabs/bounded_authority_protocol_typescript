@@ -88,6 +88,9 @@ changes the behavior of several public functions and of facts values (marked **B
   samples test also runs every sample without that marker against the published package from npm
   (0.7.0 today), in a fresh consumer with Node's type stripping, so the docs cannot claim
   published behavior that is not published.
+- The README quickstart names its file, the setup commands (including `npm pkg set type=module`) and
+  the run command, and `engines.node` is `>=22.23.1`, the oldest Node version CI tests (it was
+  `>=22`, which no check covered); `test/engines.test.ts` keeps the floor equal to CI's lowest pin.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
   bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3
   (signer 0.5.0 signs majors 1, 2 and 3); the v2 example passed an untagged selector bound;
