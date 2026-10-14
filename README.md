@@ -185,8 +185,8 @@ laptop), so it belongs at those points and never on the per-request path.
 The ES256 counterpart is `es256VerifyStrict(message, signature64, publicKey65)`: synchronous and
 total (it never throws), it returns `true` only for an uncompressed, on-curve P-256 key, a raw
 `r || s` signature with `0 < r < n` and `0 < s <= (n - 1) / 2` (low-S), and a valid ECDSA P-256 /
-SHA-256 signature over the message. It mirrors the `REQ3-SIGNING-*` rules of the v3 profile; the
-Elixir reference release 0.8.0 has no public counterpart.
+SHA-256 signature over the message. It applies the `REQ3-SIGNING-*` rules of the v3 profile to raw
+bytes.
 
 ## Browsers, Deno, Bun and workers
 

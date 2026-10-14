@@ -38,18 +38,23 @@ changes the behavior of several public functions and of facts values (marked **B
   need your own encoding, as before. `contentAssertion.verifySuccessor` accepts such a reconstructed
   plain object. `DecodedContentAssertion` is not a facts value: only its inspection is redacted. No
   conformance verdict changes.
+- **Breaking:** `v3.jwkEncodePublic` and `v3.thumbprint` refuse, with `InvalidError`, a key or JWK
+  whose point is not an acceptable P-256 key (65 bytes, the `0x04` prefix, both coordinates below p,
+  on the curve), as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
+  `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as
+  given. No conformance verdict changes.
 - **Breaking:** `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other
   decoder; 0.7.0 let the platform `TypeError` of its fatal `TextDecoder` through. Through it,
   `uriNormalize` and `localLoopbackHttpUriNormalize` now return the closed `{ ok: false }` for an
   input that is not valid UTF-8, where 0.7.0 threw that `TypeError` past the `Result`. No conformance
   verdict changes.
-
 - **Breaking:** `thumbprintPreimage`, `thumbprint` and `thumbprintRaw` (Ed25519, package root) and
   their `v3` forms refuse, with `InvalidError`, a JWK object with any member outside the RFC 7638
   required set of its key type (`crv`, `kty`, `x`; for P-256 also `y`): a private `d`, an `alg`, a
   `use` or anything else. This matches the Elixir `V1.Jwk` and `V3.EcJwk`, which decode exactly that
   member set. 0.7.0 hashed the required members and ignored the rest. No conformance verdict
   changes.
+
 ### Fixed
 
 - The thumbprint helpers that take a JWK object (`thumbprintPreimage`, `thumbprint`, `thumbprintRaw`,
@@ -86,8 +91,8 @@ changes the behavior of several public functions and of facts values (marked **B
   executed), and so do `LICENSE` and `NOTICE` (they ship in the tarball the package job installs).
   `test/ci-paths.test.ts` fails if an ignored glob matches a file a check reads.
 - TSDoc on every exported function, so editors show its contract on hover.
-- Released entries below no longer use internal process wording (review and sweep labels, internal
-  names for CI policy and the first publish); every factual statement is kept.
+- Earlier release entries are reworded for readers outside the project; every factual statement is
+  kept.
 - New APIs and behavior of this release are marked "new in 0.8.0 (unreleased)" in the README and
   `docs/` (one find-and-replace at release), and their samples are fenced `ts since=0.8.0`. The
   samples test also runs every sample without that marker against the published package from npm
