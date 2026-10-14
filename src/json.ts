@@ -450,11 +450,15 @@ function asciiStr(bytes: Uint8Array): string {
 const DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const ENCODER = new TextEncoder();
 /**
- * Decodes UTF-8 bytes to a string. Throws `TypeError` on invalid UTF-8.
+ * Decodes UTF-8 bytes to a string. Throws `InvalidError` on invalid UTF-8.
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function utf8Str(bytes: Uint8Array): string {
-  return DECODER.decode(bytes);
+  try {
+    return DECODER.decode(bytes);
+  } catch {
+    fail("utf8: invalid UTF-8");
+  }
 }
 /**
  * Encodes a string as UTF-8 bytes.

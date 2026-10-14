@@ -164,3 +164,14 @@ test("uri.normalize rejects malformed (returns Err)", () => {
   const r = uriNormalize(strUtf8("https://example.com:99999/"));
   assert.equal(r.ok, false);
 });
+
+// utf8Str is a decoder like the others: invalid UTF-8 is the closed InvalidError, never a platform
+// TypeError (which a Result function would rethrow as a bug).
+test("utf8Str refuses invalid UTF-8 with InvalidError and decodes valid text unchanged", async () => {
+  const { utf8Str: decode } = await import("../src/json.js");
+  const { InvalidError: Closed } = await import("../src/error.js");
+  for (const bad of [[0xff], [0xc3], [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xc0, 0xaf]]) {
+    assert.throws(() => decode(Uint8Array.from(bad)), Closed, JSON.stringify(bad));
+  }
+  assert.equal(decode(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61, 0xe2, 0x82, 0xac])), "﻿a€");
+});

@@ -28,6 +28,8 @@ No verification verdict changes.
   is not an acceptable P-256 key, as the Elixir `V3.EcJwk.encode_public` and `thumbprint` do. In 0.7.0
   `v3.jwkEncodePublic` checked only the 65-byte width and `v3.thumbprint` hashed the members as given.
   No conformance verdict changes.
+- `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other decoder; 0.7.0 let
+  the platform `TypeError` of its fatal `TextDecoder` through. No conformance verdict changes.
 
 ### Fixed
 

@@ -49,9 +49,9 @@ These primitives throw the package's single error class, `InvalidError` (its `na
 | `parseSelector` (root, `v2`, `v3`) | the object is not a valid selector for that major |
 | `jwkEncodePublic`, `jwkFromPublicKey`, `thumbprint`, `thumbprintRaw`, `thumbprintPreimage`, `publicKeyThumbprintRaw` | the Ed25519 key is not 32 bytes or not acceptable (their `v3` forms: the key or JWK is not an acceptable P-256 point) |
 | `sha256` | any part is not a `Uint8Array` |
+| `utf8Str` | the bytes are not valid UTF-8 |
 | `fail`, `assert` | always, or when the condition is false (helpers for code built on the same contract) |
 
-`utf8Str` throws the platform's `TypeError` on invalid UTF-8 (it uses a fatal `TextDecoder`).
 `trying(fn)` runs `fn` and converts a thrown `InvalidError` into `{ ok: false }`, so you can give
 your own helpers the same shape:
 

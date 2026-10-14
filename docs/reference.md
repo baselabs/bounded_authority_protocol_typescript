@@ -419,7 +419,7 @@ or 3).
 - **`jcsEncode(value, bounds?): Uint8Array`** encodes a `Tagged` value as RFC 8785 canonical JSON
   (members sorted by UTF-16 code units, ECMAScript number text). Throws `InvalidError`.
 - **`strUtf8(text): Uint8Array`** and **`utf8Str(bytes): string`** convert between strings and UTF-8;
-  `utf8Str` throws `TypeError` on invalid UTF-8.
+  `utf8Str` throws `InvalidError` on invalid UTF-8.
 
 ### Selectors and digests
 
