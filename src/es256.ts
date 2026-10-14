@@ -112,20 +112,26 @@ export function es256Verify(
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
-  if (!(message instanceof Uint8Array) || !(signature instanceof Uint8Array) || !(publicKey instanceof Uint8Array)) return false;
-  if (signature.length !== 64 || publicKey.length !== 65) return false;
+  // Total: an exotic input whose typed-array getters throw is refused, never thrown past the caller.
   try {
-    validateEcPublicKey(publicKey);
-  } catch {
-    return false;
-  }
-  const r = bytesToBigInt(signature.subarray(0, 32));
-  const s = bytesToBigInt(signature.subarray(32, 64));
-  if (r === 0n || r >= N) return false;
-  if (s === 0n || s >= N) return false;
-  if (s > HALF_N) return false; // low-S (REQ3-SIGNING-low-s)
-  try {
-    return p256Verify(p256Key(publicKey), message, signature);
+    void message.length;
+    if (!(message instanceof Uint8Array) || !(signature instanceof Uint8Array) || !(publicKey instanceof Uint8Array)) return false;
+    if (signature.length !== 64 || publicKey.length !== 65) return false;
+    try {
+      validateEcPublicKey(publicKey);
+    } catch {
+      return false;
+    }
+    const r = bytesToBigInt(signature.subarray(0, 32));
+    const s = bytesToBigInt(signature.subarray(32, 64));
+    if (r === 0n || r >= N) return false;
+    if (s === 0n || s >= N) return false;
+    if (s > HALF_N) return false; // low-S (REQ3-SIGNING-low-s)
+    try {
+      return p256Verify(p256Key(publicKey), message, signature);
+    } catch {
+      return false;
+    }
   } catch {
     return false;
   }

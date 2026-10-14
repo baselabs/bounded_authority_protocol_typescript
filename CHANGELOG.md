@@ -40,6 +40,9 @@ changes the behavior of several public functions and of facts values (marked **B
   changes.
 ### Fixed
 
+- `verifyStrict`, `es256VerifyStrict`, `acceptablePublicKey` and `torsionFree` return `false` for an
+  exotic input whose typed-array getters throw (a `Proxy` around a `Uint8Array`, an object created
+  from `Uint8Array.prototype`), as documented; 0.7.0 threw a `TypeError` for it.
 - The published `package.json` no longer carries the development condition `bap-source` in its
   `"#crypto"` import map. In 0.7.0 its targets were `./src/crypto/*.ts`, which the package does not
   ship, so any consumer build or tool that set `bap-source` (for example through a dependency's own

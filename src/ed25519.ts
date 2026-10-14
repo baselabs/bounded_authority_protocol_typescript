@@ -195,8 +195,14 @@ const isIdentity = ([x, y, z]: Point): boolean => x === 0n && y === z;
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function acceptablePublicKey(publicKey: Uint8Array): boolean {
-  if (!isBytes(publicKey, 32)) return false;
-  return isCanonical(publicKey) && !isSmallOrder(publicKey) && decodePoint(publicKey) !== null;
+  // Total: an exotic input whose typed-array getters throw (a Proxy, an object made from
+  // Uint8Array.prototype) is not an acceptable key.
+  try {
+    if (!isBytes(publicKey, 32)) return false;
+    return isCanonical(publicKey) && !isSmallOrder(publicKey) && decodePoint(publicKey) !== null;
+  } catch {
+    return false;
+  }
 }
 
 // Returns whether a raw 32-byte public key is acceptable and torsion free ([L]A = O). A host calls this
@@ -210,10 +216,14 @@ export function acceptablePublicKey(publicKey: Uint8Array): boolean {
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function torsionFree(publicKey: Uint8Array): boolean {
-  if (!isBytes(publicKey, 32)) return false;
-  if (!isCanonical(publicKey) || isSmallOrder(publicKey)) return false;
-  const point = decodePoint(publicKey);
-  return point !== null && isIdentity(multiplyPoint(L, point));
+  try {
+    if (!isBytes(publicKey, 32)) return false;
+    if (!isCanonical(publicKey) || isSmallOrder(publicKey)) return false;
+    const point = decodePoint(publicKey);
+    return point !== null && isIdentity(multiplyPoint(L, point));
+  } catch {
+    return false;
+  }
 }
 
 // Verifies an Ed25519 signature under rule S1. Returns true only for a 64-byte signature and a 32-byte
@@ -225,9 +235,10 @@ export function torsionFree(publicKey: Uint8Array): boolean {
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function verifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
-  if (!(message instanceof Uint8Array) || !isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
-  if (!strictGate(signature, publicKey)) return false;
   try {
+    if (!(message instanceof Uint8Array) || !isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
+    void message.length; // an exotic message (a Proxy, an object made from Uint8Array.prototype) is refused here
+    if (!strictGate(signature, publicKey)) return false;
     return ed25519Cofactorless(ed25519Key(publicKey), message, signature);
   } catch {
     return false;
