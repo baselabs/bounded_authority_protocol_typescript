@@ -110,7 +110,8 @@
     <article class="lane issuer" id="lane-mint">
       <header><svg class="ic"><use href="#i-seal"/></svg> An envelope arrives <span class="role-badge">demo issuance</span></header>
       <dl class="props">
-        <div><dt>claimed</dt><dd><code>transfer</code> · <code>POST /invoke</code> · <code>amount 5000</code></dd></div>
+        <div><dt>claimed</dt><dd><code>deployments.create</code> · <code>POST /environments/staging/deployments</code> · <code>build 4182</code></dd></div>
+        <div><dt>grant allows</dt><dd><code>environment = staging</code></dd></div>
         <div><dt>window</dt><dd>t=1000 → 2000 <span class="dim">(evaluated at 1500)</span></dd></div>
       </dl>
       <button id="btn-mint" class="btn actorbtn issuer"><svg class="ic"><use href="#i-seal"/></svg> Mint the demo envelope</button>
@@ -146,7 +147,7 @@
   <div class="tamper">
     <div class="panel-head"><div class="panel-badge"><svg class="ic"><use href="#i-wire"/></svg></div><div class="panel-titles"><span class="panel-title">Tamper deck</span><span class="panel-sub">Every button below produces a real, closed INVALID.</span></div></div>
     <div class="tamper-btns">
-      <button class="btn danger" data-tamper="payload" disabled>Replay against a modified request → amount 9000</button>
+      <button class="btn danger" data-tamper="payload" disabled>Replay against a modified request → deploy to production</button>
       <button class="btn danger" data-tamper="operation" disabled>Claim a different operation</button>
       <button class="btn danger" data-tamper="expiry" disabled>Evaluate after expiry</button>
       <button class="btn danger" data-tamper="impostor" disabled>Steal the grant with another key</button>

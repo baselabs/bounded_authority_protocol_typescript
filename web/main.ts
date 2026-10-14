@@ -4,7 +4,7 @@
 // No mocks, no server; the demo keys live only in this page.
 import { keygen, sign as nobleSign } from "@noble/ed25519";
 import { signGrant, signReport, type KeyHandle } from "@bounded-authority-protocol/signer";
-import { base64urlEncode, checkEnvelope, decodeGrant, decodeProof, thumbprint, utf8Str } from "../src/index.js";
+import { base64urlEncode, checkEnvelope, decodeGrant, decodeProof, strUtf8, thumbprint, utf8Str, type Tagged } from "../src/index.js";
 
 interface CustodyKey {
   pub: Uint8Array;
@@ -39,18 +39,23 @@ const segmentBytes = (s: string): Uint8Array => {
 };
 const jwkThumb = (pub: Uint8Array): string => thumbprint({ kty: "OKP", crv: "Ed25519", x: b64(pub) });
 
+// The demo: a CI issuer lets a deploy agent (the holder) create deployments to staging only; the
+// deploy service (your resource) checks each request.
 const SCENE = {
-  issuer: "https://issuer.example.test",
-  audience: "https://resource.example.test",
-  targetUri: "https://resource.example.test/invoke",
+  issuer: "https://ci.example.test",
+  audience: "https://deploy.example.test",
+  targetUri: "https://deploy.example.test/environments/staging/deployments",
   invocationId: "550e8400-e29b-41d4-a716-446655440000",
   grantId: "urn:demo:grant:1",
   proofId: "urn:demo:proof:1",
   issuedAt: 1000, notBefore: 1000, expiresAt: 2000, evaluationTime: 1500, clockSkew: 60, proofMaxAge: 300,
 };
-const castArguments = (): { t: "object"; v: Map<string, { t: "int"; v: number }> } => ({
-  t: "object", v: new Map([["amount", { t: "int", v: 5000 }]]),
+const OPERATION = "deployments.create";
+const deployArguments = (environment: string): Tagged => ({
+  t: "object",
+  v: new Map<string, Tagged>([["environment", { t: "string", v: strUtf8(environment) }], ["build", { t: "int", v: 4182 }]]),
 });
+const castArguments = (): Tagged => deployArguments("staging");
 
 interface Actor { key: CustodyKey; thumb: string; keyId: string }
 let issuer: Actor, holder: Actor, impostor: Actor;
@@ -239,7 +244,7 @@ function expected(over: Record<string, unknown> = {}) {
     trustedIssuer: { keyId: issuer.keyId, publicKey: issuer.key.pub },
     issuer: SCENE.issuer, audience: SCENE.audience,
     method: "POST", targetUri: SCENE.targetUri, invocationId: SCENE.invocationId,
-    operation: "transfer", castArguments: castArguments(),
+    operation: OPERATION, castArguments: castArguments(),
     evaluationTime: SCENE.evaluationTime, clockSkew: SCENE.clockSkew, proofMaxAge: SCENE.proofMaxAge,
     nonce: { kind: "not_required" as const },
     ...over,
@@ -260,13 +265,13 @@ async function doMint(): Promise<void> {
     issuer: SCENE.issuer, grantId: SCENE.grantId, audiences: [SCENE.audience],
     issuedAt: SCENE.issuedAt, notBefore: SCENE.notBefore, expiresAt: SCENE.expiresAt,
     holderThumbprint: holder.thumb,
-    operations: [{ name: "transfer", selectors: [{ kind: "all" } as never] }],
+    operations: [{ name: OPERATION, selectors: [{ kind: "equals", path: ["environment"], value: { t: "string", v: strUtf8("staging") } }] }],
   }, handle(issuer, { signingIdentity: () => ({ role: "issuer", keyId: issuer.keyId, publicKey: issuer.key.pub }) }));
   if (!g.ok) { setVerdict("fail", `mint: signGrant → ${g.error}`); return; }
   grantCompact = g.value.grant;
 
   const r = await signReport({
-    grantCompact, operation: "transfer", method: "POST", targetUri: SCENE.targetUri,
+    grantCompact, operation: OPERATION, method: "POST", targetUri: SCENE.targetUri,
     invocationId: SCENE.invocationId, castArguments: castArguments(),
   }, handle(holder), { issuedAt: SCENE.evaluationTime, proofId: SCENE.proofId });
   if (!r.ok) { setVerdict("fail", `mint: signReport → ${r.error}`); return; }
@@ -279,7 +284,7 @@ async function doMint(): Promise<void> {
   sg.appendChild(cg);
   const sp = $("slot-proof");
   sp.textContent = "";
-  const cp = artifactCard("proof", "dpop+jwt", "POST /invoke · amount 5000", () => { mark(cp); showWire("proof", proofCompact!); });
+  const cp = artifactCard("proof", "dpop+jwt", "POST /environments/staging/deployments · build 4182", () => { mark(cp); showWire("proof", proofCompact!); });
   cp.id = "proof-card";
   sp.appendChild(cp);
 
@@ -300,7 +305,7 @@ function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof
     return;
   }
   const why: Record<string, string> = {
-    payload: "request-digest binding — the proof commits to the digest of THIS request",
+    payload: "request-digest binding — the proof commits to the digest of THIS request (and the grant allows staging only)",
     operation: "operation match — the grant and proof bind one operation",
     expiry: "time window — grants and proofs expire",
     impostor: "holder binding — the grant names one holder key (jkt), and this proof was signed by another",
@@ -328,20 +333,18 @@ async function tamper(kind: string): Promise<void> {
   const proofCard = $("proof-card");
   switch (kind) {
     case "payload":
-      verifyWith(grantCompact, proofCompact, expected({
-        castArguments: { t: "object", v: new Map([["amount", { t: "int", v: 9000 }]]) },
-      }));
+      verifyWith(grantCompact, proofCompact, expected({ castArguments: deployArguments("production") }));
       showWire("proof (byte-identical — the REQUEST changed)", proofCompact);
       return;
     case "operation":
-      verifyWith(grantCompact, proofCompact, expected({ operation: "withdraw" }));
+      verifyWith(grantCompact, proofCompact, expected({ operation: "deployments.rollback" }));
       return;
     case "expiry":
       verifyWith(grantCompact, proofCompact, expected({ evaluationTime: 2600 }));
       return;
     case "impostor": {
       const r = await signReport({
-        grantCompact, operation: "transfer", method: "POST", targetUri: SCENE.targetUri,
+        grantCompact, operation: OPERATION, method: "POST", targetUri: SCENE.targetUri,
         invocationId: SCENE.invocationId, castArguments: castArguments(),
       }, handle(impostor), { issuedAt: SCENE.evaluationTime, proofId: "urn:demo:proof:stolen" });
       if (!r.ok) { setVerdict("fail", `mint: signReport → ${r.error}`); return; }

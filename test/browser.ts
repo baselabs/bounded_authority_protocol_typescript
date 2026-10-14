@@ -9,6 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,9 +92,69 @@ const pageDone = () => (globalThis as unknown as { document: { body: { dataset: 
 
 interface LaneResult { backend: string; secure: boolean; userAgent: string; violations: string[]; error: string | null; corpora: Record<string, LaneCorpus>; totalMs: number }
 
+// The bench page (web/, the Pages site), built as the Pages workflow builds it and served as static
+// files: a real click-through of its demo (an agent deploying a build to staging).
+async function serveBench(): Promise<{ server: Server; origin: string }> {
+  execFileSync(process.execPath, [join(REPO, "web/build.mjs")], { cwd: REPO, stdio: "ignore" });
+  const dir = join(REPO, "site-dist");
+  const types: Record<string, string> = { html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", css: "text/css" };
+  const server = createServer((req, res) => {
+    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    const file = path === "/" ? "index.html" : path.slice(1);
+    try {
+      const body = readFileSync(join(dir, normalize(file)));
+      res.writeHead(200, { "content-type": types[file.split(".").pop() ?? ""] ?? "application/octet-stream" });
+      res.end(body);
+    } catch {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return { server, origin: `http://127.0.0.1:${address.port}` };
+}
+
+// Page functions are serialized into the page, so each one reaches the document through globalThis.
+type Doc = { getElementById(id: string): { dataset: Record<string, string>; textContent: string | null; disabled?: boolean } | null };
+
 for (const name of SELECTED) {
   const engine = ENGINES[name];
   assert.ok(engine, `known engine ${name}`);
+
+  test(`${name}: the bench demo (a deploy to staging) mints, verifies, and every tamper is refused`, async () => {
+    const bench = await serveBench();
+    const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
+    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(`${bench.origin}/`);
+      await page.click("#btn-mint");
+      await page.waitForFunction(() => (globalThis as unknown as { document: Doc }).document.getElementById("btn-verify")?.disabled === false, undefined, { timeout: 30_000 });
+      const text = async (id: string): Promise<string> =>
+        page.evaluate((el) => (globalThis as unknown as { document: Doc }).document.getElementById(el)?.textContent ?? "", id);
+      const verdict = async (): Promise<string> => page.evaluate(() => (globalThis as unknown as { document: Doc }).document.getElementById("verdict")?.dataset.state ?? "");
+      await page.click("#btn-verify");
+      assert.equal(await verdict(), "ok");
+      // The verified facts name the demo's operation and target; the demo is not a payment.
+      const facts = await text("facts-body");
+      assert.match(facts, /deployments\.create/);
+      assert.match(facts, /environments\/staging\/deployments/);
+      assert.doesNotMatch(`${facts} ${await text("lane-mint")}`, /transfer|amount|withdraw/);
+      for (const kind of ["payload", "operation", "expiry", "impostor", "issuer"]) {
+        await page.click(`button[data-tamper="${kind}"]`);
+        await page.waitForFunction(() => (globalThis as unknown as { document: Doc }).document.getElementById("verdict")?.dataset.state === "fail", undefined, { timeout: 30_000 });
+        assert.equal(await verdict(), "fail", kind);
+      }
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+      bench.server.close();
+    }
+  });
 
   test(`${name}: BACKEND_ID portable in a secure context under the strict CSP, and every corpus agrees with its pin and with Node`, async (t) => {
     const served = await serve();

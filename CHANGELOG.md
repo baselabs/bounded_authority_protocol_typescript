@@ -64,6 +64,10 @@ No verification verdict changes.
 
 ### Maintenance
 
+- The bench's demo is now a deploy agent creating a deployment to staging under a grant whose
+  selector allows `environment = staging` (it was a payment transfer), and the browser lane clicks
+  through it: mint, verify, and each tamper (deploy to production, another operation, after expiry,
+  another holder key, another issuer key) refused.
 - The bench's demo issuance moves to `@bounded-authority-protocol/signer` 0.5.0 (the dependency
   currency gate had failed since its release). Signer 0.5.0 is browser-safe, so the bench's
   `node:crypto` adapter and `Buffer` injection (`web/shim/`) and the `buffer` dev dependency are
