@@ -89,7 +89,9 @@ changes the behavior of several public functions and of facts values (marked **B
 - CI's push skip list is narrowed to the paths no check reads (`CHANGELOG.md`,
   `.github/ISSUE_TEMPLATE/**`): README.md and `docs/` changes now run CI (their samples are
   executed), and so do `LICENSE` and `NOTICE` (they ship in the tarball the package job installs).
-  `test/ci-paths.test.ts` fails if an ignored glob matches a file a check reads.
+  `test/ci-paths.test.ts` parses the workflow (any quoting or indent), applies GitHub's `paths` and
+  `paths-ignore` semantics with `!` negations, and fails if any trigger would skip a tracked file
+  that a check reads.
 - TSDoc on every exported function, so editors show its contract on hover.
 - Earlier release entries are reworded for readers outside the project; every factual statement is
   kept.
