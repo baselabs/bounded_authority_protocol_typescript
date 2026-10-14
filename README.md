@@ -476,6 +476,11 @@ pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,w
 pnpm check:currency          # dependency-currency gate (latest-first)
 ```
 
+## Security
+
+Report a vulnerability privately through this repository's Security tab ("Report a vulnerability");
+see [SECURITY.md](SECURITY.md).
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

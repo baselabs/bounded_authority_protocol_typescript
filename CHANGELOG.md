@@ -91,6 +91,8 @@ changes the behavior of several public functions and of facts values (marked **B
 - The README quickstart names its file, the setup commands (including `npm pkg set type=module`) and
   the run command, and `engines.node` is `>=22.23.1`, the oldest Node version CI tests (it was
   `>=22`, which no check covered); `test/engines.test.ts` keeps the floor equal to CI's lowest pin.
+- `SECURITY.md`: report vulnerabilities through GitHub private vulnerability reporting (the
+  Security tab, "Report a vulnerability"), with the supported versions.
 - Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
   bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3
   (signer 0.5.0 signs majors 1, 2 and 3); the v2 example passed an untagged selector bound;
