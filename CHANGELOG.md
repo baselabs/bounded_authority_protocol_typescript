@@ -1,5 +1,30 @@
 # Changelog
 
+All notable changes to `@bounded-authority-protocol/verifier` are documented here.
+
+## [Unreleased]
+
+Documentation only. No library behavior, public API or verdict changes.
+
+### Documentation
+
+- README rewritten for a first read: what the package is and is not, a quickstart that issues and
+  verifies a grant, and links to new task guides under `docs/guides/` (verify requests,
+  contract-majors 2 and 3, rotate keys, consumption chains and archives, role attestations, content
+  assertions, handle errors, test your integration) and a complete API reference in
+  `docs/reference.md`.
+- Every `ts` sample in the README and in `docs/` is now typechecked against the source and run on
+  both backends by `pnpm test` (`test/docs-samples.test.ts`), which also fails if the reference
+  misses a public export or if its bounds table drifts from `MAXIMA`. CI no longer skips pushes
+  that change only Markdown.
+- TSDoc on every exported function, so editors show its contract on hover.
+- Corrections: the README API table showed `requestDigest` and `assembleCompact` returning bare
+  bytes (both return `Result<Uint8Array>`); the README said the signer produces majors 1 and 3
+  (signer 0.5.0 signs majors 1, 2 and 3); the v2 example passed an untagged selector bound;
+  `NOTICE` named the retired `@bounded-authority/verifier` package; the bench page said the
+  package has zero runtime dependencies (it has three since 0.7.0) and that the verifier never sees
+  keys (it takes public keys).
+
 ## [0.7.0] — 2026-10-13
 
 Browser-safe builds. The package now loads and runs in browsers, Deno, Bun and workers, with no
@@ -402,4 +427,3 @@ No library-code change — toolchain and documentation alignment with the protoc
   from the repository checkout under the owner's npm session; every subsequent release
   publishes from the release workflow via npm trusted publishing with provenance).
 
-All notable changes to `@bounded-authority-protocol/verifier` are documented here.

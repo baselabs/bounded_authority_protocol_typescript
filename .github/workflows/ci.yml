@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    # Markdown is not ignored: pnpm test typechecks and runs every ts sample in README.md and docs/
+    # (test/docs-samples.test.ts), so a docs-only change can break the build.
     paths-ignore:
-      - "**/*.md"
-      - "docs/**"
       - "LICENSE*"
       - ".github/ISSUE_TEMPLATE/**"
   pull_request:
