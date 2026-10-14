@@ -8,6 +8,7 @@ import { jwkFromPublicKey, thumbprintRaw } from "./jwk.js";
 import { importPublicKey, ed25519Verify, acceptablePublicKey } from "./ed25519.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import type { HistoricalPublicKey } from "./v1.js";
+import { redacted } from "./redact.js";
 
 // The bap-role-attestation/1 sibling profile (ADR 0036; spec/bap-role-attestation-v1.md) — a
 // standalone, grant-unbound compact JWS in which an attestor key binds a subject key to a role
@@ -394,7 +395,7 @@ export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttesta
     }
     // now in [nbf, exp) (REQ-RA1-VERIFY-now-window).
     if (!(claims.nbf <= expected.now && expected.now < claims.exp)) fail("verify_attestation: now window");
-    return {
+    return redacted({
       version: VERSION,
       attestorKeyId: expected.attestor.keyId,
       attestorKeyFingerprint: attestorFingerprint,
@@ -406,6 +407,6 @@ export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttesta
       expiresAt: claims.exp,
       verification: "signature_and_window" as const,
       trust: "not_evaluated" as const,
-    };
+    }, "RoleAttestation.V1.AttestationFacts");
   });
 }

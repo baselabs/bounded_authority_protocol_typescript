@@ -4,7 +4,18 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
-No library behavior, public API or verdict changes.
+No verdict changes.
+
+### Changed
+
+- Every facts value renders redacted under Node's `util.inspect` and `console.log`, as the profile
+  requires ("fixed redacted rendering", `REQ1-VERIFY-facts-redacted`), with the Elixir reference's
+  text: `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` and likewise for `EnvelopeFacts`,
+  `ChainFacts`, `AnchorFacts`, `KeyTransitionFacts` and `AnchoredExportFacts` of each major,
+  `RoleAttestation.V1.AttestationFacts`, `ContentAssertion.V1.ContentAssertionFacts` (previously
+  `ContentAssertionFacts<redacted>`) and `ContentAssertion.V1.DecodedContentAssertion`. The hook is a
+  non-enumerable symbol property: field access, `Object.keys`, spreading and `JSON.stringify` are
+  unchanged.
 
 ### Fixed
 

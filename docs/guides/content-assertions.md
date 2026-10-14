@@ -82,7 +82,8 @@ most 8,192 bytes, and content at most 65,536 bytes (`content_bytes`, which you c
 
 `ContentAssertionFacts` repeats the signed fields and adds the attestor key fingerprint and
 `digest`, the SHA-256 of the exact assertion bytes. Node's `console.log` and `util.inspect` print
-these facts as `ContentAssertionFacts<redacted>`; read fields directly.
+these facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>`; read
+fields directly.
 
 ## Successors
 

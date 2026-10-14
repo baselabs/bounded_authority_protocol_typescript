@@ -10,6 +10,7 @@ import { semanticIdentity } from "./selector.js";
 import { uriNormalize } from "./uri.js";
 import { jcsEncode } from "./jcs.js";
 import { resolve, coerceBounds, boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA, type Bounds, type MaximaKey } from "./bounds.js";
+import { redacted } from "./redact.js";
 import type { GrantFacts, EnvelopeFacts, GrantDecoded, ProofDecoded, KeyLocator } from "./facts.js";
 
 // The v2 verification façade (the v2 contract-major profile). Mirrors the v1 façade with
@@ -865,11 +866,11 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
     const fp = thumbprintRaw(jwkFromPublicKey(trusted.publicKey));
     const key = importPublicKey(trusted.publicKey, utf8Str(base64urlEncode(fp)));
     if (!ed25519Verify(seg.signingInput, seg.signature, key)) fail("verify_grant: signature");
-    return {
+    return redacted({
       version: VERSION, issuer: iss, grantId: requireStringOrUri(p.v.get("jti"), "jti", b),
       issuerKeyFingerprint: fp, holderThumbprint: jkt, matchedAudience: expected.audience,
       issuedAt: iat, notBefore: nbf, expiresAt: exp, authorization: "not_evaluated" as const,
-    };
+    }, "V2.GrantFacts");
   });
 }
 
@@ -998,7 +999,7 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
       const sel = parseSelector(s, b);
       if (!selectorMatches(sel, expected.castArguments)) fail("check_envelope: selector");
     }
-    return {
+    return redacted({
       version: VERSION, issuer: giss,
       grantId: requireStringOrUri(gobj.v.get("jti"), "jti", b),
       issuerKeyFingerprint: gfp, holderThumbprint, matchedAudience: expected.audience,
@@ -1007,7 +1008,7 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
       invocationId: baInv, operation: baOp, uri: htu,
       grantHash: athRaw, requestHash: baReqRaw, proofIssuedAt: piat,
       authorization: "not_evaluated" as const,
-    };
+    }, "V2.EnvelopeFacts");
   });
 }
 
@@ -1130,7 +1131,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
       sequence++;
     }
     if (!bytesEqual(previous, expected.lastHash)) fail("check_chain: head");
-    return {
+    return redacted({
       version: 2 as const, chainId: chain.chainId, firstSequence: chain.firstSequence,
       lastSequence: chain.lastSequence, rowCount: chain.rowCount,
       // Cross-vendor re-review F3 + F4: copy the VERIFIED expected.previousHash (not the caller's
@@ -1139,7 +1140,7 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
       // are not). The reference returns expected.previous_hash; lastHash is freshly computed.
       previousHash: new Uint8Array(expected.previousHash), lastHash: previous,
       verification: "boundary_consistent" as const, trust: "not_evaluated" as const,
-    };
+    }, "V2.ChainFacts");
   });
 }
 
@@ -1743,11 +1744,11 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     if (!inWindow(anchoredAt, key)) fail("verify_historical_anchor: window");
     const pk = importPublicKey(key.publicKey, utf8Str(base64urlEncode(derivedFp)));
     if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_historical_anchor: signature");
-    return {
+    return redacted({
       version: 2 as const, anchorId, anchoredAt, chainId, sequence, chainHash,
       keyFingerprint: keyFpRaw, verification: "signature_and_window" as const,
       trust: "not_evaluated" as const,
-    };
+    }, "V2.AnchorFacts");
   });
 }
 
@@ -1799,11 +1800,11 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     if (!inWindow(effectiveAt, newKey)) fail("verify_key_transition: next window");
     const pk = importPublicKey(oldKey.publicKey, utf8Str(base64urlEncode(derivedFrom)));
     if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail("verify_key_transition: signature");
-    return {
+    return redacted({
       version: 2 as const, transitionId, chainId, effectiveAt,
       currentKeyFingerprint: fromFpRaw, nextKeyFingerprint: toFpRaw,
       verification: "authenticated_transition" as const, trust: "not_evaluated" as const,
-    };
+    }, "V2.KeyTransitionFacts");
   });
 }
 
@@ -2003,7 +2004,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       sequence++;
     }
     if (!bytesEqual(previous, expected.chain.lastHash)) fail("verify_anchored_export: head");
-    return {
+    return redacted({
       version: 2 as const, objectVersion: archived.version, chainId: expected.chain.chainId,
       firstSequence: expected.chain.firstSequence, lastSequence: expected.chain.lastSequence,
       rowCount: expected.chain.rowCount,
@@ -2020,7 +2021,7 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
       transitionCount: expected.transitions.length,
       verification: "anchored_export" as const, trust: "not_evaluated" as const,
       authorization: "not_evaluated" as const,
-    };
+    }, "V2.AnchoredExportFacts");
   });
 }
 

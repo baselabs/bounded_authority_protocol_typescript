@@ -10,6 +10,7 @@ import { publicKeyThumbprintRaw } from "./jwk.js";
 import { importPublicKey, ed25519Verify, sha256 } from "./ed25519.js";
 import { boundsNew, coerceBounds, resolve, MAXIMUM_BOUNDS, type Bounds } from "./bounds.js";
 import type { HistoricalPublicKey } from "./v1.js";
+import { redacted } from "./redact.js";
 
 export interface ContentAssertionProducer {
   readonly attestorKeyId: string;
@@ -176,7 +177,7 @@ export function assembleCompact(input:SigningInput,signature:Uint8Array,bounds?:
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function decodeAssertion(compact:Uint8Array,bounds?:Bounds):Result<DecodedContentAssertion> {
-  return trying(()=>({version:1,...parse(compact,bounded(bounds)).claims,verification:"not_evaluated"}));
+  return trying(()=>redacted({version:1 as const,...parse(compact,bounded(bounds)).claims,verification:"not_evaluated" as const},"ContentAssertion.V1.DecodedContentAssertion"));
 }
 /**
  * The content digest an assertion binds: SHA-256 over `BAP1-CONTENT\0` and 1 to 65,536 exact
@@ -224,8 +225,7 @@ export function verifyAssertion(compact:Uint8Array,e:ExpectedContentAssertion):R
     const key=importPublicKey(e.attestor.publicKey,utf8Str(base64urlEncode(fingerprint)));
     assert(ed25519Verify(seg.signingInput,seg.signature,key),"signature");
     const facts:ContentAssertionFacts={version:1,...p,attestorKeyFingerprint:fingerprint,digest:sha256(compact),verification:"signature_and_window",trust:"not_evaluated"};
-    Object.defineProperty(facts,Symbol.for("nodejs.util.inspect.custom"),{value:()=>"ContentAssertionFacts<redacted>",enumerable:false});
-    return facts;
+    return redacted(facts,"ContentAssertion.V1.ContentAssertionFacts");
   });
 }
 function validateFacts(f:ContentAssertionFacts,b:Bounds):void {

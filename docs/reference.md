@@ -361,6 +361,36 @@ Facts are plain readonly objects. They carry identifiers, times and digests, nev
 selector values, signatures, JWK containers or nonces, and none of them is a credential. No facts
 type has an "allowed" or decision field.
 
+Facts render redacted: Node's `util.inspect` and `console.log` print a facts value as
+`#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the major and type, and
+`RoleAttestation.V1.AttestationFacts`, `ContentAssertion.V1.ContentAssertionFacts` or
+`ContentAssertion.V1.DecodedContentAssertion` for the sibling profiles), the same text as the Elixir
+reference. The rendering is a non-enumerable hook; reading fields, `Object.keys`, spreading and
+`JSON.stringify` see the fields as before.
+
+```ts
+import assert from "node:assert/strict";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { inspect } from "node:util";
+import { assembleCompact, grantSigningInput, jwkFromPublicKey, thumbprint, verifyGrant } from "@bounded-authority-protocol/verifier";
+
+const issuer = generateKeyPairSync("ed25519");
+const raw = Buffer.from(issuer.publicKey.export({ format: "jwk" }).x!, "base64url");
+const input = grantSigningInput({
+  keyId: "k", issuer: "https://issuer.example", grantId: "g-1", audiences: ["https://api.example"],
+  issuedAt: 1, notBefore: 1, expiresAt: 100, holderThumbprint: thumbprint(jwkFromPublicKey(raw)),
+  operations: [{ name: "files.list", selectors: ["all"] }],
+});
+assert.ok(input.ok);
+const grant = assembleCompact(input.value, sign(null, Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), issuer.privateKey));
+assert.ok(grant.ok);
+const facts = verifyGrant(grant.value, { keyId: "k", publicKey: raw }, { issuer: "https://issuer.example", audience: "https://api.example", evaluationTime: 50, clockSkew: 0 });
+assert.ok(facts.ok);
+assert.equal(inspect(facts.value), "#BoundedAuthorityProtocol.V1.GrantFacts<redacted>");
+assert.equal(facts.value.grantId, "g-1"); // fields read as before
+assert.equal(JSON.parse(JSON.stringify(facts.value)).grantId, "g-1");
+```
+
 | Type | Returned by | Fields |
 |---|---|---|
 | `GrantFacts` | `verifyGrant` | `version`, `issuer`, `grantId`, `issuerKeyFingerprint`, `holderThumbprint`, `matchedAudience`, `issuedAt`, `notBefore`, `expiresAt`, `authorization: "not_evaluated"` |
@@ -697,7 +727,7 @@ Types:
   `verification: "not_evaluated"`.
 - `ContentAssertionFacts`: the producer fields plus `version: 1`, `attestorKeyFingerprint`,
   `digest` (SHA-256 of the compact), `verification: "signature_and_window"` and
-  `trust: "not_evaluated"`. Node's inspection prints it as `ContentAssertionFacts<redacted>`.
+  `trust: "not_evaluated"`. It renders redacted ([Facts and decoded types](#facts-and-decoded-types)).
 
 ```ts
 import assert from "node:assert/strict";
