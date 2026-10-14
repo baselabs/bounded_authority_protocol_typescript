@@ -379,15 +379,15 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { inspect } from "node:util";
 import { assembleCompact, grantSigningInput, jwkFromPublicKey, thumbprint, verifyGrant } from "@bounded-authority-protocol/verifier";
 
-const issuer = generateKeyPairSync("ed25519");
-const raw = Buffer.from(issuer.publicKey.export({ format: "jwk" }).x!, "base64url");
+const issuerKeys = generateKeyPairSync("ed25519");
+const raw = Buffer.from(issuerKeys.publicKey.export({ format: "jwk" }).x!, "base64url");
 const input = grantSigningInput({
   keyId: "k", issuer: "https://issuer.example", grantId: "g-1", audiences: ["https://api.example"],
   issuedAt: 1, notBefore: 1, expiresAt: 100, holderThumbprint: thumbprint(jwkFromPublicKey(raw)),
   operations: [{ name: "files.list", selectors: ["all"] }],
 });
 assert.ok(input.ok);
-const grant = assembleCompact(input.value, sign(null, Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), issuer.privateKey));
+const grant = assembleCompact(input.value, sign(null, Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), issuerKeys.privateKey));
 assert.ok(grant.ok);
 const facts = verifyGrant(grant.value, { keyId: "k", publicKey: raw }, { issuer: "https://issuer.example", audience: "https://api.example", evaluationTime: 50, clockSkew: 0 });
 assert.ok(facts.ok);

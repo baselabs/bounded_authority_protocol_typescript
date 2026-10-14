@@ -31,7 +31,7 @@ const SPECIFIERS: Record<string, { run: string; types: string }> = {
   "@bounded-authority-protocol/signer": { run: pathToFileURL(SIGNER_ENTRY).href, types: SIGNER_TYPES },
 };
 
-interface Sample { readonly doc: string; readonly line: number; readonly code: string }
+interface Sample { readonly doc: string; readonly line: number; readonly code: string; readonly since?: string }
 
 function docFiles(): string[] {
   const out = [join(REPO, "README.md")];
@@ -46,20 +46,30 @@ function docFiles(): string[] {
   return out;
 }
 
+// A fence opens with ``` and an info string at any indent (a sample inside a list item is indented);
+// its content is dedented by that indent, and it closes at a ``` line with the same indent. The first
+// word of the info string is the language; `ts since=<version>` marks a sample that needs that
+// release (see the reader-path test below).
 function samplesOf(file: string): Sample[] {
   const lines = readFileSync(file, "utf8").split("\n");
   const samples: Sample[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const open = /^```(\S*)\s*$/.exec(lines[i]!);
+    const open = /^( *)```(.*)$/.exec(lines[i]!);
     if (open === null) continue;
-    const tag = open[1]!;
+    const indent = open[1]!;
+    const [tag = "", ...attributes] = open[2]!.trim().split(/\s+/);
     const start = i;
     i++;
-    while (i < lines.length && lines[i] !== "```") i++;
+    while (i < lines.length && lines[i] !== `${indent}\`\`\``) i++;
     assert.ok(i < lines.length, `${relative(REPO, file)}:${start + 1}: unterminated fence`);
     assert.ok(!["typescript", "js", "javascript", "mjs", "mts", "tsx"].includes(tag),
       `${relative(REPO, file)}:${start + 1}: tag code samples \`ts\` so they are executed`);
-    if (tag === "ts") samples.push({ doc: relative(REPO, file), line: start + 1, code: lines.slice(start + 1, i).join("\n") });
+    if (tag !== "ts") continue;
+    const since = attributes.find((a) => a.startsWith("since="))?.slice("since=".length);
+    assert.ok(attributes.every((a) => a.startsWith("since=")) && (since === undefined || /^\d+\.\d+\.\d+$/.test(since)),
+      `${relative(REPO, file)}:${start + 1}: the only fence attribute is since=<version>`);
+    const code = lines.slice(start + 1, i).map((l) => (l.startsWith(indent) ? l.slice(indent.length) : l)).join("\n");
+    samples.push({ doc: relative(REPO, file), line: start + 1, code, ...(since === undefined ? {} : { since }) });
   }
   return samples;
 }
