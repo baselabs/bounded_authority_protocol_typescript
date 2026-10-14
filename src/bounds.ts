@@ -5,6 +5,10 @@ import { fail } from "./error.js";
 // (REQ1-BOUNDS-fixed-widths, L395): digest_bytes, public_key_bytes, signature_bytes are the immutable
 // cryptographic constants of suite BAP1-Ed25519-SHA256 — they MUST equal the maximum exactly (widening
 // is forbidden); all others may be tightened to a positive integer at most the maximum.
+/**
+ * The profile maxima, one entry per limit name. `boundsNew` can only tighten these.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export const MAXIMA = {
   compact_bytes: 65536,
   content_bytes: 65536, // ADR 0037: exact external content bytes, tightenable.
@@ -55,8 +59,17 @@ export interface Bounds {
   readonly overrides: ReadonlyMap<MaximaKey, number>;
 }
 
+/**
+ * The shared untightened `Bounds` value. Do not mutate it; build tightened bounds with
+ * `boundsNew`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export const MAXIMUM_BOUNDS: Bounds = { maximum: MAXIMA, overrides: new Map() };
 
+/**
+ * A new, untightened `Bounds` value (the profile maxima).
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function boundsMaximum(): Bounds {
   // Return a FRESH Bounds each call so a caller cannot mutate a shared singleton's overrides Map
   // to widen the profile maximum globally (ReadonlyMap is compile-time only; runtime mutation is
@@ -72,6 +85,11 @@ const FIXED_WIDTH_KEYS: ReadonlySet<MaximaKey> = new Set<MaximaKey>([
   "signature_bytes",
 ]);
 
+/**
+ * A `Bounds` value that tightens named limits. Throws `InvalidError` for an unknown name, a
+ * non-integer, non-positive or widening value, or a change to a fixed width.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds {
   if (tightening === undefined) return MAXIMUM_BOUNDS;
   const overrides = new Map<MaximaKey, number>();

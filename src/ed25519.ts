@@ -189,6 +189,11 @@ const isIdentity = ([x, y, z]: Point): boolean => x === 0n && y === z;
 // Returns whether a raw 32-byte Ed25519 public key may enter a verification input: canonical, not one
 // of the eight small-order encodings, and on the curve (the RFC 8032 section 5.1.3 decode succeeds).
 // Any other input, including a non-32-byte or non-byte input, returns false.
+/**
+ * Whether a raw 32-byte Ed25519 key may enter verification under rule S1: canonical, not one of
+ * the eight small-order encodings, and on the curve. Never throws.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function acceptablePublicKey(publicKey: Uint8Array): boolean {
   if (!isBytes(publicKey, 32)) return false;
   return isCanonical(publicKey) && !isSmallOrder(publicKey) && decodePoint(publicKey) !== null;
@@ -199,6 +204,11 @@ export function acceptablePublicKey(publicKey: Uint8Array): boolean {
 // full scalar multiplication in pure BigInt arithmetic, so it never belongs on the per-signature
 // verification path. A canonical, torsion-free key has exactly one encoding per secret, so key equality
 // is identity equality.
+/**
+ * Whether a raw 32-byte Ed25519 key is acceptable and torsion free (`[L]A = O`). Call it at key
+ * enrollment, trust install and before deny-list comparison, not per request. Never throws.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function torsionFree(publicKey: Uint8Array): boolean {
   if (!isBytes(publicKey, 32)) return false;
   if (!isCanonical(publicKey) || isSmallOrder(publicKey)) return false;
@@ -209,6 +219,11 @@ export function torsionFree(publicKey: Uint8Array): boolean {
 // Verifies an Ed25519 signature under rule S1. Returns true only for a 64-byte signature and a 32-byte
 // key that pass the canonical, small-order and scalar-range checks and then the backend's cofactorless
 // equation. Any other input, including wrong-size or non-byte input, returns false; it never throws.
+/**
+ * Verifies an Ed25519 signature under rule S1 (canonical `A` and `R`, neither of small order, `S <
+ * L`, cofactorless equation). Returns `false` for any invalid input; never throws.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   if (!(message instanceof Uint8Array) || !isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
   if (!strictGate(signature, publicKey)) return false;
@@ -273,6 +288,11 @@ export function ed25519Verify(
 
 // SHA-256 helper (FIPS 180-4), used by thumbprints + digests. The backend computes it. Every part must
 // be a Uint8Array; anything else throws InvalidError on both backends (never coerced).
+/**
+ * SHA-256 over the concatenation of the parts. Throws `InvalidError` if any part is not a
+ * `Uint8Array`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   return backendSha256(...parts);
 }

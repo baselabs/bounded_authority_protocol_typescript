@@ -51,6 +51,12 @@ interface DecodeCtx {
   depth: number; // mutable depth
 }
 
+/**
+ * Decodes exactly one strict JSON value into the tagged algebra: UTF-8 required, duplicate member
+ * names rejected, numbers tagged `int` or `float` by lexeme, every limit enforced. Throws
+ * `InvalidError`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jsonDecode(src: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Tagged {
   const maxJsonBytes = resolve(bounds, "json_bytes" as MaximaKey);
   if (src.length > maxJsonBytes) fail("json: input exceeds json_bytes bound");
@@ -443,9 +449,17 @@ function asciiStr(bytes: Uint8Array): string {
 // string values, member names and JCS escaping.
 const DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const ENCODER = new TextEncoder();
+/**
+ * Decodes UTF-8 bytes to a string. Throws `TypeError` on invalid UTF-8.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function utf8Str(bytes: Uint8Array): string {
   return DECODER.decode(bytes);
 }
+/**
+ * Encodes a string as UTF-8 bytes.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function strUtf8(s: string): Uint8Array {
   return ENCODER.encode(s);
 }

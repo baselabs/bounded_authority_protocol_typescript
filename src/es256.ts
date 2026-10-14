@@ -105,6 +105,12 @@ export function es256Verify(
 // 64-byte r || s signature with 0 < r < n and 0 < s <= (n - 1) / 2 (low-S, REQ3-SIGNING-low-s), and then
 // the backend's ECDSA P-256 / SHA-256 verification over the message. Any other input, including a
 // wrong-size or non-byte input, returns false. It records nothing in the census.
+/**
+ * Verifies an ES256 signature: 65-byte uncompressed on-curve P-256 key, raw 64-byte `r || s` with
+ * `0 < r < n` and low-S, then ECDSA P-256 / SHA-256. Returns `false` for any invalid input; never
+ * throws.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   if (!(message instanceof Uint8Array) || !(signature instanceof Uint8Array) || !(publicKey instanceof Uint8Array)) return false;
   if (signature.length !== 64 || publicKey.length !== 65) return false;

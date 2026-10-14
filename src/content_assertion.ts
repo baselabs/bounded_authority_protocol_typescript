@@ -133,6 +133,11 @@ function parse(compact: Uint8Array,b:Bounds) {
 const text=(s:string):Tagged=>({t:"string",v:strUtf8(s)});
 const numeric=(n:number):Tagged=>({t:"int",v:n});
 
+/**
+ * Builds the signing input of a `bap-content-assertion/1` assertion binding a content digest to
+ * issuer, audience, subject, profile, generation and window.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function assertionSigningInput(p:ContentAssertionProducer,bounds?:Bounds):Result<SigningInput> {
   return trying(()=>{
     const b=bounded(bounds); validateProducer(p,b);
@@ -151,6 +156,11 @@ export function assertionSigningInput(p:ContentAssertionProducer,bounds?:Bounds)
     return {kind:KIND,protectedSegment,payloadSegment};
   });
 }
+/**
+ * Joins a content-assertion signing input and a 64-byte signature into a compact JWS and re-parses
+ * it. It does not verify the signature.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function assembleCompact(input:SigningInput,signature:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{
     object(input); assert(input.kind===KIND,"signing kind");
@@ -160,9 +170,19 @@ export function assembleCompact(input:SigningInput,signature:Uint8Array,bounds?:
     parse(assembled.value,b); return assembled.value;
   });
 }
+/**
+ * Parses and validates a content assertion's structure without checking its signature or any
+ * context (`verification: "not_evaluated"`).
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function decodeAssertion(compact:Uint8Array,bounds?:Bounds):Result<DecodedContentAssertion> {
   return trying(()=>({version:1,...parse(compact,bounded(bounds)).claims,verification:"not_evaluated"}));
 }
+/**
+ * The content digest an assertion binds: SHA-256 over `BAP1-CONTENT\0` and 1 to 65,536 exact
+ * content bytes (`content_bytes`).
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function contentDigest(content:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{
     const b=bounded(bounds); assert(content instanceof Uint8Array,"content bytes");
@@ -170,6 +190,11 @@ export function contentDigest(content:Uint8Array,bounds?:Bounds):Result<Uint8Arr
     return sha256(CONTENT_PREFIX,content);
   });
 }
+/**
+ * SHA-256 of the exact compact bytes after a structure check (the value a successor's `prev`
+ * carries). Makes no signature claim.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function assertionDigest(compact:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{parse(compact,bounded(bounds));return sha256(compact);});
 }
@@ -181,6 +206,11 @@ function expectedContext(e:ExpectedContentAssertion):Bounds {
   for(const name of ["issuer","audience","subject","profile"] as const) identifier(e[name],b);
   bytes(e.profileDigest,32); bytes(e.contentDigest,32); integer(e.now,b); return b;
 }
+/**
+ * Verifies a content assertion under the attestor key against the expected identities, digests and
+ * time. `expected.bounds` is required. Facts carry `trust: "not_evaluated"`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyAssertion(compact:Uint8Array,e:ExpectedContentAssertion):Result<ContentAssertionFacts> {
   return trying(()=>{
     const b=expectedContext(e); const {seg,claims:p}=parse(compact,b);
@@ -203,6 +233,12 @@ function validateFacts(f:ContentAssertionFacts,b:Bounds):void {
   validateProducer(f,b); bytes(f.attestorKeyFingerprint,32); bytes(f.digest,32);
 }
 // Facts are caller-provenanced values. This comparison is not signature verification or present-time admission.
+/**
+ * Compares two verified facts values: same context, consecutive generations, `prev` equal to the
+ * predecessor's digest, non-decreasing issuance time and a new `jti`. Checks no signature and no
+ * current time.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifySuccessor(predecessor:ContentAssertionFacts,successor:ContentAssertionFacts,bounds:Bounds):Result<void> {
   return trying(()=>{
     assert(bounds!==undefined,"explicit bounds"); const b=bounded(bounds); validateFacts(predecessor,b); validateFacts(successor,b);

@@ -24,6 +24,11 @@ export interface OkpPublic {
 }
 
 // Encode a raw 32-byte Ed25519 public key as the canonical OKP JCS JSON bytes.
+/**
+ * The canonical JSON bytes of the public OKP JWK `{crv, kty, x}` for a raw 32-byte Ed25519 key.
+ * Throws `InvalidError` for a key that is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey.length === 32, "jwk.encode_public: public key width must be 32");
   const jwk = jwkFromPublicKey(rawKey);
@@ -38,6 +43,11 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
 }
 
 // Decode an OKP public JWK from bytes (the JSON text). Returns the raw 32-byte key.
+/**
+ * Parses exactly a public OKP Ed25519 JWK (no other member, including a private `d`) and returns
+ * the raw 32-byte key.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed OKP shape.
   try {
@@ -62,6 +72,11 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
   }
 }
 
+/**
+ * The public OKP JWK object of a raw 32-byte Ed25519 key. Throws `InvalidError` for a key that is
+ * not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jwkFromPublicKey(rawKey: Uint8Array): OkpPublic {
   assert(rawKey.length === 32, "jwk: public key width");
   assert(acceptablePublicKey(rawKey), "jwk: key not acceptable");
@@ -74,6 +89,11 @@ function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
 
 // RFC 7638 thumbprint preimage: the JCS bytes of {crv, kty, x} (lexicographic order). Fallible: the key
 // behind x must be acceptable.
+/**
+ * The RFC 7638 thumbprint preimage: the canonical JSON of `{crv, kty, x}`. Throws `InvalidError`
+ * for a key that is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
   const raw = base64urlDecode(strUtf8(jwk.x));
   assert(raw.length === 32, "jwk: x width");
@@ -91,16 +111,31 @@ function preimageOf(jwk: OkpPublic): Uint8Array {
 }
 
 // Thumbprint as base64url SHA-256 of the preimage.
+/**
+ * The RFC 7638 thumbprint of a public Ed25519 JWK, as unpadded base64url (the form a grant's
+ * `holderThumbprint` takes). Throws `InvalidError` for a key that is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function thumbprint(jwk: OkpPublic): string {
   return utf8Str(base64urlEncode(sha256(thumbprintPreimage(jwk))));
 }
 
 // Raw 32-byte thumbprint.
+/**
+ * The RFC 7638 thumbprint of a public Ed25519 JWK as 32 raw bytes. Throws `InvalidError` for a key
+ * that is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
   return sha256(thumbprintPreimage(jwk));
 }
 
 // Raw 32-byte thumbprint directly from a raw 32-byte public key. Fallible, like every function above.
+/**
+ * The raw 32-byte RFC 7638 thumbprint of a raw 32-byte Ed25519 key. Throws `InvalidError` for a
+ * key that is not acceptable.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(jwkFromPublicKey(rawKey));
 }

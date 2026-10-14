@@ -19,6 +19,11 @@ function classifyByte(byte: number): number {
   return byte >= 0 && byte < 128 ? REV[byte]! : -1;
 }
 
+/**
+ * Decodes canonical unpadded base64url (no padding, whitespace or non-zero trailing bits),
+ * optionally capped at `maxDecodedBytes`. Throws `InvalidError` otherwise.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Uint8Array {
   const len = input.length;
   // REQ1-B64-length: length mod 4 == 1 is structurally invalid.
@@ -68,6 +73,10 @@ export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Ui
   return out.subarray(0, op);
 }
 
+/**
+ * Encodes bytes as unpadded base64url, returned as ASCII bytes.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function base64urlEncode(input: Uint8Array): Uint8Array {
   const len = input.length;
   const outLen = ((len + 2) / 3 | 0) * 4;

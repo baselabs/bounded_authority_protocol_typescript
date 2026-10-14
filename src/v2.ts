@@ -281,6 +281,11 @@ function isNumericTag(v: Tagged): boolean {
 
 // Validate + parse a v2 selector from a decoded tagged object: the three ADR-0021 member
 // sets, the extended kind dispatch, and the numeric-bound gate on lte/gte.
+/**
+ * Validates a decoded selector object for major 2 (`all`, `equals`, `one_of`, `lte`, `gte`).
+ * Throws `InvalidError` otherwise.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
   const kindV = obj.v.get("kind");
@@ -355,6 +360,11 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
 // (JCS of the typed projection — the int/float distinction survives); lte/gte apply the
 // same-tag inclusive comparison to the traversed value. Missing path → no match
 // (REQ1-SELECTOR-path-required).
+/**
+ * Applies one parsed major-2 selector to the cast arguments. `lte` and `gte` are inclusive and
+ * match only a same-tag numeric value.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;
   const target = traversePath(castArguments, sel.path);
@@ -710,6 +720,11 @@ function closedShape(args: unknown[], shapes: Shape[]): void {
 }
 
 // 1. untrusted_key_locator (spec/bap-v2.md § Untrusted key locator).
+/**
+ * Reads only the `kid` of a major-2 grant's protected header, to select a trusted key. The result
+ * is a lookup hint (`trust: "not_evaluated"`), never trust.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
@@ -750,6 +765,11 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
 }
 
 // 2. decode_grant (REQ1-VERIFY-decode-not-evaluated).
+/**
+ * Parses and validates a major-2 grant's structure and claims without checking its signature or
+ * any context (`verification: "not_evaluated"`). For display and debugging, never for a decision.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
@@ -779,6 +799,11 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
 }
 
 // 3. decode_proof.
+/**
+ * Parses and validates a standard (`dpop+jwt`) major-2 holder proof without checking its signature
+ * or any context (`verification: "not_evaluated"`).
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
@@ -793,6 +818,11 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
 }
 
 // 4. verify_grant (REQ1-VERIFY-grant-exact, grant-times, no-iat-nbf-order).
+/**
+ * Verifies a major-2 grant against the trusted issuer key and the expected issuer, audience and
+ * time. Facts carry `authorization: "not_evaluated"`: verification is not authority.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
     closedShape([compact, trusted, expected], ["bytes", "object", "object"]);
@@ -844,6 +874,12 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
 }
 
 // 5. check_envelope (REQ1-VERIFY-envelope-binding).
+/**
+ * Verifies a major-2 grant and its holder proof against one request: both signatures, issuer,
+ * audience, time windows, holder binding, method, URI, invocation id, operation, request digest,
+ * nonce and every selector of the operation.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
   return trying(() => {
     closedShape([grantCompact, proofCompact, expected], ["bytes", "bytes", "object"]);
@@ -977,6 +1013,11 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
 
 // 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — cross-vendor #21: mirror
 // the Elixir {:ok, binary} | {:error, :invalid} and the other 15 façade functions).
+/**
+ * The 32-byte request digest a proof carries as `ba_req`: SHA-256 over `BAP2-REQUEST\0` and the
+ * JCS of `[operation, typed(castArguments)]`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
     closedShape([operation, castArguments, bounds], ["str", "tagged", SHAPE_BOUNDS_OPT]);
@@ -986,6 +1027,11 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds?:
 
 // 7. encode_consumption_entry (ADR 0004 § Consumption rows). Returns canonical row bytes + hash.
 export interface EncodedConsumptionEntry { readonly bytes: Uint8Array; readonly hash: Uint8Array; }
+/**
+ * Encodes one consumption row as canonical bytes and returns them with the row hash, SHA-256 over
+ * `BAP2-CHAIN\0` and the bytes.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds): Result<EncodedConsumptionEntry> {
   return trying(() => {
     closedShape([entry, bounds], [{ fields: { chainId: "str", sequence: "int", previousHash: "bytes", commitment: "bytes" } }, SHAPE_BOUNDS_OPT]);
@@ -1026,6 +1072,11 @@ function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint
 }
 
 // 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
+/**
+ * Verifies a contiguous range of raw consumption rows against the expected chain id, sequences,
+ * count, predecessor hash and head hash. Facts carry `trust: "not_evaluated"`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
     closedShape([chain, expected], [{ fields: { rows: { seq: "bytes" }, chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes" } }, { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } }]);
@@ -1093,6 +1144,11 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
 }
 
 // 9. grant_signing_input (the deterministic producer; REQ1-SIGNING-deterministic-produce).
+/**
+ * Builds the exact major-2 grant signing input. Sign the bytes `protectedSegment`, `.`,
+ * `payloadSegment` with the issuer key, then call `assembleCompact`; the package never signs.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     closedShape([grant, bounds], [SHAPE_GRANT_PRODUCER, SHAPE_BOUNDS_OPT]);
@@ -1256,6 +1312,11 @@ function checkNode(v: Tagged, depth: number, b: Bounds): void {
 }
 
 // 10. proof_signing_input (REQ1-SIGNING-deterministic-produce).
+/**
+ * Builds the exact major-2 holder-proof signing input for one invocation of a grant. Sign it with
+ * the holder key, then call `assembleCompact`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     closedShape([proof, bounds], [SHAPE_PROOF_PRODUCER, SHAPE_BOUNDS_OPT]);
@@ -1329,6 +1390,11 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
 // carries no caller bounds, so the profile maximum (MAXIMUM_BOUNDS) is used. A mislabeled kind
 // (typ ≠ kind), oversized segment, non-base64url payload, or malformed payload content fails
 // closed — the producer must not mint bytes its own consumer (verify) would reject.
+/**
+ * Joins a signing input and a 64-byte signature into a compact JWS and re-parses the result. It
+ * does not verify the signature.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function assembleCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
     closedShape([input, signature, bounds], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes", SHAPE_BOUNDS_OPT]);
@@ -1367,6 +1433,11 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
 }
 
 // 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
+/**
+ * Builds the signing input of a boundary anchor, which signs one point (sequence and chain hash)
+ * of a consumption chain under an archive key.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     closedShape([anchor, bounds], [SHAPE_ANCHOR_PRODUCER, SHAPE_BOUNDS_OPT]);
@@ -1408,6 +1479,11 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
 }
 
 // 13. key_transition_signing_input (ADR 0004 § Authenticated key transitions).
+/**
+ * Builds the signing input of an authenticated key transition from the current archive key to the
+ * next one; the current key signs it.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     closedShape([t, bounds], [SHAPE_TRANSITION_PRODUCER, SHAPE_BOUNDS_OPT]);
@@ -1449,6 +1525,11 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
 
 // 14. encode_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-input-shape).
 export interface EncodedAnchoredExport { readonly archive: Uint8Array; readonly digest: Uint8Array; }
+/**
+ * Checks rows, anchors and transitions, then frames them into an anchored-export archive. Returns
+ * the archive bytes and their SHA-256 digest.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
   return trying(() => {
     closedShape([input, expected], [SHAPE_EXPORT_INPUT, SHAPE_EXPECTED_EXPORT]);
@@ -1612,6 +1693,11 @@ function frame(bytes: Uint8Array): Uint8Array {
 }
 
 // 15. verify_historical_anchor (ADR 0004 § Boundary anchors; spec/bap-v2.md § Historical anchor).
+/**
+ * Verifies a boundary anchor under one historical key, including `validFrom <= anchoredAt <
+ * validBefore`. Facts carry `trust: "not_evaluated"`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
     closedShape([compact, key, expected], ["bytes", SHAPE_HIST_KEY, "object"]);
@@ -1666,6 +1752,11 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
 }
 
 // 16. verify_key_transition (ADR 0004 § Authenticated key transitions).
+/**
+ * Verifies that `oldKey` signed a handover to `newKey`, with the effective time inside both keys'
+ * validity windows. Facts carry `trust: "not_evaluated"`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPublicKey, newKey: HistoricalPublicKey, expected: ExpectedKeyTransition): Result<KeyTransitionFacts> {
   return trying(() => {
     closedShape([compact, oldKey, newKey, expected], ["bytes", SHAPE_HIST_KEY, SHAPE_HIST_KEY, "object"]);
@@ -1717,6 +1808,11 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 }
 
 // 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
+/**
+ * Verifies a stored anchored-export archive (in any chunking) under the ordered archive keys:
+ * digest, object version, framing, both anchors, every transition and every row.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedAnchoredExport): Result<AnchoredExportFacts> {
   return trying(() => {
     closedShape([archived, keyChain, expected], [{ fields: { chunks: { seq: "bytes" }, version: "str" } }, { fields: { keys: { seq: SHAPE_HIST_KEY } } }, SHAPE_EXPECTED_ANCHORED_EXPORT]);

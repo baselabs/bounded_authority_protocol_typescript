@@ -13,6 +13,12 @@ import { utf8Str, strUtf8 } from "./json.js";
 // unreserved octets; preserve percent-encoded reserved octets as path data; remove complete dot
 // segments; empty path → "/"; drop port 443; preserve a valid nondefault port + all other path bytes.
 
+/**
+ * The normal form of an HTTPS target URI (lowercase scheme and host, uppercase percent hex,
+ * unreserved escapes decoded, dot segments removed, port 443 dropped). Rejects user information, a
+ * query, a fragment, non-ASCII bytes and any other scheme.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   try {
     return ok(strUtf8(normalize(input, coerceBounds(bounds))));
@@ -22,6 +28,11 @@ export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
   }
 }
 
+/**
+ * The normal form of a local-loopback target URI: `http`, host exactly `127.0.0.1` or `[::1]`,
+ * port 1 to 65535 with `:80` dropped.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function localLoopbackHttpUriNormalize(
   input: Uint8Array,
   bounds: Bounds = MAXIMUM_BOUNDS,

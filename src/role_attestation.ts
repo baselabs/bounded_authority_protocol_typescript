@@ -229,6 +229,11 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
 // --- the four public surfaces (spec §4; REQ-RA1-API-complete) ---
 
 // 1. attestation signing-input production (external signature only).
+/**
+ * Builds the signing input of a `bap-role-attestation/1` attestation: the attestor binds a subject
+ * key to the `issuer` or `holder` role for `[notBefore, expiresAt)`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function attestationSigningInput(attestation: AttestationProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
     if (attestation === null || typeof attestation !== "object") fail("attestation_signing_input: producer required");
@@ -301,6 +306,11 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
 // 2. compact assembly from signing input and external signature — revalidates the protected
 // header, payload member rules, segment bounds, and signature width under this profile before
 // returning a compact artifact (REQ-RA1-API-assembly-revalidate; symmetry with decode/verify).
+/**
+ * Joins a role-attestation signing input and a 64-byte signature into a compact JWS and re-parses
+ * it. It does not verify the signature.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function assembleAttestationCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
     if (input === null || typeof input !== "object") fail("assemble_compact: signing input required");
@@ -321,6 +331,11 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
 }
 
 // 3. attestation decoding — bounded decode, no trust evaluation.
+/**
+ * Parses and validates a role attestation's structure without checking its signature or window
+ * (`verification: "not_evaluated"`).
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<AttestationDecoded> {
   return trying(() => {
     if (!(compact instanceof Uint8Array)) fail("decode_attestation: compact required");
@@ -346,6 +361,12 @@ export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<
 // key, (3) subject binding byte-equality, (4) self-attestation rejection (thumbprint and key
 // id legs), (5) window containment in the attestor key window (exp == valid_before is
 // containment and accepts), (6) now in the half-open [nbf, exp). Single closed error.
+/**
+ * Verifies a role attestation under the attestor key: signature, subject key id and key, no
+ * self-attestation, window containment in the attestor key's validity, and `nbf <= now < exp`.
+ * Facts carry `trust: "not_evaluated"`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttestation): Result<AttestationFacts> {
   return trying(() => {
     if (!(compact instanceof Uint8Array)) fail("verify_attestation: compact required");

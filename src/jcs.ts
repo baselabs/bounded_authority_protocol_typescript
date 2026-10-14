@@ -15,6 +15,11 @@ import { strUtf8, utf8Str, type Tagged } from "./json.js";
 // would be a Float tag, but JS coerces 1.0 to 1 at the value layer — the TAG carries the distinction,
 // the serialization is byte-identical for equal numeric value, matching the Elixir JCS).
 
+/**
+ * Encodes a tagged value as RFC 8785 canonical JSON bytes. Throws `InvalidError` on a value over
+ * the limits or invalid Unicode.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   // Cross-vendor F2: re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override
   // can widen limits past MAXIMA). Mirrors the reference's Bounds.coerce.

@@ -1,6 +1,7 @@
 // The public surface of @bounded-authority-protocol/verifier (the v1 protocol verification façade +
-// versioned primitives). Re-exports the 17 façade functions + the dispatch structs + the primitives
-// the public contract names (spec/bap-v1.md § Public verification contract, L266-309).
+// versioned primitives). Re-exports the 17 v1 façade functions, the 4 local-loopback proof profile
+// functions, the dispatch structs and the primitives the public contract names (spec/bap-v1.md §
+// Public verification contract). Every export is listed in docs/reference.md.
 //
 // No `authorized`/`decision` surface (AGENTS rule 1); every function returns Result<T> =
 // Ok | Err, mirroring {:ok,value}|{:error,:invalid}. Facts are value-bearing, redacted, and
@@ -12,11 +13,16 @@ import type { BackendId } from "./crypto/types.js";
 // The crypto backend this build resolved: "node" (node:crypto, Node.js default conditions) or
 // "portable" (@noble: browsers, Deno, Bun, workers, and Node under --conditions=bap-portable). It
 // selects the implementation only; every protocol gate and every verdict is the same in both.
+/**
+ * The crypto backend this build resolved: `"node"` (node:crypto) or `"portable"` (@noble).
+ * Verdicts are the same in both.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export const BACKEND_ID: BackendId = RESOLVED_BACKEND;
 export type { BackendId } from "./crypto/types.js";
 
 export {
-  // The 17 façade functions.
+  // The 17 v1 façade functions and the 4 local-loopback proof profile functions.
   untrustedKeyLocator,
   decodeGrant,
   decodeProof,

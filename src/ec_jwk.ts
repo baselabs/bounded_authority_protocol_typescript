@@ -21,6 +21,11 @@ export interface EcPublic {
 }
 
 // Encode a raw 65-byte SEC1 P-256 public key as the canonical EC JCS JSON bytes.
+/**
+ * The canonical JSON bytes of the public EC JWK `{crv: "P-256", kty: "EC", x, y}` for a raw
+ * 65-byte SEC1 key. Throws `InvalidError` for a key that is not 65 bytes.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey.length === 65, "jwk.encode_public: public key width must be 65");
   const jwk = jwkFromPublicKey(rawKey);
@@ -40,6 +45,11 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
 // REQ3-HEADER-no-private-jwk); crv must be "P-256", kty "EC"; x and y are canonical unpadded
 // base64url of exactly 32 bytes each (the RFC 7518 §6.2.1.2/.3 fixed-width spelling), each less
 // than the field prime, and the point must be on the curve (REQ3-KEY-point-on-curve).
+/**
+ * Parses exactly a public P-256 EC JWK and returns the raw 65-byte uncompressed key after full
+ * point validation.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed EC shape.
   try {
@@ -98,6 +108,10 @@ export function thumbprintPreimage(jwk: EcPublic): Uint8Array {
 }
 
 // Thumbprint as base64url SHA-256 of the preimage.
+/**
+ * The RFC 7638 thumbprint of a public P-256 JWK `{crv, kty, x, y}`, as unpadded base64url.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function thumbprint(jwk: EcPublic): string {
   return utf8Str(base64urlEncode(sha256(thumbprintPreimage(jwk))));
 }

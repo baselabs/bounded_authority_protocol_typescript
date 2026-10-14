@@ -23,6 +23,11 @@ const SELECTOR_KINDS = new Set(["all", "equals", "one_of"]);
 const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,values"]);
 
 // Validate + parse a selector from a decoded tagged object. Rejects unknown members, bad shapes.
+/**
+ * Validates a decoded selector object for major 1 (`all`, `equals`, `one_of`). Throws
+ * `InvalidError` otherwise.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
   const kindV = obj.v.get("kind");
@@ -101,6 +106,11 @@ function checkNode(v: Tagged, depth: number, bounds: Bounds): void {
 }
 
 // Semantic identity = JCS of the typed-projected form. Returns canonical bytes for comparison.
+/**
+ * The canonical bytes selectors compare: the JCS of the typed projection. Member order does not
+ * matter; integer and float tags do.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function semanticIdentity(value: Tagged): Uint8Array {
   return jcsEncode(typedProject(value));
 }
@@ -117,6 +127,10 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
 
 // Does this selector match the given cast_arguments? equals/one_of REQUIRE the path to exist
 // (REQ1-SELECTOR-path-required): missing path → no match (not an error).
+/**
+ * Applies one parsed major-1 selector to the cast arguments. A missing path never matches.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;
   const target = traversePath(castArguments, sel.path);

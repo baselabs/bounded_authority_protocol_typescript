@@ -17,6 +17,11 @@ export const REQUEST_PREFIX = new Uint8Array([
 // typed() projection: tagged value → ["tag", value] JSON array (spec/bap-v1.md).
 //   :null → ["null"]; bool → ["boolean",v]; int → ["integer",v]; float → ["float",v];
 //   string → ["string",v]; array → ["array", [typed(v)...]]; object → ["object", {k: typed(v)...}]
+/**
+ * The typed projection behind request digests and selector identity: every value becomes `["tag",
+ * value]`.
+ * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ */
 export function typedProject(value: Tagged): Tagged {
   switch (value.t) {
     case "null": return { t: "array", v: [{ t: "string", v: strUtf8("null") }] };
