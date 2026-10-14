@@ -471,7 +471,10 @@ assert.notDeepEqual(semanticIdentity(jsonDecode(strUtf8("3"))), semanticIdentity
   SHA-256, the raw 32-byte SHA-256, and the raw thumbprint straight from a raw key.
 
 Every one of these applies rule S1 key acceptance and throws `InvalidError` for a key that is not
-32 bytes or not acceptable (`jwkDecodePublic` returns the closed result instead).
+32 bytes or not acceptable (`jwkDecodePublic` returns the closed result instead). The three that take
+a JWK object (`thumbprintPreimage`, `thumbprint`, `thumbprintRaw`) also throw for an object with any
+member besides `crv`, `kty` and `x`, such as a private `d` or an `alg` (new in 0.8.0 (unreleased); the
+`v3` forms likewise require exactly `crv`, `kty`, `x` and `y`).
 
 ```ts
 import assert from "node:assert/strict";

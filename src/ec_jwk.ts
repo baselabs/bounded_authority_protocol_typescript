@@ -5,6 +5,7 @@ import { jcsEncode } from "./jcs.js";
 import { jsonDecode, strUtf8, utf8Str } from "./json.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import { validateEcPublicKey } from "./es256.js";
+import { exactMembers } from "./jwk.js";
 
 // RFC 7638 JWK thumbprint for EC P-256 public keys (spec/bap-v3.md §3.1). The public EC JWK has
 // exactly four members — crv="P-256", kty="EC", x=<canonical unpadded base64url of 32 bytes>,
@@ -134,7 +135,7 @@ export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
 
 // The raw 65-byte point behind a public EC JWK, after full validation.
 function acceptableJwkPoint(jwk: EcPublic): Uint8Array {
-  if (jwk === null || typeof jwk !== "object") fail("jwk: object required");
+  exactMembers(jwk, ["crv", "kty", "x", "y"]);
   if (jwk.crv !== "P-256" || jwk.kty !== "EC" || typeof jwk.x !== "string" || typeof jwk.y !== "string") fail("jwk: P-256 EC members");
   const x = base64urlDecode(strUtf8(jwk.x));
   const y = base64urlDecode(strUtf8(jwk.y));

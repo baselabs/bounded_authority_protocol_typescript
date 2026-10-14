@@ -95,6 +95,8 @@ function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
  */
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
+  exactMembers(jwk, ["crv", "kty", "x"]);
+  if (jwk.crv !== "Ed25519" || jwk.kty !== "OKP" || typeof jwk.x !== "string") fail("jwk: OKP Ed25519 members");
   const raw = base64urlDecode(strUtf8(jwk.x));
   assert(raw.length === 32, "jwk: x width");
   assert(acceptablePublicKey(raw), "jwk: key not acceptable");
@@ -128,6 +130,17 @@ export function thumbprint(jwk: OkpPublic): string {
  */
 export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
   return sha256(thumbprintPreimage(jwk));
+}
+
+// The closed member set of a public JWK object, as the Elixir V1.Jwk and V3.EcJwk decoders require:
+// exactly the RFC 7638 required members of its key type, as own string keys, and nothing else (no
+// private `d`, no `alg`, no other member). Shared with ec_jwk.ts.
+export function exactMembers(jwk: object, members: readonly string[]): void {
+  if (jwk === null || typeof jwk !== "object") fail("jwk: object required");
+  const own = Reflect.ownKeys(jwk);
+  if (own.length !== members.length || !own.every((k) => typeof k === "string" && members.includes(k))) {
+    fail("jwk: closed member set");
+  }
 }
 
 // Raw 32-byte thumbprint directly from a raw 32-byte public key. Fallible, like every function above.

@@ -2,9 +2,10 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## [Unreleased]
+## [0.8.0] — unreleased
 
-No verification verdict changes.
+No verification verdict changes. Before 1.0 the minor position is the breaking boundary: this release
+changes the behavior of several public functions and of facts values (marked **Breaking** below).
 
 ### Added
 
@@ -31,6 +32,12 @@ No verification verdict changes.
 - `utf8Str` throws the package's `InvalidError` on invalid UTF-8, like every other decoder; 0.7.0 let
   the platform `TypeError` of its fatal `TextDecoder` through. No conformance verdict changes.
 
+- **Breaking:** `thumbprintPreimage`, `thumbprint` and `thumbprintRaw` (Ed25519, package root) and
+  their `v3` forms refuse, with `InvalidError`, a JWK object with any member outside the RFC 7638
+  required set of its key type (`crv`, `kty`, `x`; for P-256 also `y`): a private `d`, an `alg`, a
+  `use` or anything else. This matches the Elixir `V1.Jwk` and `V3.EcJwk`, which decode exactly that
+  member set. 0.7.0 hashed the required members and ignored the rest. No conformance verdict
+  changes.
 ### Fixed
 
 - The published `package.json` no longer carries the development condition `bap-source` in its
