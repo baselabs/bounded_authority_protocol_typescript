@@ -2,6 +2,28 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
+## [1.0.0] — 2026-10-29
+
+The stability release: from here, SemVer's ordinary rules apply — a breaking change to the public
+API or to verdicts costs a major version, and `^1.0.0` ranges carry every later minor and patch.
+No verification verdict changes; the source is 0.8.0's.
+
+### Changed
+
+- **Breaking:** deep imports are closed. The `"exports"` map no longer carries the `"./*"`
+  passthrough, so any path under `dist/` (for example
+  `@bounded-authority-protocol/verifier/dist/src/v3.js`) now refuses on every runtime — Node
+  spells it `ERR_PACKAGE_PATH_NOT_EXPORTED`; Deno and Bun report the module as not found —
+  exactly as the crypto backends already did.
+  The public API is the package root (plus `./package.json`); import `v2`, `v3`,
+  `roleAttestation` and `contentAssertion` from it. In 0.8.0 a fully specified `.js` deep path
+  still resolved through the passthrough the 0.7.0 changelog reserved the right to close. The
+  tarball check now asserts every deep spelling refuses, and its consumer uses the root only.
+
+### Documentation
+
+- README: the versioning section states the 1.0 contract, and the install pins move to 1.0.0.
+
 ## [0.8.0] — 2026-10-29
 
 No verification verdict changes. Before 1.0 the minor position is the breaking boundary: this release

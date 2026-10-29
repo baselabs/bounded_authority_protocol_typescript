@@ -40,7 +40,7 @@ once, and deciding whether to execute belong to your service.
 ## Install
 
 ```bash
-npm install @bounded-authority-protocol/verifier@0.8.0
+npm install @bounded-authority-protocol/verifier@1.0.0
 ```
 
 The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.19.0), or a
@@ -61,7 +61,7 @@ Set up a new project (the package is ESM-only, so the project is `"type": "modul
 mkdir bap-quickstart && cd bap-quickstart
 npm init -y
 npm pkg set type=module
-npm install @bounded-authority-protocol/verifier@0.8.0
+npm install @bounded-authority-protocol/verifier@1.0.0
 ```
 
 Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`
@@ -431,9 +431,12 @@ and a package major is owed only when a shipped profile or public API is removed
 verdicts. Wire artifacts self-declare their major (payload `v`, the `BAP<n>-…` suite name,
 major-bound domain separators), so the package number never needs to encode it.
 
-Before 1.0 the minor position is the breaking boundary: a caret range such as `^0.6.0` never
-selects `0.7.0`. Releases 0.5.0, 0.6.0 and 0.7.0 each carry verdict or API behavior changes listed
-in the [changelog](CHANGELOG.md).
+The package is 1.0: SemVer's ordinary rules apply — a breaking change costs a major version, and
+a caret range such as `^1.0.0` carries every later minor and patch. (Before 1.0 the minor
+position was the breaking boundary: releases 0.5.0 through 0.8.0 each carry verdict or API
+behavior changes listed in the [changelog](CHANGELOG.md).) Deep imports — any path under
+`dist/` — are closed as of 1.0.0: the exports map exposes the package root and
+`./package.json` only, so import from the root.
 
 ## Protocol documentation
 

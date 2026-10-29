@@ -1,13 +1,14 @@
 // The packed package as a consumer receives it (pnpm test:tarball, which builds first). It packs the
 // real tarball, installs it offline into a scratch consumer outside the repository, and then:
-//   - typechecks a consumer of the whole public API plus one deep import with skipLibCheck false and
+//   - typechecks a consumer of the whole public API (the package root is the only import; deep
+//     imports are closed as of 1.0.0) with skipLibCheck false and
 //     types [], under NodeNext and Bundler resolution, lib ES2022 alone and ES2022 + DOM, and each
 //     condition set a consumer can select (none, bap-portable, deno, bun): no public declaration may
 //     need a Node or DOM global type;
 //   - red-proof: the same typecheck fails once one public declaration in the installed copy leaks a
 //     node:crypto type;
 //   - runs the consumer: Node resolves the node backend, Node with --conditions=bap-portable, Deno and
-//     Bun resolve the portable one, and the deep import through the "./*" passthrough works everywhere.
+//     Bun resolve the portable one; a probe asserts every deep import now refuses.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -38,7 +39,6 @@ import {
   es256VerifyStrict, sha256, jcsEncode, jsonDecode, thumbprint, base64urlEncode, v2, v3, roleAttestation,
   contentAssertion, InvalidError, type BackendId, type ExpectedRequest, type GrantFacts, type Result, type Tagged,
 } from "${NAME}";
-import { verifyGrant as deepVerifyGrant } from "${NAME}/dist/src/v3.js";
 const id: BackendId = BACKEND_ID;
 const ok: boolean = verifyStrict(new Uint8Array(0), new Uint8Array(64), new Uint8Array(32)) && acceptablePublicKey(new Uint8Array(32)) && torsionFree(new Uint8Array(32));
 const es: boolean = es256VerifyStrict(new Uint8Array(0), new Uint8Array(64), new Uint8Array(65));
@@ -46,19 +46,18 @@ const digest: Uint8Array = sha256(new Uint8Array(1));
 const tagged: Tagged = jsonDecode(Uint8Array.of(0x7b, 0x7d));
 const r: Result<GrantFacts> = verifyGrant(new Uint8Array(0), { keyId: "k", publicKey: new Uint8Array(32) }, { issuer: "i", audience: "a", evaluationTime: 0, clockSkew: 0 });
 export const all = [id, ok, es, digest, tagged, r, checkEnvelope, decodeGrant, jcsEncode, thumbprint, base64urlEncode, v2.verifyGrant, v3.verifyGrant,
-  roleAttestation.verifyAttestation, contentAssertion.verifyAssertion, InvalidError, deepVerifyGrant] as const;
+  roleAttestation.verifyAttestation, contentAssertion.verifyAssertion, InvalidError] as const;
 export type Uses = ExpectedRequest;
 `;
 
 // RFC 8032 section 7.1 TEST 1, verified through the installed package.
 const CONSUMER_JS = `
 import { BACKEND_ID, verifyStrict, es256VerifyStrict } from "${NAME}";
-import { verifyGrant } from "${NAME}/dist/src/v3.js";
 const hex = (h) => Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
 const rfc = verifyStrict(new Uint8Array(0),
   hex("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"),
   hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"));
-console.log(JSON.stringify({ backend: BACKEND_ID, rfc8032: rfc, es256Garbage: es256VerifyStrict(new Uint8Array(0), new Uint8Array(64), new Uint8Array(65)), deep: typeof verifyGrant }));
+console.log(JSON.stringify({ backend: BACKEND_ID, rfc8032: rfc, es256Garbage: es256VerifyStrict(new Uint8Array(0), new Uint8Array(64), new Uint8Array(65)) }));
 `;
 
 test.before(() => {
@@ -97,7 +96,6 @@ test("the manifest declares the exports map, the imports conditions and no side 
     ".": { types: "./dist/src/index.d.ts", default: "./dist/src/index.js" },
     "./package.json": "./package.json",
     "./dist/src/crypto/*": null,
-    "./*": "./*",
   });
   const crypto = (MANIFEST.imports as Record<string, Record<string, unknown>>)["#crypto"]!;
   assert.deepEqual(Object.keys(crypto), ["bap-source", "bap-portable", "deno", "bun", "workerd", "worker", "node", "types", "default"]);
@@ -203,15 +201,15 @@ for (const [label, args, want] of [
   ["deno", ["deno", "run", "--allow-read", "--allow-env", "main.mjs"], "portable"],
   ["bun", ["bun", "main.mjs"], "portable"],
 ] as const) {
-  test(`consumer runtime: ${label} resolves the ${want} backend; RFC 8032 TEST 1 verifies; the deep import resolves`, () => {
+  test(`consumer runtime: ${label} resolves the ${want} backend; RFC 8032 TEST 1 verifies`, () => {
     const [cmd, ...rest] = args;
     const out = JSON.parse(run(cmd, [...rest], consumer).trim()) as Record<string, unknown>;
-    assert.deepEqual(out, { backend: want, rfc8032: true, es256Garbage: false, deep: "function" });
+    assert.deepEqual(out, { backend: want, rfc8032: true, es256Garbage: false });
   });
 }
 
 // The backends are reachable only through "#crypto": a deep import cannot pick the ungated one.
-test("deep imports: the backends are not exported; a fully specified .js path resolves, an extensionless one does not", () => {
+test("deep imports: closed — the backends are not exported and no deep path resolves", () => {
   const probe = (specifier: string) => {
     writeFileSync(join(consumer, "probe.mjs"), `import(${JSON.stringify(specifier)}).then((m) => console.log(typeof m.verifyGrant), (e) => console.log(e.code));`);
     return run("node", ["probe.mjs"], consumer).trim();
@@ -219,8 +217,10 @@ test("deep imports: the backends are not exported; a fully specified .js path re
   for (const backend of ["node", "portable", "backend", "types", "parts"]) {
     assert.equal(probe(`${NAME}/dist/src/crypto/${backend}.js`), "ERR_PACKAGE_PATH_NOT_EXPORTED", backend);
   }
-  assert.equal(probe(`${NAME}/dist/src/v3.js`), "function");
-  assert.equal(probe(`${NAME}/dist/src/v3`), "ERR_MODULE_NOT_FOUND");
+  // Deep imports are closed (1.0.0): the passthrough is gone, so every deep spelling refuses.
+  assert.equal(probe(`${NAME}/dist/src/v3.js`), "ERR_PACKAGE_PATH_NOT_EXPORTED");
+  assert.equal(probe(`${NAME}/dist/src/v3`), "ERR_PACKAGE_PATH_NOT_EXPORTED");
+  assert.equal(probe(`${NAME}/dist/src/index.js`), "ERR_PACKAGE_PATH_NOT_EXPORTED");
 });
 
 // Bundlers: which backend a bundle of the installed package carries, read from esbuild's metafile.

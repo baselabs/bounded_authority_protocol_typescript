@@ -1,6 +1,6 @@
 {
   "name": "@bounded-authority-protocol/verifier",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority \u2014 a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1, 2, and 3) for Node.js, browsers, Deno and Bun.",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,8 +12,7 @@
       "default": "./dist/src/index.js"
     },
     "./package.json": "./package.json",
-    "./dist/src/crypto/*": null,
-    "./*": "./*"
+    "./dist/src/crypto/*": null
   },
   "sideEffects": false,
   "imports": {
