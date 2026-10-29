@@ -33,7 +33,7 @@ assert.throws(() => enrollEd25519(new Uint8Array(32))); // the all-zero small-or
 ```
 
 For P-256 keys (major 3), check the point: 65 bytes, the `0x04` prefix, both coordinates below the
-field prime, on the curve. New in 0.8.0 (unreleased): `v3.publicKeyThumbprintRaw` does it and
+field prime, on the curve. New in 0.8.0: `v3.publicKeyThumbprintRaw` does it and
 returns the key's fingerprint.
 
 ```ts since=0.8.0
@@ -55,7 +55,7 @@ assert.throws(() => enrollP256(offCurve), { name: "InvalidError" });
 ```
 
 On 0.7.0, which lacks that helper, encode and decode the key's canonical JWK: the decoder applies
-the same point check (`trying` turns a refusal by the encoder, as in 0.8.0 (unreleased), into the
+the same point check (`trying` turns a refusal by the encoder, as in 0.8.0, into the
 closed result).
 
 ```ts

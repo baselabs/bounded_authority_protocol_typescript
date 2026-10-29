@@ -119,7 +119,7 @@ Major 3 replaces Ed25519 with ECDSA over NIST P-256 and SHA-256 (`BAP3-ES256-SHA
   [signer package](https://www.npmjs.com/package/@bounded-authority-protocol/signer) (0.5.0)
   normalizes in its v3 signing functions and then checks the result with `es256VerifyStrict`.
 
-The sample uses `v3.jwkFromPublicKey`, new in 0.8.0 (unreleased); with 0.7.0 spell the JWK object
+The sample uses `v3.jwkFromPublicKey`, new in 0.8.0; with 0.7.0 spell the JWK object
 `{ crv: "P-256", kty: "EC", x, y }` from the key's coordinates.
 
 ```ts since=0.8.0
@@ -201,7 +201,7 @@ const twin = v3.assembleCompact(grantInput.value, highS);
 assert.deepEqual(twin, { ok: false });
 ```
 
-New in 0.8.0 (unreleased), the v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the
+New in 0.8.0, the v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the
 root's Ed25519 ones for majors 1 and 2: `v3.jwkFromPublicKey(raw65)` returns the `v3.EcPublic` JWK
 object, `v3.thumbprint`, `v3.thumbprintRaw` and `v3.thumbprintPreimage` take that object,
 `v3.publicKeyThumbprintRaw(raw65)` gives the raw fingerprint anchors and transitions carry,

@@ -40,7 +40,7 @@ once, and deciding whether to execute belong to your service.
 ## Install
 
 ```bash
-npm install @bounded-authority-protocol/verifier@0.7.0
+npm install @bounded-authority-protocol/verifier@0.8.0
 ```
 
 The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.19.0), or a
@@ -61,7 +61,7 @@ Set up a new project (the package is ESM-only, so the project is `"type": "modul
 mkdir bap-quickstart && cd bap-quickstart
 npm init -y
 npm pkg set type=module
-npm install @bounded-authority-protocol/verifier@0.7.0
+npm install @bounded-authority-protocol/verifier@0.8.0
 ```
 
 Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`
@@ -173,7 +173,7 @@ assert.equal(torsionFree(publicKey32), true); // acceptable, and [L]A = O
 assert.equal(acceptablePublicKey(new Uint8Array(32)), false);
 ```
 
-New in 0.8.0 (unreleased): the "never throws" above also holds for an exotic input whose typed-array getters throw (a
+New in 0.8.0: the "never throws" above also holds for an exotic input whose typed-array getters throw (a
 `Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
 `TypeError` for one.
 
@@ -188,7 +188,7 @@ total (it never throws), it returns `true` only for an uncompressed, on-curve P-
 SHA-256 signature over the message. It applies the `REQ3-SIGNING-*` rules of the v3 profile to raw
 bytes.
 
-New in 0.8.0 (unreleased): compact assembly and anchored-export encoding are producer surfaces —
+New in 0.8.0: compact assembly and anchored-export encoding are producer surfaces —
 they frame a signature and verify none — so each refuses, with the closed error, a signature no
 conforming signer emits and emits every accepted signature's bytes unchanged (erratum 3): an
 Ed25519 signature whose `S` is at least the group order or whose `R` is non-canonical or of small
@@ -227,7 +227,7 @@ runtime, whether that is linked against OpenSSL (Node.js) or BoringSSL (Electron
 tell the two apart. Verdicts do not depend on it, because every protocol gate runs before the
 backend. In 0.7.0 the published map also carried this repository's development condition,
 `bap-source`, whose targets are in `src/`, which the package does not ship: a build that set it
-failed to resolve. New in 0.8.0 (unreleased): the packed manifest no longer carries it.
+failed to resolve. New in 0.8.0: the packed manifest no longer carries it.
 
 ```ts
 import assert from "node:assert/strict";

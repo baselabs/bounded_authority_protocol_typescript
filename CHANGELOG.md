@@ -2,7 +2,7 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## [0.8.0] — unreleased
+## [0.8.0] — 2026-10-29
 
 No verification verdict changes. Before 1.0 the minor position is the breaking boundary: this release
 changes the behavior of several public functions and of facts values (marked **Breaking** below).
@@ -119,10 +119,10 @@ changes the behavior of several public functions and of facts values (marked **B
 - TSDoc on every exported function, so editors show its contract on hover.
 - Earlier release entries are reworded for readers outside the project; every factual statement is
   kept.
-- New APIs and behavior of this release are marked "new in 0.8.0 (unreleased)" in the README and
-  `docs/` (one find-and-replace at release), and their samples are fenced `ts since=0.8.0`. The
+- New APIs and behavior of this release are marked "new in 0.8.0" in the README and
+  `docs/` (the release flips the "(unreleased)" markers in one find-and-replace), and their samples are fenced `ts since=0.8.0`. The
   samples test also runs every sample without that marker against the published package from npm
-  (0.7.0 today), in a fresh consumer with Node's type stripping, so the docs cannot claim
+  (the latest release), in a fresh consumer with Node's type stripping, so the docs cannot claim
   published behavior that is not published.
 - The README quickstart names its file, the setup commands (including `npm pkg set type=module`) and
   the run command, and says a `.ts` file runs directly on Node 22.18 or later (or through `tsx`).

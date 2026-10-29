@@ -109,7 +109,7 @@ according to `input.kind` (`grant`, `proof`, `boundary_anchor` or `key_transitio
 anything the matching decoder would reject. It does not verify the signature. Takes a signature,
 never a key or a signing callback.
 
-New in 0.8.0 (unreleased): assembly is a producer surface, so it refuses with the closed error a
+New in 0.8.0: assembly is a producer surface, so it refuses with the closed error a
 signature no conforming signer emits and never rewrites accepted bytes (erratum 3): an Ed25519
 signature whose `S` is at least the group order or whose `R` is non-canonical or of small order
 (this package's Ed25519 namespaces and the three sibling profiles), an ES256 `r || s` outside
@@ -171,7 +171,7 @@ the key path (each transition hands over from the previous key, times strictly i
 fingerprint repeats, the end anchor uses the last key), and frames the archive. Returns the archive
 bytes and their SHA-256 digest. In major 1, `expected.digest` and `expected.objectVersion` are
 required by the type but not read here. Rejects more than 256 transitions, 65,796 chunks or
-270,820,384 bytes. New in 0.8.0 (unreleased): encoding is a producer surface, so it also refuses,
+270,820,384 bytes. New in 0.8.0: encoding is a producer surface, so it also refuses,
 with the closed error, a start anchor, end anchor or transition signature that no conforming signer
 emits (erratum 3), and never rewrites accepted bytes. Example: [Consumption chains and archives](guides/chains-and-archives.md#anchored-exports).
 
@@ -369,7 +369,7 @@ Facts are plain readonly objects. They carry identifiers, times and digests, nev
 selector values, signatures, JWK containers or nonces, and none of them is a credential. No facts
 type has an "allowed" or decision field.
 
-New in 0.8.0 (unreleased): facts follow the profile's redaction rule ("fixed redacted rendering and
+New in 0.8.0: facts follow the profile's redaction rule ("fixed redacted rendering and
 no generic encoder, string, or enumeration protocol") the way the Elixir reference does:
 
 - Fields are ordinary read-only properties. They read, spread, `structuredClone` and compare by
@@ -442,7 +442,7 @@ or 3).
 - **`jcsEncode(value, bounds?): Uint8Array`** encodes a `Tagged` value as RFC 8785 canonical JSON
   (members sorted by UTF-16 code units, ECMAScript number text). Throws `InvalidError`.
 - **`strUtf8(text): Uint8Array`** and **`utf8Str(bytes): string`** convert between strings and UTF-8;
-  `utf8Str` throws `InvalidError` on invalid UTF-8 (new in 0.8.0 (unreleased); 0.7.0 throws the
+  `utf8Str` throws `InvalidError` on invalid UTF-8 (new in 0.8.0; 0.7.0 throws the
   platform `TypeError`).
 
 ### Selectors and digests
@@ -497,7 +497,7 @@ assert.notDeepEqual(semanticIdentity(jsonDecode(strUtf8("3"))), semanticIdentity
 Every one of these applies rule S1 key acceptance and throws `InvalidError` for a key that is not
 32 bytes or not acceptable (`jwkDecodePublic` returns the closed result instead). The three that take
 a JWK object (`thumbprintPreimage`, `thumbprint`, `thumbprintRaw`) also throw for an object with any
-member besides `crv`, `kty` and `x`, such as a private `d` or an `alg` (new in 0.8.0 (unreleased); the
+member besides `crv`, `kty` and `x`, such as a private `d` or an `alg` (new in 0.8.0; the
 `v3` forms likewise require exactly `crv`, `kty`, `x` and `y`).
 
 ```ts
@@ -531,7 +531,7 @@ assert.deepEqual(jwkDecodePublic(new TextEncoder().encode(`{"crv":"Ed25519","d":
 - **`es256VerifyStrict(message, signature, publicKey): boolean`**: ES256 with a 65-byte uncompressed
   on-curve key, a raw 64-byte `r || s` signature, `0 < r < n` and low-S. Never throws.
 
-All four return `false` for any input that is not valid. New in 0.8.0 (unreleased): that also holds for an exotic input whose typed-array getters throw (a
+All four return `false` for any input that is not valid. New in 0.8.0: that also holds for an exotic input whose typed-array getters throw (a
 `Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
 `TypeError` for one.
 
@@ -682,7 +682,7 @@ It has the same function list as `v2`, with these key and signature forms:
   for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the `0x04` prefix, both
   coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it. 0.7.0 has only
   `v3.jwkEncodePublic` (width check only), `v3.jwkDecodePublic` and `v3.thumbprint` (no point check);
-  the other four, and the point checks, are new in 0.8.0 (unreleased):
+  the other four, and the point checks, are new in 0.8.0:
 
 | Function | Returns |
 |---|---|
