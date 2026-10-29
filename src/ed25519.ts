@@ -81,8 +81,8 @@ function isCanonical(encoding: Uint8Array): boolean {
 }
 
 // The byte-level part of rule S1 (clauses 2 to 4), separate from the backend so each clause stays
-// testable on its own: a cofactorless backend already refuses a non-canonical R and S >= L, so only a
-// direct test of the gate can show those two clauses are present. Internal; not part of the package API.
+// testable on its own: a cofactorless backend already refuses a non-canonical R and S >= L, so only
+// a direct test of the gate can show those two clauses are present. Internal; not part of the package API.
 export function strictGate(signature: Uint8Array, publicKey: Uint8Array): boolean {
   if (!isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
   const r = signature.subarray(0, 32);
@@ -91,6 +91,17 @@ export function strictGate(signature: Uint8Array, publicKey: Uint8Array): boolea
     !isSmallOrder(publicKey) && !isSmallOrder(r) &&
     littleEndian(signature, 32, 64) < L
   );
+}
+
+// The keyless part of rule S1, the signature clauses alone: R canonical, R not of small order,
+// and S < L. The verify gate above calls it, and every Ed25519 producer surface (compact
+// assembly and anchored-export encoding, erratum 3) refuses a signature that fails it, so one
+// function owns the clauses. It does not decode R, so the producer surfaces accept exactly the
+// signatures whose clauses the verify gate accepts. Internal; not part of the package API.
+export function signatureGate(signature: Uint8Array): boolean {
+  if (!isBytes(signature, 64)) return false;
+  const r = signature.subarray(0, 32);
+  return isCanonical(r) && !isSmallOrder(r) && littleEndian(signature, 32, 64) < L;
 }
 
 // ---- pure BigInt Edwards arithmetic (acceptablePublicKey, torsionFree) ----

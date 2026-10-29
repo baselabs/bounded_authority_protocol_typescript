@@ -43,6 +43,18 @@ function bytesToBigInt(bytes: Uint8Array): bigint {
   return v;
 }
 
+// The suite's canonical-signature rule (spec/bap-v3.md § 3.2): a raw 64-byte r || s has
+// 0 < r < n and 0 < s <= floor(n / 2). Every verification surface applies it before the
+// backend, and every producer surface (compact assembly, anchored-export encoding) refuses a
+// signature that fails it (erratum 3); the producer never normalizes — low-S is the signer's
+// duty. Internal; not part of the package API.
+export function canonicalSignature(signature: Uint8Array): boolean {
+  if (!(signature instanceof Uint8Array) || signature.length !== 64) return false;
+  const r = bytesToBigInt(signature.subarray(0, 32));
+  const s = bytesToBigInt(signature.subarray(32, 64));
+  return r > 0n && r < N && s > 0n && s <= HALF_N;
+}
+
 // The on-curve equation y² = x³ − 3x + b mod p (short Weierstrass, a = −3 for P-256).
 export function pointOnCurve(x: bigint, y: bigint): boolean {
   return (y * y - (x * x * x - 3n * x + B)) % P === 0n;

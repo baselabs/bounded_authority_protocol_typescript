@@ -1,6 +1,7 @@
 import { fail, assert, trying, type Result } from "./error.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
+import { signatureGate } from "./ed25519.js";
 
 // JWS compact serialization (RFC 7515) — the 3-segment wire shape: base64url(protected) || "." ||
 // base64url(payload) || "." || base64url(signature). The signing input (REQ1-SIGNING-exact-input)
@@ -101,18 +102,39 @@ export interface SigningInput {
   readonly payloadSegment: Uint8Array; // base64url text
 }
 
-// assemble_segments: the LOW-LEVEL compact assembler (mirrors CompactJws.assemble's byte assembly,
-// compact_jws.ex:41-43). Validates only the kind closed-set + 64-byte signature width, then
+// assemble_segments: the LOW-LEVEL Ed25519 compact assembler (mirrors CompactJws.assemble's byte
+// assembly, compact_jws.ex:41-43). Validates the kind closed-set + 64-byte signature width, then
 // concatenates protected.payload.base64url(signature). It does NOT validate the signing-input
 // header/payload content — that is the v1.ts assemble_compact FAÇADE's job (re-parse per kind,
 // runtime.ex:151 validate_assembled_compact). Test helpers and conformance use this to build
 // compacts freely; the public contract is the façade (assembleCompact in v1.ts).
+//
+// Erratum 3 (REQ1/REQ2-SIGNING-ed25519-producer-canonical): assembly is a producer surface — it
+// frames a signature and verifies none — so it refuses a signature that fails the keyless part
+// of rule S1 (R canonical, R not of small order, S < L) and emits every accepted signature's
+// bytes unchanged. Every Ed25519 assembler (contract-majors 1 and 2, local loopback, role
+// attestation, content assertion) assembles through this function.
 export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
     const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation", "content_assertion"];
     if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
     assert(signature.length === 64, "assemble_segments: signature width 64");
+    if (!signatureGate(signature)) fail("assemble_segments: signature canonicality");
     // compact = protected "." payload "." base64url(signature).
+    const sigB64 = base64urlEncode(signature);
+    return concat(input.protectedSegment, DOTB, input.payloadSegment, DOTB, sigB64);
+  });
+}
+
+// The ES256 counterpart of assemble_segments (mirrors the reference's separate V3.CompactJws
+// assembler: width check only — the canonical-signature gate is the v3 façade's, as it is the
+// reference runtime's). Contract-major 3's signatures share the 64-byte width but not the
+// suite: a raw r || s is big-endian and low-S, never little-endian R || S.
+export function assembleSegmentsEs256(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
+  return trying(() => {
+    const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
+    if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
+    assert(signature.length === 64, "assemble_segments: signature width 64");
     const sigB64 = base64urlEncode(signature);
     return concat(input.protectedSegment, DOTB, input.payloadSegment, DOTB, sigB64);
   });

@@ -195,13 +195,10 @@ const s = BigInt(`0x${Buffer.from(grantSignature.subarray(32)).toString("hex")}`
 const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32(N - s), "hex")]);
 assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
 assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
-const twin = v3.assembleCompact(grantInput.value, highS); // assembly does not check signatures
-assert.ok(twin.ok);
-assert.deepEqual(
-  v3.verifyGrant(twin.value, expected.trustedIssuer,
-    { issuer: "https://fleet.example", audience: "https://cell-7.example", evaluationTime: 1_150, clockSkew: 60 }),
-  { ok: false },
-);
+// Compact assembly is a producer surface: it refuses the twin with the closed error rather
+// than framing a signature no conforming signer emits (new in 0.8.0).
+const twin = v3.assembleCompact(grantInput.value, highS);
+assert.deepEqual(twin, { ok: false });
 ```
 
 New in 0.8.0 (unreleased), the v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the

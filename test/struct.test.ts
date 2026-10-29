@@ -105,18 +105,27 @@ test("parseCompact rejects 4 segments", () => {
   assert.throws(() => parseCompact(strUtf8("aaa.bbb.ccc.ddd")));
 });
 
-// assemble_segments round-trip (low-level assembler): encode 64 zero bytes with our own encoder for the expected suffix.
+// assemble_segments round-trip (low-level assembler): a gate-passing signature, encoded with our
+// own encoder for the expected suffix. Erratum 3: the assembler refuses a signature no conforming
+// signer emits, so the all-zero bytes this test used to frame (small-order R, S = 0) now refuse;
+// the byte-assembly check uses R = le(2) (canonical, not small order) and S = L - 1 instead.
 test("assembleSegments builds 3-segment compact", () => {
   const si: SigningInput = {
     kind: "grant",
     protectedSegment: strUtf8("eyJ2IjoxfQ"),
     payloadSegment: strUtf8("eyJ2IjoyfQ"),
   };
-  const sig = new Uint8Array(64); // zeros
+  const sig = new Uint8Array(64);
+  sig[1] = 2; // R = little-endian y = 2
+  let s = 0x1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3edn - 1n; // S = L - 1
+  for (let i = 32; i < 64; i++) {
+    sig[i] = Number(s & 0xffn);
+    s >>= 8n;
+  }
   const r = assembleSegments(si, sig);
   assert.equal(r.ok, true, "valid assemble must succeed");
   if (!r.ok) return;
-  const expected = "eyJ2IjoxfQ.eyJ2IjoyfQ." + utf8(base64urlEncode(new Uint8Array(64)));
+  const expected = "eyJ2IjoxfQ.eyJ2IjoyfQ." + utf8(base64urlEncode(sig));
   assert.equal(utf8(r.value), expected);
   const seg = parseCompact(r.value);
   assert.equal(seg.signature.length, 64);

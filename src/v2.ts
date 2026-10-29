@@ -4,7 +4,7 @@ import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
 import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { parseCompact, assembleSegments, scanCompact, type SigningInput, type CompactSegments } from "./compact.js";
 import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
-import { importPublicKey, ed25519Verify, sha256, sha256Concat, _resetCensus } from "./ed25519.js";
+import { importPublicKey, ed25519Verify, sha256, sha256Concat, signatureGate, _resetCensus } from "./ed25519.js";
 import { digestWithPrefix, typedProject } from "./digest.js";
 import { semanticIdentity } from "./selector.js";
 import { uriNormalize } from "./uri.js";
@@ -1558,10 +1558,16 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // Gated parses + full signed-field matches (anchored_export_codec.ex:40-52): the
     // start anchor, the end anchor, and every transition go through the width+canonical
     // gated decode and match their expected values field-by-field.
-    parseAndMatchAnchor(input.startAnchor, expected.startAnchor, "start", b);
-    parseAndMatchAnchor(input.endAnchor, expected.endAnchor, "end", b);
-    for (let i = 0; i < input.transitions.length; i++) {
-      parseAndMatchTransition(input.transitions[i]!, expected.transitions[i]!, i, b);
+    const framedSignatures = [
+      parseAndMatchAnchor(input.startAnchor, expected.startAnchor, "start", b),
+      parseAndMatchAnchor(input.endAnchor, expected.endAnchor, "end", b),
+      ...input.transitions.map((t, i) => parseAndMatchTransition(t, expected.transitions[i]!, i, b)),
+    ];
+    // Erratum 3 (REQ2-SIGNING-ed25519-producer-canonical): encoding is a producer surface — it
+    // frames these signatures and verifies none — so it refuses any framed signature that fails
+    // the keyless part of rule S1, never rewriting its bytes (anchored_export_codec.ex:88-94).
+    for (const signature of framedSignatures) {
+      if (!signatureGate(signature)) fail("encode_anchored_export: signature canonicality");
     }
     const headerBytes = buildArchiveHeader(input, expected.chain, b);
     // Build the framed chunk list, then validate count + bytes BEFORE materializing the joined
@@ -1587,7 +1593,9 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
 // (reference BoundaryAnchorCodec.parse + anchor_matches?, anchored_export_codec.ex:40-42/:485-492).
 // Encode never verifies a signature (a producer, not an authority) — it mirrors the
 // reference's structural gates (width, canonical form) and the signed-field match.
-function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): void {
+// Returns the decoded signature: encode_anchored_export gates every framed signature's
+// canonicality after the matches (erratum 3).
+function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): Uint8Array {
   // The reference codec bounds every anchor compact at anchor_bytes (boundary_anchor_codec.ex:82,
   // from the encode with-chain:40-42) — stricter than parseCompact's whole-input compact_bytes
   // ceiling; check it BEFORE the parse (the producer minted archives its own verifier rejects at
@@ -1605,11 +1613,14 @@ function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, whic
   if (requireInt(p.v.get("sequence"), "sequence") !== expected.sequence) fail(`encode_anchored_export: ${which} sequence`);
   if (!bytesEqual(requireB64urlN(p.v.get("chain_hash"), "chain_hash", 32), expected.chainHash)) fail(`encode_anchored_export: ${which} chain_hash`);
   if (!bytesEqual(requireB64urlN(p.v.get("key_fingerprint"), "key_fingerprint", 32), expected.keyFingerprint)) fail(`encode_anchored_export: ${which} key_fingerprint`);
+  return seg.signature;
 }
 
 // Gated parse + full 7-field match of a transition compact (reference
 // KeyTransitionCodec.parse + transition_matches?, anchored_export_codec.ex:443-504).
-function parseAndMatchTransition(compact: Uint8Array, expected: ExpectedKeyTransition, i: number, b: Bounds): void {
+// Returns the decoded signature: encode_anchored_export gates every framed signature's
+// canonicality after the matches (erratum 3).
+function parseAndMatchTransition(compact: Uint8Array, expected: ExpectedKeyTransition, i: number, b: Bounds): Uint8Array {
   // Same anchor_bytes ceiling the reference enforces on transitions (key_transition_codec.ex:114).
   if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail(`encode_anchored_export: transition ${i} anchor_bytes`);
   const seg = parseCompact(compact, b);
@@ -1625,6 +1636,7 @@ function parseAndMatchTransition(compact: Uint8Array, expected: ExpectedKeyTrans
   if (!bytesEqual(requireB64urlN(p.v.get("to_key_fingerprint"), "to_key_fingerprint", 32), expected.nextKeyFingerprint)) fail(`encode_anchored_export: transition ${i} to_key_fingerprint`);
   const toKeyIdTagged = p.v.get("to_key_id");
   if (toKeyIdTagged === undefined || toKeyIdTagged.t !== "string" || utf8Str(toKeyIdTagged.v) !== expected.nextKeyId) fail(`encode_anchored_export: transition ${i} to_key_id`);
+  return seg.signature;
 }
 
 // Encode-time input validation (mirrors anchored_export_codec.ex validate_expected_export +

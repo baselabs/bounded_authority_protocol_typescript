@@ -109,6 +109,12 @@ according to `input.kind` (`grant`, `proof`, `boundary_anchor` or `key_transitio
 anything the matching decoder would reject. It does not verify the signature. Takes a signature,
 never a key or a signing callback.
 
+New in 0.8.0 (unreleased): assembly is a producer surface, so it refuses with the closed error a
+signature no conforming signer emits and never rewrites accepted bytes (erratum 3): an Ed25519
+signature whose `S` is at least the group order or whose `R` is non-canonical or of small order
+(this package's Ed25519 namespaces and the three sibling profiles), an ES256 `r || s` outside
+`0 < r < n`, `0 < s <= (n - 1) / 2` (`v3`). A signer normalizes to low-S itself before calling.
+
 ### `boundaryAnchorSigningInput(anchor, bounds?): Result<SigningInput>`
 
 Builds the signing input of a boundary anchor (`typ: "ba+chain-anchor"`) from a
@@ -165,7 +171,9 @@ the key path (each transition hands over from the previous key, times strictly i
 fingerprint repeats, the end anchor uses the last key), and frames the archive. Returns the archive
 bytes and their SHA-256 digest. In major 1, `expected.digest` and `expected.objectVersion` are
 required by the type but not read here. Rejects more than 256 transitions, 65,796 chunks or
-270,820,384 bytes. Example: [Consumption chains and archives](guides/chains-and-archives.md#anchored-exports).
+270,820,384 bytes. New in 0.8.0 (unreleased): encoding is a producer surface, so it also refuses,
+with the closed error, a start anchor, end anchor or transition signature that no conforming signer
+emits (erratum 3), and never rewrites accepted bytes. Example: [Consumption chains and archives](guides/chains-and-archives.md#anchored-exports).
 
 ### `verifyAnchoredExport(archived, keyChain, expected): Result<AnchoredExportFacts>`
 

@@ -188,6 +188,14 @@ total (it never throws), it returns `true` only for an uncompressed, on-curve P-
 SHA-256 signature over the message. It applies the `REQ3-SIGNING-*` rules of the v3 profile to raw
 bytes.
 
+New in 0.8.0 (unreleased): compact assembly and anchored-export encoding are producer surfaces —
+they frame a signature and verify none — so each refuses, with the closed error, a signature no
+conforming signer emits and emits every accepted signature's bytes unchanged (erratum 3): an
+Ed25519 signature whose `S` is at least the group order or whose `R` is non-canonical or of small
+order, and an ES256 `r || s` outside `0 < r < n`, `0 < s <= (n - 1) / 2` — including the high-S
+twin of a valid signature, which verifies under raw ECDSA. A signer normalizes to low-S itself
+before assembly; the package never rewrites a signature.
+
 ## Browsers, Deno, Bun and workers
 
 The package is ESM-only, has no side effects on import (`"sideEffects": false`), and uses no Node
@@ -396,6 +404,7 @@ load, so a drifted snapshot fails loudly:
 | Role-attestation profile | 40 |
 | Content-assertion profile | 131 assertion, 9 digest, 14 successor |
 | Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
+| Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
 by construction, so the suite also carries a mutation gate that proves each closure can fail:
@@ -405,7 +414,7 @@ Linux CI runs strict typecheck, build, lint (including a purity rule, no I/O, cl
 in `src/`, and the browser-safety rules: no Node module or global, no dynamic code), a browser
 typecheck, a scan of the browser bundle for unresolved globals, a bundle-size budget, a license
 check, the unit tests (which also typecheck and run every code sample in this README and in
-`docs/`), the mutation gate, and all seven corpora against the vendored snapshots, on Node 22.23.1
+`docs/`), the mutation gate, and all eight corpora against the vendored snapshots, on Node 22.23.1
 and Node 24.19.0 with the node and the portable backend; the same corpora on Deno and Bun; the
 browser lane in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of
 the packed tarball; and `npm audit signatures`.
@@ -464,6 +473,7 @@ pnpm conformance:role-attestation    # 40/40 and the cross-profile legs
 pnpm conformance:content-assertion   # 131 + 9 + 14 and producer/assembly byte agreement
 pnpm conformance:strict-ed25519      # 2410/2410 strict-Ed25519 verdicts
 pnpm conformance:local-loopback-http # 44/44 local-loopback proof verdicts
+pnpm conformance:producer-canonicality # 75/75 producer-surface canonicality verdicts
 pnpm test:portable           # unit tests and the mutation gate under --conditions=bap-portable
 pnpm conformance:portable    # every corpus under the portable backend (same verdict digests)
 pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types

@@ -54,7 +54,7 @@ import {
   type SigningInput,
 } from "../src/v1.js";
 import { boundsNew, MAXIMA, type Bounds } from "../src/bounds.js";
-import { assembleSegments } from "../src/compact.js";
+import { assembleSegments, assembleSegmentsEs256 } from "../src/compact.js";
 import { sha256, _resetCensus, acceptablePublicKey } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
@@ -306,6 +306,14 @@ function toHex(b: Uint8Array): string {
 function mustAssemble(si: SigningInput, sig: Uint8Array): Uint8Array {
   const c = assembleSegments(si, sig);
   if (!c.ok) throw new Error("assembleSegments failed in test helper");
+  return c.value;
+}
+
+// The ES256 form for contract-major 3 fixtures (the two suites have separate assemblers, as the
+// reference does; erratum 3 gates each by its own signature rule).
+function mustAssembleEs256(si: SigningInput, sig: Uint8Array): Uint8Array {
+  const c = assembleSegmentsEs256(si, sig);
+  if (!c.ok) throw new Error("assembleSegmentsEs256 failed in test helper");
   return c.value;
 }
 
@@ -1912,7 +1920,7 @@ test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES
   });
   if (!gsi.ok) throw new Error("v3 grant signing input failed");
   const gmsg = `${new TextDecoder().decode(gsi.value.protectedSegment)}.${new TextDecoder().decode(gsi.value.payloadSegment)}`;
-  const grantCompact = mustAssemble(gsi.value, signP1363(strUtf8(gmsg), issuer.privateKey));
+  const grantCompact = mustAssembleEs256(gsi.value, signP1363(strUtf8(gmsg), issuer.privateKey));
   const castArguments: Tagged = { t: "object", v: new Map<string, Tagged>([["amount", { t: "int", v: 5000 }]]) };
   const psi = v3.proofSigningInput({
     holderPublicKey: holder.publicKey, proofId: "urn:example:proof:v3", method: "POST",
@@ -1922,7 +1930,7 @@ test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES
   });
   if (!psi.ok) throw new Error("v3 proof signing input failed");
   const pmsg = `${new TextDecoder().decode(psi.value.protectedSegment)}.${new TextDecoder().decode(psi.value.payloadSegment)}`;
-  const proofCompact = mustAssemble(psi.value, signP1363(strUtf8(pmsg), holder.privateKey));
+  const proofCompact = mustAssembleEs256(psi.value, signP1363(strUtf8(pmsg), holder.privateKey));
   const expected = {
     trustedIssuer: { keyId: "issuer-1", publicKey: issuer.publicKey },
     issuer: "https://issuer.example.test", audience: "https://resource.example.test",

@@ -14,8 +14,32 @@ changes the behavior of several public functions and of facts values (marked **B
   `v3.thumbprintRaw` and `v3.publicKeyThumbprintRaw`. Like the Elixir `V3.EcJwk` functions, each
   throws `InvalidError` for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the
   `0x04` prefix, coordinates below p, on the curve).
+- The vendored certified producer-canonicality corpus snapshot
+  (`conformance/corpus-producer-canonicality`, revision 1, 75 cases — 44 Ed25519 assembly, 4
+  Ed25519 export encoding, 24 ES256 assembly, 3 ES256 export encoding; index SHA-256
+  `99ee6fbbf32758b03d4630647f721d8d4e349f0628d860493d667fe6e762c601` pinned at load, byte-synced
+  from the BAP 0.9.0 Hex package, whose registry checksum the rotation verified) plus
+  `conformance/run_producer_canonicality.ts` and the runtime-neutral core: 75/75 verdict
+  agreement (60 refused, 15 accepted with the compact bytes emitted unchanged), wired into CI,
+  the release lane, the portable lane, the Deno/Bun and browser lanes, and
+  `conformance/verdict-digests.json` (digest `c67c3e26…`, identical on both backends). Every
+  existing corpus and digest is unchanged.
 
 ### Changed
+
+- **Breaking:** compact assembly and anchored-export encoding are producer surfaces — they frame
+  a signature and verify none — and now refuse, with the closed error, a signature that no
+  conforming signer emits, emitting every accepted signature's bytes unchanged (erratum 3 of the
+  protocol's errata registry, BAP 0.9.0; `REQ1/REQ2-SIGNING-ed25519-producer-canonical` and
+  `REQ3-SIGNING-producer-canonical`). One Ed25519 gate owns the clauses for every Ed25519
+  assembler (contract-majors 1 and 2, the local-loopback, role-attestation and content-assertion
+  profiles): `S` below the group order, `R` canonical and not of small order. The ES256 gate
+  (`v3` assembly and all three majors' export encoding) refuses `r || s` outside `0 < r < n`,
+  `0 < s ≤ ⌊n/2⌋`, including the high-S twin of a valid signature, which verifies under raw
+  ECDSA. In 0.7.0 these surfaces accepted any 64-byte signature. Every BAP verifier already
+  rejected such signatures, so no verification verdict changes; a signer must normalize to low-S
+  itself before assembly (the companion signer already does). The gate sites each have a
+  defect-injection red proof (recorded in `test/producer-canonicality.test.ts`).
 
 - **Breaking:** facts values follow the profile's redaction rule ("fixed redacted rendering and no
   generic encoder, string, or enumeration protocol", `REQ1-VERIFY-facts-redacted`; the
@@ -115,6 +139,14 @@ changes the behavior of several public functions and of facts values (marked **B
 
 ### Maintenance
 
+- Test fixtures that framed signatures the producer now refuses sign for real: the struct test's
+  all-zero assembler input uses gate-passing bytes, the strict-Ed25519 forgery tests frame their
+  (deliberately non-canonical) forgeries by direct concatenation — the verifier-rejection claims
+  are unchanged — and the encode-parity fixtures keep their key pairs and sign each anchor and
+  transition. The permissiveness helper splits into Ed25519 and ES256 forms, as the reference's
+  two compact-JWS modules do.
+- Dev dependencies at latest in range (the currency gate): `@types/node` 26.6.6, `eslint` 10.13.0,
+  `typescript-eslint` 8.72.1, `playwright` 1.64.1 (whose browser build the lanes install).
 - The bench's demo is now a deploy agent creating a deployment to staging under a grant whose
   selector allows `environment = staging` (it was a payment transfer), and the browser lane clicks
   through it: mint, verify, and each tamper (deploy to production, another operation, after expiry,

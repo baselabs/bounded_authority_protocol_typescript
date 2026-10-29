@@ -1,6 +1,6 @@
 {
   "format": "bap-ts-verdict-digests/1",
-  "note": "SHA-256 of the canonical JSON of [case id, verdict projection] per corpus (conformance/digest.ts). Recorded from the verifier source at c406489 (0.6.0) on Node 22.23.1 and 24.19.0 with the node:crypto backend; every runtime lane (either backend, Deno, Bun, browsers) is held to these values.",
+  "note": "SHA-256 of the canonical JSON of [case id, verdict projection] per corpus (conformance/digest.ts). Recorded from the verifier source at c406489 (0.6.0) on Node 22.23.1 and 24.19.0 with the node:crypto backend; every runtime lane (either backend, Deno, Bun, browsers) is held to these values. The producer-canonicality digest is recorded from the 0.8.0 tree (erratum 3) over the same lanes.",
   "digests": {
     "v1": {
       "cases": 283,
@@ -29,6 +29,10 @@
     "strict-ed25519": {
       "cases": 2410,
       "sha256": "cf0fe81583a51d2a5e1674ebf1fae28b843b9ef6214dc0616e75b620c29c4e3a"
+    },
+    "producer-canonicality": {
+      "cases": 75,
+      "sha256": "c67c3e2638545fb9a79ee3debfdbd5494f415e668b8483f28d2848803f4542ee"
     }
   }
 }

@@ -81,6 +81,7 @@
     "conformance:role-attestation": "tsx --conditions=bap-source conformance/run_role_attestation.ts",
     "conformance:content-assertion": "tsx --conditions=bap-source conformance/run_content_assertion.ts",
     "conformance:strict-ed25519": "tsx --conditions=bap-source conformance/run_strict_ed25519.ts",
+    "conformance:producer-canonicality": "tsx --conditions=bap-source conformance/run_producer_canonicality.ts",
     "conformance:local-loopback-http": "tsx --conditions=bap-source conformance/run_local_loopback_http.ts",
     "conformance:portable": "node --conditions=bap-source --conditions=bap-portable --import tsx/esm conformance/run_all.ts --backend=portable",
     "census": "tsx --conditions=bap-source conformance/census.ts",
@@ -94,16 +95,16 @@
   },
   "devDependencies": {
     "@bounded-authority-protocol/signer": "^0.5.0",
+    "@types/node": "^26.6.6",
     "@types/semver": "^7.8.0",
-    "@types/node": "^26.6.5",
     "esbuild": "^0.28.2",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "globals": "^17.13.0",
-    "playwright": "^1.64.0",
+    "playwright": "^1.64.1",
     "semver": "^7.8.5",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.71.2",
+    "typescript-eslint": "^8.72.1",
     "yaml": "^2.9.1"
   },
   "repository": {

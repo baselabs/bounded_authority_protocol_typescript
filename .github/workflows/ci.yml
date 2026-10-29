@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   verify:
-    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, census; node and portable backends) on Node ${{ matrix.node }}
+    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, producer canonicality, census; node and portable backends) on Node ${{ matrix.node }}
     strategy:
       fail-fast: false
       matrix:
@@ -105,6 +105,9 @@ jobs:
 
       - name: Conformance — vendored local-loopback HTTP profile snapshot (44)
         run: pnpm conformance:local-loopback-http
+
+      - name: Conformance — vendored producer-canonicality snapshot (75, erratum 3)
+        run: pnpm conformance:producer-canonicality
 
       - name: Unit + permissiveness under the portable backend (--conditions=bap-portable)
         run: pnpm test:portable

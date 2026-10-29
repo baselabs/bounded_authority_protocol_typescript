@@ -723,22 +723,33 @@ test("census tracks imported fingerprints", () => {
 // REAL generated Ed25519 keys. The old fill(7) / fill(8) placeholders are not points on the curve, and a
 // verifier that accepts any 32 bytes as a key would pass them; key acceptance refuses them, which is the
 // point of the strict-key rule. The positive control below proves these keys reach (and pass) acceptance.
-function generatedKey(): Uint8Array {
-  const { publicKey } = crypto.generateKeyPairSync("ed25519");
-  return new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-32));
+function generatedKey(): { publicKey: Uint8Array; privateKey: crypto.KeyObject } {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  return { publicKey: new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-32)), privateKey };
 }
 const KEY_A = generatedKey();
 const KEY_B = generatedKey();
 test("encode-parity key control: the generated anchor keys pass key acceptance and the fill(7)/fill(8) placeholders do not", () => {
-  assert.equal(acceptablePublicKey(KEY_A), true);
-  assert.equal(acceptablePublicKey(KEY_B), true);
-  assert.notDeepEqual([...KEY_A], [...KEY_B]);
+  assert.equal(acceptablePublicKey(KEY_A.publicKey), true);
+  assert.equal(acceptablePublicKey(KEY_B.publicKey), true);
+  assert.notDeepEqual([...KEY_A.publicKey], [...KEY_B.publicKey]);
   assert.equal(acceptablePublicKey(new Uint8Array(32).fill(7)), false);
   assert.equal(acceptablePublicKey(new Uint8Array(32).fill(8)), false);
 });
 const Z32T = new Uint8Array(32);
-const SIG64T = new Uint8Array(64);
 const SIG32T = new Uint8Array(32);
+
+// Real Ed25519 signatures over each signing input (erratum 3: the assembler refuses an all-zero
+// or otherwise non-canonical signature, so the encode-parity fixtures sign for real).
+function signInputCompact(r: { ok: boolean; value?: import("../src/compact.js").SigningInput }, key: { privateKey: crypto.KeyObject }): Uint8Array {
+  assert.equal(r.ok, true);
+  const si = (r as { ok: true; value: import("../src/compact.js").SigningInput }).value;
+  const message = strUtf8T(`${utf8T(si.protectedSegment)}.${utf8T(si.payloadSegment)}`);
+  const assembled = assembleCompact(si, new Uint8Array(crypto.sign(null, Buffer.from(message), key.privateKey)));
+  return (assembled as { ok: true; value: Uint8Array }).value;
+}
+const utf8T = (b: Uint8Array) => new TextDecoder().decode(b);
+const strUtf8T = (s: string) => new TextEncoder().encode(s);
 
 function conformantExportT() {
   const rowR = encodeConsumptionEntry({ chainId: "chain-x", sequence: 1, previousHash: Z32T, commitment: new Uint8Array(32).fill(5) });
@@ -746,22 +757,22 @@ function conformantExportT() {
   const row = (rowR as { ok: true; value: { bytes: Uint8Array; hash: Uint8Array } }).value.bytes;
   const head = (rowR as { ok: true; value: { bytes: Uint8Array; hash: Uint8Array } }).value.hash;
   const fpOf = (k: Uint8Array) => thumbprintRaw(jwkFromPublicKey(k));
-  const startR = boundaryAnchorSigningInput({ anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A });
+  const startR = boundaryAnchorSigningInput({ anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A.publicKey });
   assert.equal(startR.ok, true);
-  const startCompact = (assembleCompact((startR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
-  const endR = boundaryAnchorSigningInput({ anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", publicKey: KEY_B });
+  const startCompact = signInputCompact(startR, KEY_A);
+  const endR = boundaryAnchorSigningInput({ anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", publicKey: KEY_B.publicKey });
   assert.equal(endR.ok, true);
-  const endCompact = (assembleCompact((endR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
-  const tR = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentPublicKey: KEY_A, nextKeyId: "anchor-b", nextPublicKey: KEY_B });
+  const endCompact = signInputCompact(endR, KEY_B);
+  const tR = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentPublicKey: KEY_A.publicKey, nextKeyId: "anchor-b", nextPublicKey: KEY_B.publicKey });
   assert.equal(tR.ok, true);
-  const tCompact = (assembleCompact((tR as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const tCompact = signInputCompact(tR, KEY_A);
   const chain = { chainId: "chain-x", firstSequence: 1, lastSequence: 1, rowCount: 1, previousHash: Z32T, lastHash: head };
   const expected = {
     chain,
     digest: Z32T,
-    startAnchor: { anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: fpOf(KEY_A) },
-    endAnchor: { anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", keyFingerprint: fpOf(KEY_B) },
-    transitions: [{ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentKeyFingerprint: fpOf(KEY_A), nextKeyId: "anchor-b", nextKeyFingerprint: fpOf(KEY_B) }],
+    startAnchor: { anchorId: "anchor-start", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: fpOf(KEY_A.publicKey) },
+    endAnchor: { anchorId: "anchor-end", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: head, keyId: "anchor-b", keyFingerprint: fpOf(KEY_B.publicKey) },
+    transitions: [{ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1500, currentKeyId: "anchor-a", currentKeyFingerprint: fpOf(KEY_A.publicKey), nextKeyId: "anchor-b", nextKeyFingerprint: fpOf(KEY_B.publicKey) }],
     objectVersion: "v1",
   };
   const input = { rows: [row], startAnchor: startCompact, endAnchor: endCompact, transitions: [tCompact], ...chain };
@@ -788,15 +799,15 @@ test("encode-parity: a tampered row byte rejects (rows chain re-check)", () => {
 
 test("encode-parity: a start-anchor field mismatch rejects (7-field match)", () => {
   const { input, expected } = conformantExportT();
-  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A });
-  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", publicKey: KEY_A.publicKey });
+  const wrongCompact = signInputCompact(wrong, KEY_A);
   expectEncodeErr({ ...input, startAnchor: wrongCompact }, expected);
 });
 
 test("encode-parity: an end-anchor field mismatch rejects (7-field match)", () => {
   const { input, expected } = conformantExportT();
-  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: expected.chain.lastHash, keyId: "anchor-b", publicKey: KEY_B });
-  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const wrong = boundaryAnchorSigningInput({ anchorId: "anchor-WRONG", anchoredAt: 1600, chainId: "chain-x", sequence: 1, chainHash: expected.chain.lastHash, keyId: "anchor-b", publicKey: KEY_B.publicKey });
+  const wrongCompact = signInputCompact(wrong, KEY_B);
   expectEncodeErr({ ...input, endAnchor: wrongCompact }, expected);
 });
 
@@ -818,8 +829,8 @@ test("encode-parity: a wrong-width end-anchor signature rejects (gated parse)", 
 
 test("encode-parity: a transition field mismatch rejects (7-field match)", () => {
   const { input, expected } = conformantExportT();
-  const wrong = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1501, currentKeyId: "anchor-a", currentPublicKey: KEY_A, nextKeyId: "anchor-b", nextPublicKey: KEY_B });
-  const wrongCompact = (assembleCompact((wrong as { ok: true; value: import("../src/compact.js").SigningInput }).value, SIG64T) as { ok: true; value: Uint8Array }).value;
+  const wrong = keyTransitionSigningInput({ transitionId: "transition-1", chainId: "chain-x", effectiveAt: 1501, currentKeyId: "anchor-a", currentPublicKey: KEY_A.publicKey, nextKeyId: "anchor-b", nextPublicKey: KEY_B.publicKey });
+  const wrongCompact = signInputCompact(wrong, KEY_A);
   expectEncodeErr({ ...input, transitions: [wrongCompact] }, expected);
 });
 
@@ -922,8 +933,8 @@ test("verify-parity: a caller-inconsistent expected end-anchor chain_id rejects 
   }
   const keys: HistoricalKeyChain = {
     keys: [
-      { keyId: "anchor-a", publicKey: KEY_A, validFrom: 900, validBefore: null },
-      { keyId: "anchor-b", publicKey: KEY_B, validFrom: 1400, validBefore: null },
+      { keyId: "anchor-a", publicKey: KEY_A.publicKey, validFrom: 900, validBefore: null },
+      { keyId: "anchor-b", publicKey: KEY_B.publicKey, validFrom: 1400, validBefore: null },
     ],
   };
   const vExpected = {

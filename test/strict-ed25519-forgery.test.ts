@@ -51,9 +51,10 @@ function forgedGrant(major: Major, publicKey: Uint8Array): Uint8Array {
   if (!si.ok) throw new Error("grant signing input failed");
   // The reference confirms the forgery is real: an ungated lenient cofactorless backend accepts it.
   assert.ok(verifyUngatedCofactorless(publicKey, forged.signature, forged.message), "forgery is real");
-  const compact = assembleSegments(si.value, forged.signature);
-  if (!compact.ok) throw new Error("assemble failed");
-  return compact.value;
+  // Frame the forgery directly: its signature (S = 0, R the small-order point) is exactly what a
+  // producer surface refuses to frame since erratum 3, so the verifier-rejection claim below is
+  // proven on bytes assembled without the gated assembler.
+  return strUtf8(`${text(si.value.protectedSegment)}.${text(si.value.payloadSegment)}.${text(base64urlEncode(forged.signature))}`);
 }
 
 // The 8 canonical small-order encodings (derived by arithmetic) plus the 6 non-canonical aliases of
