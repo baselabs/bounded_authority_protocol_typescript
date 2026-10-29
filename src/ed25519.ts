@@ -85,12 +85,7 @@ function isCanonical(encoding: Uint8Array): boolean {
 // a direct test of the gate can show those two clauses are present. Internal; not part of the package API.
 export function strictGate(signature: Uint8Array, publicKey: Uint8Array): boolean {
   if (!isBytes(signature, 64) || !isBytes(publicKey, 32)) return false;
-  const r = signature.subarray(0, 32);
-  return (
-    isCanonical(publicKey) && isCanonical(r) &&
-    !isSmallOrder(publicKey) && !isSmallOrder(r) &&
-    littleEndian(signature, 32, 64) < L
-  );
+  return isCanonical(publicKey) && !isSmallOrder(publicKey) && signatureGate(signature);
 }
 
 // The keyless part of rule S1, the signature clauses alone: R canonical, R not of small order,

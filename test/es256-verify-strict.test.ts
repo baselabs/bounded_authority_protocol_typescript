@@ -80,10 +80,13 @@ test("malformed: non-Uint8Array inputs return false and never throw", () => {
   }
 });
 
-// ---- mutation: the low-S line is load-bearing under both backends ----
+// ---- mutation: the low-S clause is load-bearing under both backends ----
 
+// The clause is the canonical-signature rule's single spelling in es256VerifyStrict (erratum 3
+// made canonicalSignature the one owner; see src/es256.ts). Removing the call must let the
+// high-S twin verify, which proves the clause still gates this surface.
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const LOW_S_LINE = "  if (s > HALF_N) return false; // low-S (REQ3-SIGNING-low-s)\n";
+const LOW_S_LINE = "    if (!canonicalSignature(signature)) return false; // the rule's single spelling (see above)\n";
 
 async function mutatedVerifyStrict(backend: "node" | "portable"): Promise<typeof es256VerifyStrict> {
   const plugin: Plugin = {

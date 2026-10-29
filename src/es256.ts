@@ -44,10 +44,12 @@ function bytesToBigInt(bytes: Uint8Array): bigint {
 }
 
 // The suite's canonical-signature rule (spec/bap-v3.md § 3.2): a raw 64-byte r || s has
-// 0 < r < n and 0 < s <= floor(n / 2). Every verification surface applies it before the
-// backend, and every producer surface (compact assembly, anchored-export encoding) refuses a
-// signature that fails it (erratum 3); the producer never normalizes — low-S is the signer's
-// duty. Internal; not part of the package API.
+// 0 < r < n and 0 < s <= floor(n / 2). Every producer surface (compact assembly,
+// anchored-export encoding, erratum 3) refuses a signature that fails it; the producer never
+// normalizes — low-S is the signer's duty. es256VerifyStrict routes through it too, so one
+// function owns the rule everywhere except es256Verify, whose inline gates carry the named
+// diagnostic messages the portable nonvacuity test source-pins. Internal; not part of the
+// package API.
 export function canonicalSignature(signature: Uint8Array): boolean {
   if (!(signature instanceof Uint8Array) || signature.length !== 64) return false;
   const r = bytesToBigInt(signature.subarray(0, 32));
@@ -134,11 +136,7 @@ export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, pu
     } catch {
       return false;
     }
-    const r = bytesToBigInt(signature.subarray(0, 32));
-    const s = bytesToBigInt(signature.subarray(32, 64));
-    if (r === 0n || r >= N) return false;
-    if (s === 0n || s >= N) return false;
-    if (s > HALF_N) return false; // low-S (REQ3-SIGNING-low-s)
+    if (!canonicalSignature(signature)) return false; // the rule's single spelling (see above)
     try {
       return p256Verify(p256Key(publicKey), message, signature);
     } catch {
