@@ -306,8 +306,8 @@ This package verifies; it never signs and never holds a private key. Its sibling
 [`@bounded-authority-protocol/signer`](https://www.npmjs.com/package/@bounded-authority-protocol/signer)
 produces the signed bytes by calling this package's producer functions and delegating each
 signature to a key handle you own. The dependency is one-way: the signer depends on the verifier
-(signer 0.5.0 takes `^0.7.0`), never the reverse. Compatibility between the two is governed by
-the wire contract-majors (signer 0.5.0 signs majors 1, 2 and 3), not by package version numbers.
+(signer 0.6.0 takes `^1.0.0`), never the reverse. Compatibility between the two is governed by
+the wire contract-majors (signer 0.6.0 signs majors 1, 2 and 3), not by package version numbers.
 The [envelope playground](https://baselabs.github.io/bounded_authority_signer_typescript/) runs
 the whole flow in a browser.
 

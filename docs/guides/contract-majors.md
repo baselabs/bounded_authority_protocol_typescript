@@ -116,7 +116,7 @@ Major 3 replaces Ed25519 with ECDSA over NIST P-256 and SHA-256 (`BAP3-ES256-SHA
   including `node:crypto` and WebCrypto, return either half, so **the signer must normalize**
   (`s = n - s` when `s` is high) before the signature is assembled. This package's producers do
   not normalize; a high-S signature assembles but never verifies. The
-  [signer package](https://www.npmjs.com/package/@bounded-authority-protocol/signer) (0.5.0)
+  [signer package](https://www.npmjs.com/package/@bounded-authority-protocol/signer) (0.6.0)
   normalizes in its v3 signing functions and then checks the result with `es256VerifyStrict`.
 
 The sample uses `v3.jwkFromPublicKey`, new in 0.8.0; with 0.7.0 spell the JWK object
