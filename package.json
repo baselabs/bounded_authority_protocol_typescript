@@ -1,7 +1,7 @@
 {
   "name": "@bounded-authority-protocol/verifier",
   "version": "1.0.0",
-  "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority \u2014 a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1, 2, and 3) for Node.js, browsers, Deno and Bun.",
+  "description": "Provider-neutral, deterministic verifier SDK for bounded proof-of-possession authority — a typed TypeScript reimplementation of the Bounded Authority Protocol verification profiles (wire contract-majors 1, 2, and 3) for Node.js, browsers, Deno and Bun.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/src/index.js",
@@ -93,14 +93,14 @@
     "@noble/hashes": "2.4.0"
   },
   "devDependencies": {
-    "@bounded-authority-protocol/signer": "^0.6.0",
+    "@bounded-authority-protocol/signer": "^1.0.0",
     "@types/node": "^26.6.6",
     "@types/semver": "^7.8.0",
     "esbuild": "^0.28.2",
-    "eslint": "^10.13.0",
-    "globals": "^17.13.0",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
     "playwright": "^1.64.1",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1",
