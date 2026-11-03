@@ -1,0 +1,31 @@
+{
+  "name": "bounded-authority-protocol",
+  "version": "0.1.0",
+  "description": "Forwards to @bounded-authority-protocol/verifier. Use that package directly.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baselabs/bounded_authority_protocol_typescript.git",
+    "directory": "npm-forwarders/bounded-authority-protocol"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "dependencies": {
+    "@bounded-authority-protocol/verifier": ">=1.0.0"
+  }
+}
