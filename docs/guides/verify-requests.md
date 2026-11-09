@@ -210,6 +210,14 @@ matches. Semantic identity compares types and values recursively, ignoring objec
 Every selector of the named operation must match. Major 2 and 3 add the inclusive range kinds
 `lte` and `gte`.
 
+Floats in selector values are restricted (erratum 6). A grant whose `equals` value or `one_of`
+member holds a float-tagged zero (`0.0`, `-0.0`, `0e0`, `1e-400`, at any depth) is rejected at
+decode, so `decodeGrant`, `verifyGrant` and `checkEnvelope` all refuse it; `lte` and `gte` bounds
+and the inert members of `all` are unaffected, and ranges compare `-0.0` equal to `0.0`.
+`grantSigningInput` refuses any float-tagged integral selector value (`0.0`, `10.0`, `-3.0`) in
+every kind, because JCS writes it as integer text. Use an integer, or a float with a fractional
+part.
+
 Two practical notes. `JSON.stringify(2.0)` is `"2"`, which decodes as an integer: if a grant
 selector uses a float, make sure your arguments carry a float lexeme. And the request digest
 (`ba_req`) covers the whole `castArguments` value, so the holder and the resource must build

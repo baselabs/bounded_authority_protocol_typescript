@@ -405,6 +405,7 @@ load, so a drifted snapshot fails loudly:
 | Content-assertion profile | 131 assertion, 9 digest, 14 successor |
 | Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
 | Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
+| Selector float-zero (erratum 6, additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
 by construction, so the suite also carries a mutation gate that proves each closure can fail:
@@ -477,6 +478,7 @@ pnpm conformance:content-assertion   # 131 + 9 + 14 and producer/assembly byte a
 pnpm conformance:strict-ed25519      # 2410/2410 strict-Ed25519 verdicts
 pnpm conformance:local-loopback-http # 44/44 local-loopback proof verdicts
 pnpm conformance:producer-canonicality # 75/75 producer-surface canonicality verdicts
+pnpm conformance:selector-float-zero  # 161/161 selector float-zero verdicts (decode, producer, envelope)
 pnpm test:portable           # unit tests and the mutation gate under --conditions=bap-portable
 pnpm conformance:portable    # every corpus under the portable backend (same verdict digests)
 pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types

@@ -2,6 +2,52 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
+## [Unreleased]
+
+Selector float-zero soundness repair (erratum 6 of the protocol's errata registry). This changes
+verdicts: grants that decoded before now reject, and producer inputs that were accepted before
+now refuse.
+
+### Added
+
+- The vendored certified selector-float-zero corpus snapshot
+  (`conformance/corpus-selector-float-zero`, profile `bap-selector-float-zero/1`, revision 1,
+  161 cases — 78 grant decode, 48 grant signing input, 35 envelope, across contract-majors 1, 2
+  and 3; index SHA-256 `97fd7a99cdbf3acc0a78f5ba1c6556e23a63e0ad66f533e31fd69f82dc5f3003` pinned
+  at load, byte-identical to the protocol repository's `priv/conformance/selector-float-zero`)
+  plus `conformance/run_selector_float_zero.ts` (`pnpm conformance:selector-float-zero`) and the
+  runtime-neutral core: 161/161 verdict agreement (98 rejected, 63 accepted, every accepted
+  signing input byte-equal to the certified segments). Typed values travel as JSON text and are
+  decoded with the package's own tag-preserving `jsonDecode`. Wired into CI, the release lane,
+  the portable lane, the Deno/Bun and browser lanes, and `conformance/verdict-digests.json`
+  (digest `1a23b3d2…`). Before the repair, 92 of the 161 cases disagreed. Every existing corpus
+  and digest is unchanged.
+
+### Changed
+
+- **Breaking (verdicts):** grant decode, for contract-majors 1, 2 and 3, rejects with the closed
+  error an `equals` value or `one_of` member that holds a float-tagged number equal to zero at
+  any depth, of either sign and in any spelling (`0.0`, `-0.0`, `0e0`, `-0E0`, `-0e-5`, `0.000`,
+  `1e-400`, ...), keyed on the decoded value (`REQ1/REQ2/REQ3-SELECTOR-float-zero`). JCS writes
+  such a value as the integer text `0`, so the tag the issuer meant could not survive signing.
+  `decodeGrant`, `verifyGrant`, `checkEnvelope` and the public `parseSelector` of each major
+  reject it. `lte`/`gte` bounds and the inert members of `all` are unchanged, range comparison
+  keeps `-0.0` equal to `0.0`, and integer `0`/`-0` and non-zero integral floats such as `10.0`
+  still decode.
+- **Breaking:** `grantSigningInput` of each major refuses any selector value — `equals`,
+  `one_of`, and the major-2 and major-3 `lte`/`gte` bounds — holding a float-tagged integral
+  number at any depth (`0.0`, `10.0`, `-3.0`, `{ t: "float", v: 3 }`;
+  `REQ1/REQ2/REQ3-SIGNING-integral-float-selector`). Use an integer, or a float with a fractional
+  part.
+- One shared walker in `src/selector.ts` (`floatZeroFree`, `integralFloatFree`) serves every
+  major's decode and producer; `test/selector-float-zero.test.ts` is the rule matrix, with a
+  defect-injection red proof for each of the six gate sites.
+
+### Documentation
+
+- The API reference (`grantSigningInput`, `decodeGrant`, `SelectorInput`, `parseSelector`) and
+  the Verify requests guide state the new selector rules; the README lists the corpus.
+
 ## [1.0.0] — 2026-10-29
 
 The stability release: from here, SemVer's ordinary rules apply — a breaking change to the public

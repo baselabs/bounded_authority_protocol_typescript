@@ -10,3 +10,4 @@ conformance/corpus-role-attestation/** -text
 conformance/corpus-strict-ed25519/** -text
 conformance/corpus-content-assertion/** -text
 conformance/corpus-producer-canonicality/** -text
+conformance/corpus-selector-float-zero/** -text

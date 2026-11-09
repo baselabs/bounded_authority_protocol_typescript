@@ -64,7 +64,9 @@ the payload and signature segments are not read. Example: [Rotate keys](guides/r
 ### `decodeGrant(compact, bounds?): Result<GrantDecoded>`
 
 Parses and validates a grant's structure and claims (closed header and payload, encodings,
-coherent times) without checking the signature or any context. Returns
+coherent times, and the selector rules, including erratum 6: an `equals` value or `one_of` member
+holding a float-tagged zero such as `0.0`, `-0e0` or `1e-400` at any depth rejects) without
+checking the signature or any context. Returns
 `verification: "not_evaluated"`. For display and debugging only. Example:
 [Handle errors](guides/handle-errors.md#finding-why-a-request-rejects).
 
@@ -88,8 +90,10 @@ Builds the exact signing input of a grant from a [`GrantProducer`](#grantproduce
 operations, v: 1}`, both JCS. Rejects an invalid `keyId`, a non-StringOrURI `issuer`, `grantId` or
 audience, 0 or more than 64 audiences or operations, non-integer times, a `holderThumbprint` that
 is not base64url of 32 bytes, an operation name that is not 1 to 128 printable ASCII bytes, and 0
-or more than 64 selectors per operation, or a malformed selector. Example:
-[Quickstart](../README.md#quickstart-issue-and-verify-a-grant).
+or more than 64 selectors per operation, a malformed selector, or a selector value holding a
+float-tagged integral number (`10.0`, `-0.0`, `{ t: "float", v: 3 }`) at any depth, in any kind
+(erratum 6: JCS writes an integral float as integer text, so its tag would not survive signing).
+Example: [Quickstart](../README.md#quickstart-issue-and-verify-a-grant).
 
 ### `proofSigningInput(proof, bounds?): Result<SigningInput>`
 
@@ -317,7 +321,8 @@ raw canonical rows and the range they claim.
 `{ kind: "all" }`, `{ kind: "equals"; path: string[]; value: Tagged }` or
 `{ kind: "one_of"; path: string[]; values: Tagged[] }` (the `v2` and `v3` forms add `lte` and
 `gte` with a numeric `value`). Paths have 1 to 32 segments of 1 to 128 bytes; `one_of` has 1 to
-256 values.
+256 values. No value may hold a float-tagged integral number: use an integer, or a float with a
+fractional part.
 
 ### `GrantProducer`
 
@@ -448,7 +453,9 @@ or 3).
 ### Selectors and digests
 
 - **`parseSelector(tagged, bounds?): Selector`** validates a decoded selector object for major 1
-  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise. `Selector` is the parsed type.
+  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise, including for an `equals` value
+  or `one_of` member holding a float-tagged zero at any depth (erratum 6). `Selector` is the parsed
+  type.
 - **`selectorMatches(selector, castArguments): boolean`** applies one selector.
 - **`semanticIdentity(value): Uint8Array`** is the canonical bytes selectors compare: the JCS of the
   typed projection. Equal values with different member order have equal identities; `1` and `1.0`

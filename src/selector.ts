@@ -45,6 +45,7 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
     const path = parsePath(obj.v.get("path"), bounds);
     const value = obj.v.get("value") ?? fail("selector: value");
     validateSelectorValue(value, bounds);
+    if (!floatZeroFree(value)) fail("selector: float zero");
     return { kind: "equals", path, value };
   }
   // one_of
@@ -55,7 +56,11 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
   if (valuesV.v.length < 1 || valuesV.v.length > resolve(bounds, "one_of_values" as MaximaKey)) {
     fail("selector: values count");
   }
-  const values = valuesV.v.map((v) => { validateSelectorValue(v, bounds); return v; });
+  const values = valuesV.v.map((v) => {
+    validateSelectorValue(v, bounds);
+    if (!floatZeroFree(v)) fail("selector: float zero");
+    return v;
+  });
   return { kind: "one_of", path, values };
 }
 
@@ -103,6 +108,36 @@ function checkNode(v: Tagged, depth: number, bounds: Bounds): void {
     }
     default: return;
   }
+}
+
+// Erratum 6 (selector float-zero soundness), one walker for every contract-major and both sides.
+// RFC 8785 writes every float-tagged zero (0.0, -0.0, 0e0, 1e-400, ...) as the integer text "0",
+// so a signed grant could not keep the float tag its issuer meant; and a float-tagged integral
+// value of any size loses its tag the same way. The checks key on the decoded value, never the
+// lexeme, so every spelling is covered. Callers run them after the per-node bound checks.
+function everyFloat(v: Tagged, admissible: (n: number) => boolean): boolean {
+  switch (v.t) {
+    case "float": return admissible(v.v);
+    case "array": return v.v.every((item) => everyFloat(item, admissible));
+    case "object": {
+      for (const [, member] of v.v) if (!everyFloat(member, admissible)) return false;
+      return true;
+    }
+    default: return true;
+  }
+}
+
+// Verification (REQ1/2/3-SELECTOR-float-zero): an `equals` value or `one_of` member is admissible
+// only when it holds no float-tagged zero, of either sign, at any depth. Not applied to `lte`/`gte`
+// bounds (they compare numerically, -0.0 = 0.0) or to the inert members of `all`.
+export function floatZeroFree(v: Tagged): boolean {
+  return everyFloat(v, (n) => n !== 0);
+}
+
+// Producers (REQ1/2/3-SIGNING-integral-float-selector): a selector value — `equals`, `one_of`,
+// `lte` or `gte` — holds no float-tagged integral number at any depth.
+export function integralFloatFree(v: Tagged): boolean {
+  return everyFloat(v, (n) => !Number.isInteger(n));
 }
 
 // Semantic identity = JCS of the typed-projected form. Returns canonical bytes for comparison.

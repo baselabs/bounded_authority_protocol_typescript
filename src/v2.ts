@@ -6,7 +6,7 @@ import { parseCompact, assembleSegments, scanCompact, type SigningInput, type Co
 import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
 import { importPublicKey, ed25519Verify, sha256, sha256Concat, signatureGate, _resetCensus } from "./ed25519.js";
 import { digestWithPrefix, typedProject } from "./digest.js";
-import { semanticIdentity } from "./selector.js";
+import { semanticIdentity, floatZeroFree, integralFloatFree } from "./selector.js";
 import { uriNormalize } from "./uri.js";
 import { jcsEncode } from "./jcs.js";
 import { resolve, coerceBounds, boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA, type Bounds, type MaximaKey } from "./bounds.js";
@@ -302,6 +302,7 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
     const path = parseSelectorPath(obj.v.get("path"), bounds);
     const value = obj.v.get("value") ?? fail("selector: value");
     validateSelectorValue(value, bounds);
+    if (!floatZeroFree(value)) fail("selector: float zero");
     return { kind: "equals", path, value };
   }
   if (kind === "one_of") {
@@ -312,7 +313,11 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
     if (valuesV.v.length < 1 || valuesV.v.length > resolve(bounds, "one_of_values" as MaximaKey)) {
       fail("selector: values count");
     }
-    const values = valuesV.v.map((v) => { validateSelectorValue(v, bounds); return v; });
+    const values = valuesV.v.map((v) => {
+      validateSelectorValue(v, bounds);
+      if (!floatZeroFree(v)) fail("selector: float zero");
+      return v;
+    });
     return { kind: "one_of", path, values };
   }
   // lte / gte: {kind, path, value} with a numeric bound.
@@ -1228,6 +1233,7 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
   if (typeof s === "object" && s.kind === "equals") {
     const path = validatePath(s.path, b);
     validateSelectorValue(s.value, b);
+    producerValueGate(s.value);
     const members = new Map<string, Tagged>([
       ["kind", { t: "string", v: strUtf8("equals") }],
       ["path", path],
@@ -1239,7 +1245,10 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     const path = validatePath(s.path, b);
     if (!Array.isArray(s.values)) fail("selector: values array");
     if (s.values.length < 1 || s.values.length > resolve(b, "one_of_values" as MaximaKey)) fail("selector: values count");
-    for (const v of s.values) validateSelectorValue(v, b);
+    for (const v of s.values) {
+      validateSelectorValue(v, b);
+      producerValueGate(v);
+    }
     const members = new Map<string, Tagged>([
       ["kind", { t: "string", v: strUtf8("one_of") }],
       ["path", path],
@@ -1253,6 +1262,7 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     const path = validatePath(s.path, b);
     if (!isNumericTag(s.value)) fail("selector: numeric bound");
     validateSelectorValue(s.value, b);
+    producerValueGate(s.value);
     const members = new Map<string, Tagged>([
       ["kind", { t: "string", v: strUtf8(s.kind) }],
       ["path", path],
@@ -1261,6 +1271,14 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     return { t: "object", v: members };
   }
   fail("selector: shape");
+}
+
+// Erratum 6, producers (REQ2-SIGNING-integral-float-selector): RFC 8785 writes an integral float
+// as integer text, which decodes integer-tagged, so the producer refuses a float-tagged integral
+// selector value (equals, one_of, lte and gte) at any depth rather than sign a value whose tag
+// the wire changes.
+function producerValueGate(v: Tagged): void {
+  if (!integralFloatFree(v)) fail("grant_signing_input: float-tagged integral selector value");
 }
 
 function validatePath(path: string[], b: Bounds): Tagged {

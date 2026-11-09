@@ -8,5 +8,6 @@ import { core as roleAttestation } from "./role_attestation.js";
 import { core as contentAssertion } from "./content_assertion.js";
 import { core as strictEd25519 } from "./strict_ed25519.js";
 import { core as producerCanonicality } from "./producer_canonicality.js";
+import { core as selectorFloatZero } from "./selector_float_zero.js";
 
-export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, producerCanonicality];
+export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, producerCanonicality, selectorFloatZero];

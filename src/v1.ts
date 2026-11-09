@@ -6,7 +6,7 @@ import { parseCompact, assembleSegments, scanCompact, type SigningInput, type Co
 import { jwkFromPublicKey, thumbprintRaw, jwkEncodePublic, jwkDecodePublic, thumbprint } from "./jwk.js";
 import { importPublicKey, ed25519Verify, sha256, sha256Concat, signatureGate, _resetCensus } from "./ed25519.js";
 import { requestDigest as computeRequestDigest, REQUEST_PREFIX, typedProject } from "./digest.js";
-import { parseSelector, selectorMatches, type Selector } from "./selector.js";
+import { parseSelector, selectorMatches, integralFloatFree, type Selector } from "./selector.js";
 import { localLoopbackHttpUriNormalize, uriNormalize } from "./uri.js";
 import { jcsEncode } from "./jcs.js";
 import { resolve, coerceBounds, boundsNew, boundsMaximum, MAXIMUM_BOUNDS, MAXIMA, type Bounds, type MaximaKey } from "./bounds.js";
@@ -1039,6 +1039,7 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
   if (typeof s === "object" && s.kind === "equals") {
     const path = validatePath(s.path, b);
     validateSelectorValue(s.value, b);
+    producerValueGate(s.value);
     const members = new Map<string, Tagged>([
       ["kind", { t: "string", v: strUtf8("equals") }],
       ["path", path],
@@ -1050,7 +1051,10 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     const path = validatePath(s.path, b);
     if (!Array.isArray(s.values)) fail("selector: values array");
     if (s.values.length < 1 || s.values.length > resolve(b, "one_of_values" as MaximaKey)) fail("selector: values count");
-    for (const v of s.values) validateSelectorValue(v, b);
+    for (const v of s.values) {
+      validateSelectorValue(v, b);
+      producerValueGate(v);
+    }
     const members = new Map<string, Tagged>([
       ["kind", { t: "string", v: strUtf8("one_of") }],
       ["path", path],
@@ -1059,6 +1063,13 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     return { t: "object", v: members };
   }
   fail("selector: shape");
+}
+
+// Erratum 6, producers (REQ1-SIGNING-integral-float-selector): RFC 8785 writes an integral float
+// as integer text, which decodes integer-tagged, so the producer refuses a float-tagged integral
+// selector value (equals, one_of) at any depth rather than sign a value whose tag the wire changes.
+function producerValueGate(v: Tagged): void {
+  if (!integralFloatFree(v)) fail("grant_signing_input: float-tagged integral selector value");
 }
 
 function validatePath(path: string[], b: Bounds): Tagged {

@@ -33,9 +33,9 @@ function tamperedIndex(inner: CorpusSource, indexPath: string): CorpusSource {
   };
 }
 
-test("eight cores, one per certified corpus", () => {
+test("nine cores, one per certified corpus", () => {
   assert.deepEqual(CORES.map((c) => c.corpus).sort(), [
-    "content-assertion", "local-loopback-http", "producer-canonicality", "role-attestation", "strict-ed25519", "v1", "v2", "v3",
+    "content-assertion", "local-loopback-http", "producer-canonicality", "role-attestation", "selector-float-zero", "strict-ed25519", "v1", "v2", "v3",
   ]);
 });
 
