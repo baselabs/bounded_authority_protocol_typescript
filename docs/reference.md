@@ -1,6 +1,6 @@
 # API reference
 
-This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0 (unreleased), whose
+This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0, whose
 exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the
 [changelog](../CHANGELOG.md) records every earlier change. The task guides show
 the functions in context; every `ts` sample on this page and in the guides is typechecked and run
@@ -67,7 +67,7 @@ the payload and signature segments are not read. Example: [Rotate keys](guides/r
 
 Parses and validates a grant's structure and claims (closed header and payload, encodings,
 coherent times, and the selector rules) without checking the signature or any context. New in
-2.0.0 (unreleased), erratum 6: an `equals` value or `one_of` member holding a float-tagged zero
+2.0.0, erratum 6: an `equals` value or `one_of` member holding a float-tagged zero
 such as `0.0`, `-0e0` or `1e-400` at any depth rejects; 1.0.0 decodes it. Returns
 `verification: "not_evaluated"`. For display and debugging only. Example:
 [Handle errors](guides/handle-errors.md#finding-why-a-request-rejects).
@@ -92,7 +92,7 @@ Builds the exact signing input of a grant from a [`GrantProducer`](#grantproduce
 operations, v: 1}`, both JCS. Rejects an invalid `keyId`, a non-StringOrURI `issuer`, `grantId` or
 audience, 0 or more than 64 audiences or operations, non-integer times, a `holderThumbprint` that
 is not base64url of 32 bytes, an operation name that is not 1 to 128 printable ASCII bytes, and 0
-or more than 64 selectors per operation, or a malformed selector. New in 2.0.0 (unreleased),
+or more than 64 selectors per operation, or a malformed selector. New in 2.0.0,
 erratum 6: it also rejects a selector value holding a float-tagged integral number (`10.0`,
 `-0.0`, `{ t: "float", v: 3 }`) at any depth, in any kind, because JCS writes an integral float
 as integer text, so its tag would not survive signing; 1.0.0 accepts it.
@@ -324,7 +324,7 @@ raw canonical rows and the range they claim.
 `{ kind: "all" }`, `{ kind: "equals"; path: string[]; value: Tagged }` or
 `{ kind: "one_of"; path: string[]; values: Tagged[] }` (the `v2` and `v3` forms add `lte` and
 `gte` with a numeric `value`). Paths have 1 to 32 segments of 1 to 128 bytes; `one_of` has 1 to
-256 values. New in 2.0.0 (unreleased): no value may hold a float-tagged integral number; use an
+256 values. New in 2.0.0: no value may hold a float-tagged integral number; use an
 integer, or a float with a fractional part.
 
 ### `GrantProducer`
@@ -455,7 +455,7 @@ or 3).
 ### Selectors and digests
 
 - **`parseSelector(tagged, bounds?): Selector`** validates a decoded selector object for major 1
-  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise; new in 2.0.0 (unreleased),
+  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise; new in 2.0.0,
   also for an `equals` value or `one_of` member holding a float-tagged zero at any depth (erratum
   6). `Selector` is the parsed type.
 - **`selectorMatches(selector, castArguments): boolean`** applies one selector.

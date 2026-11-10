@@ -2,9 +2,9 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## [Unreleased]
+## [2.0.0] — 2026-11-10
 
-**Adopter summary.** 2.0.0 (unreleased) is the protocol's erratum 6, the selector float-zero
+**Adopter summary.** 2.0.0 is the protocol's erratum 6, the selector float-zero
 soundness repair, and nothing else: no export, type, error shape or other verdict changes, and no
 wire contract-major changes. It is a major because 1.0.0 promised one for any verdict change.
 
@@ -77,7 +77,7 @@ now refuse.
 ### Documentation
 
 - The API reference (`grantSigningInput`, `decodeGrant`, `SelectorInput`, `parseSelector`) and
-  the Verify requests guide state the new selector rules, marked "new in 2.0.0 (unreleased)",
+  the Verify requests guide state the new selector rules, marked "new in 2.0.0",
   and the guide carries a runnable example of both the decode and the producer rule; the README
   lists the corpus.
 - README: the versioning section states why the next release is 2.0.0 and the rule from 2.x on

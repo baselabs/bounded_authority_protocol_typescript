@@ -1,6 +1,6 @@
 # Upgrading from 1.x
 
-2.0.0 (unreleased) carries one change: the protocol's erratum 6, the selector float-zero
+2.0.0 carries one change: the protocol's erratum 6, the selector float-zero
 soundness repair. The exports, the types, the error shape and every other verdict are 1.0.0's,
 and no wire contract-major changes. It is a package major only because 1.0.0 promised one for any
 verdict change ([Versioning](../../README.md#versioning)).

@@ -45,7 +45,7 @@ once, and deciding whether to execute belong to your service.
 ## Install
 
 ```bash
-npm install @bounded-authority-protocol/verifier@1.0.0
+npm install @bounded-authority-protocol/verifier@2.0.0
 ```
 
 The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.19.0), or a
@@ -66,7 +66,7 @@ Set up a new project (the package is ESM-only, so the project is `"type": "modul
 mkdir bap-quickstart && cd bap-quickstart
 npm init -y
 npm pkg set type=module
-npm install @bounded-authority-protocol/verifier@1.0.0
+npm install @bounded-authority-protocol/verifier@2.0.0
 ```
 
 Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`
@@ -151,7 +151,7 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 | [Content assertions](docs/guides/content-assertions.md) | `bap-content-assertion/1`: signed digests of exact content, with successor checks |
 | [Handle errors](docs/guides/handle-errors.md) | The closed result, the functions that throw, and finding why an input rejects |
 | [Test your integration](docs/guides/test-your-integration.md) | Building real fixtures and negative cases without mocks |
-| [Upgrading from 1.x](docs/guides/upgrading.md) | What 2.0.0 (unreleased) changes, who is affected, and the steps |
+| [Upgrading from 1.x](docs/guides/upgrading.md) | What 2.0.0 changes, who is affected, and the steps |
 | [API reference](docs/reference.md) | Every export: parameters, return shape, errors, examples |
 
 ## Strict Ed25519 (rule S1)
@@ -412,7 +412,7 @@ load, so a drifted snapshot fails loudly:
 | Content-assertion profile | 131 assertion, 9 digest, 14 successor |
 | Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
 | Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
-| Selector float-zero (erratum 6, new in 2.0.0 (unreleased), additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
+| Selector float-zero (erratum 6, new in 2.0.0, additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
 by construction, so the suite also carries a mutation gate that proves each closure can fail:
@@ -438,7 +438,7 @@ are a separate axis: wire artifacts self-declare their major (payload `v`, the `
 name, major-bound domain separators), a new contract-major lands additively as a minor release
 (this package carries majors 1, 2 and 3 side by side), and the package number never encodes one.
 
-**2.0.0 (unreleased) is the selector float-zero soundness repair**, the protocol's erratum 6, and
+**2.0.0 is the selector float-zero soundness repair**, the protocol's erratum 6, and
 nothing else: the exports, the types and every other verdict are 1.0.0's. It is a major because
 1.0.0 promised a major for any verdict change, and erratum 6 changes verdicts: some grants that
 1.0.0 decodes and verifies are rejected, and some selector values its grant producer accepts are

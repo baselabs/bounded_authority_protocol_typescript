@@ -210,7 +210,7 @@ matches. Semantic identity compares types and values recursively, ignoring objec
 Every selector of the named operation must match. Major 2 and 3 add the inclusive range kinds
 `lte` and `gte`.
 
-New in 2.0.0 (unreleased): floats in selector values are restricted (the protocol's erratum 6).
+New in 2.0.0: floats in selector values are restricted (the protocol's erratum 6).
 A grant whose `equals` value or `one_of` member holds a float-tagged zero (`0.0`, `-0.0`, `0e0`,
 `1e-400`, at any depth) is rejected at decode, so `decodeGrant`, `verifyGrant` and `checkEnvelope`
 all refuse it; `lte` and `gte` bounds and the inert members of `all` are unaffected, and ranges
