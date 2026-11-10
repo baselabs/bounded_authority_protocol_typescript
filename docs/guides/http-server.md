@@ -59,9 +59,19 @@ const header = (req: IncomingMessage, name: string): string | undefined => {
   return typeof value === "string" && value !== "" ? value : undefined;
 };
 
-async function readBody(req: IncomingMessage): Promise<Uint8Array> {
+// Cap the body while reading: the envelope is not authenticated yet, so an unbounded read would
+// let any caller who copies a grant hold this server's memory. Pick your application's limit; the
+// protocol's own bounds stop at 64 KiB of JSON.
+const MAX_BODY_BYTES = 16_384;
+
+async function readBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
   const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > MAX_BODY_BYTES) return undefined;
+    chunks.push(chunk as Buffer);
+  }
   return Buffer.concat(chunks);
 }
 
@@ -85,6 +95,7 @@ function requireEnvelope(operation: string, handler: Handler) {
     // the method and path it received, and the arguments it parsed (strict JSON, types kept).
     const target = uriNormalize(strUtf8(AUDIENCE + (req.url ?? "/"))); // a query string refuses
     const body = await readBody(req);
+    if (body === undefined) return refuse();
     const args = trying(() => jsonDecode(body));
     if (!target.ok || !args.ok) return refuse();
 
@@ -174,6 +185,7 @@ try {
   assert.equal(await send({ ...standup, body: '{"notebook":"team","title":"Edited"}' }), 401); // not the signed arguments
   assert.equal(await send(prepare('{"notebook":"drafts","title":"Ideas"}')), 401); // outside the grant's selector
   assert.equal(await send({ ...prepare('{"notebook":"team","title":"Retro"}'), headers: {} }), 401); // no credentials
+  assert.equal(await send(prepare(`{"notebook":"team","title":"Big","lines":${JSON.stringify(Array(3).fill("x".repeat(8000)))}}`)), 401); // signed, but over the body cap
   assert.equal(await send(prepare('{"notebook":"team","title":"Retro"}')), 201);
 } finally {
   server.close();

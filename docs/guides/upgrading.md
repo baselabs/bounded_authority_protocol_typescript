@@ -12,8 +12,10 @@ verdict change ([Versioning](../../README.md#versioning)).
 | Grant decode (`decodeGrant`, `verifyGrant`, `checkEnvelope`, `parseSelector`; root, `v2` and `v3`) | accepts an `equals` value or `one_of` member holding a float-tagged zero (`0.0`, `-0.0`, `-0e0`, `1e-400`) at any depth | rejects it with the closed error |
 | Grant producer (`grantSigningInput`; root, `v2` and `v3`) | accepts a selector value holding a float-tagged integral number (`0.0`, `10.0`, `{ t: "float", v: 3 }`) in any kind | refuses it with `{ ok: false }` |
 
-Range bounds (`lte`, `gte`), the inert members of `all`, integer zero, and floats with a
-fractional part are unchanged. The [Verify requests](verify-requests.md#arguments-and-selectors)
+Range-bound (`lte`, `gte`) decoding and comparison, the inert members of `all`, integer zero, and
+floats with a fractional part are unchanged. The producer row does apply to range bounds: re-issue
+a grant whose `lte` or `gte` bound is a float-tagged integral number (`{ t: "float", v: 10 }`) with
+an integer bound. The [Verify requests](verify-requests.md#arguments-and-selectors)
 guide has a runnable example of both rows.
 
 ## Who is affected
