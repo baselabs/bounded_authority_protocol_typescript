@@ -15,7 +15,14 @@ on:
 
 # Least privilege: no job holds an OIDC token by default. The verify job runs every lane
 # with contents: read only; the publish job alone gets id-token: write, needs verify, and
-# runs nothing but checkout, a frozen install, the build and the staged publish.
+# runs nothing but checkout, a frozen install with every lifecycle script ignored, the build
+# and the staged publish.
+#
+# After the staged publish is approved, the read-back is
+#   pnpm readback <version> --sha256 <the hash this run's publish job printed>
+# (tools/readback.mjs): registry version and latest, tarball integrity and that hash, the
+# provenance's repository, workflow, tag and commit, npm audit signatures, and a fresh consumer
+# on Node.js, Deno, Bun and Chromium.
 permissions:
   contents: read
 
@@ -110,8 +117,9 @@ jobs:
           node-version: 24.19.0 # pinned exactly, matching the signer's release lane
           cache: pnpm
 
-      - name: Install (frozen lockfile)
-        run: pnpm install --frozen-lockfile
+      # No dependency's install script runs in the job that holds the publish token.
+      - name: Install (frozen lockfile, lifecycle scripts ignored)
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm build

@@ -167,7 +167,7 @@ jobs:
     # The packed tarball as a consumer receives it: typecheck with skipLibCheck false under each
     # resolution, lib and condition set, the leaked-type red-proof, and the installed package run on
     # Node (both backends), Deno and Bun, including the closed deep-import surface (every deep path refuses).
-    name: packed tarball (consumer typecheck and runtimes)
+    name: packed tarball (consumer typecheck and runtimes) and the post-publish read-back
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
@@ -199,6 +199,14 @@ jobs:
 
       - name: Packed tarball checks (builds first)
         run: pnpm test:tarball
+
+      # The post-publish read-back script (tools/readback.mjs), held to the published 1.0.0 with the
+      # real registry, Node, Deno, Bun and Chromium, and red on a wrong hash, commit or latest.
+      - name: Install the Chromium build pinned by the locked Playwright (read-back browser leg)
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Post-publish read-back against the published 1.0.0
+        run: pnpm test:readback
 
   browser-conformance:
     # Real engines through Playwright under the strict CSP (an engine axis, not an OS axis: Linux only).
