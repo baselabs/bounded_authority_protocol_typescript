@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium, firefox, webkit, type BrowserType } from "playwright";
 import { assertLaneAgrees, summarize, type LaneCorpus } from "./support/lanes.js";
+import { MODULE, PAGE, documentedCommand, verifiedLine } from "./support/runtimes-guide.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const CONFORMANCE = join(REPO, "conformance");
@@ -116,6 +117,31 @@ async function serveBench(): Promise<{ server: Server; origin: string }> {
   return { server, origin: `http://127.0.0.1:${address.port}` };
 }
 
+// The Deno, Bun and browsers guide's browser leg: its module bundled with the options of the esbuild
+// command it documents (the package name resolves to this repository's built package), and its page,
+// served as written under the strict CSP. The module prints one line to the console when it verifies.
+async function serveRuntimesGuide(): Promise<{ server: Server; origin: string }> {
+  documentedCommand("npx esbuild verify-anywhere.ts --bundle --format=esm --platform=browser --outfile=verify-anywhere.js");
+  const result = await build({
+    stdin: { contents: MODULE, resolveDir: REPO, sourcefile: "verify-anywhere.ts", loader: "ts" },
+    bundle: true, format: "esm", platform: "browser", write: false, logLevel: "silent",
+    alias: { "@bounded-authority-protocol/verifier": join(REPO, "dist/src/index.js") },
+  });
+  const app = result.outputFiles[0]!.text;
+  const server = createServer((req, res) => {
+    const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    const [status, type, body] = path === "/" ? [200, "text/html; charset=utf-8", PAGE]
+      : path === "/verify-anywhere.js" ? [200, "text/javascript; charset=utf-8", app]
+      : [404, "text/plain", "not found"];
+    res.writeHead(status, { "content-type": type, "content-security-policy": CSP, "cache-control": "no-store" });
+    res.end(body);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return { server, origin: `http://127.0.0.1:${address.port}` };
+}
+
 // Page functions are serialized into the page, so each one reaches the document through globalThis.
 type Doc = { getElementById(id: string): { dataset: Record<string, string>; textContent: string | null; disabled?: boolean } | null };
 
@@ -153,6 +179,28 @@ for (const name of SELECTED) {
     } finally {
       await browser.close();
       bench.server.close();
+    }
+  });
+
+  test(`${name}: the runtimes guide's page and bundle verify a grant under the strict CSP`, async () => {
+    const guide = await serveRuntimesGuide();
+    const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
+    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    try {
+      const page = await browser.newPage();
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      // Console errors are the page's, except the browser's own favicon request, which the strict
+      // CSP blocks (Firefox reports it on the console; it is not a request the page makes).
+      page.on("console", (m) => { if (m.type() === "error" && !m.text().includes("/favicon.ico")) errors.push(m.text()); });
+      const verified = page.waitForEvent("console", { predicate: (m) => m.text().startsWith("verified "), timeout: 30_000 });
+      const response = await page.goto(`${guide.origin}/`);
+      assert.equal(response?.headers()["content-security-policy"], CSP, "the page is served under the strict CSP");
+      assert.equal((await verified).text(), verifiedLine("portable"));
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+      guide.server.close();
     }
   });
 

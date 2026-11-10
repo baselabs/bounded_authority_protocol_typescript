@@ -114,15 +114,12 @@ Major 3 replaces Ed25519 with ECDSA over NIST P-256 and SHA-256 (`BAP3-ES256-SHA
   `0 < r < n` and `0 < s <= (n - 1) / 2`. The last rule is **low-S**: for every valid `(r, s)`,
   `(r, n - s)` also verifies, so the profile accepts only the low half. Most ECDSA libraries,
   including `node:crypto` and WebCrypto, return either half, so **the signer must normalize**
-  (`s = n - s` when `s` is high) before the signature is assembled. This package's producers do
-  not normalize; a high-S signature assembles but never verifies. The
-  [signer package](https://www.npmjs.com/package/@bounded-authority-protocol/signer) (0.6.0)
+  (`s = n - s` when `s` is high) before the signature is assembled. This package's producers never
+  normalize: `v3.assembleCompact` refuses a high-S signature with the closed error. The
+  [signer package](https://www.npmjs.com/package/@bounded-authority-protocol/signer)
   normalizes in its v3 signing functions and then checks the result with `es256VerifyStrict`.
 
-The sample uses `v3.jwkFromPublicKey`, new in 0.8.0; with 0.7.0 spell the JWK object
-`{ crv: "P-256", kty: "EC", x, y }` from the key's coordinates.
-
-```ts since=0.8.0
+```ts
 import assert from "node:assert/strict";
 import { generateKeyPairSync, randomUUID, sign, verify, type KeyObject } from "node:crypto";
 import { es256VerifyStrict, jsonDecode, strUtf8, v3, type SigningInput } from "@bounded-authority-protocol/verifier";
@@ -196,12 +193,12 @@ const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32
 assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
 assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
 // Compact assembly is a producer surface: it refuses the twin with the closed error rather
-// than framing a signature no conforming signer emits (new in 0.8.0).
+// than framing a signature no conforming signer emits.
 const twin = v3.assembleCompact(grantInput.value, highS);
 assert.deepEqual(twin, { ok: false });
 ```
 
-New in 0.8.0, the v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the
+The v3 namespace has the P-256 forms of the key helpers, with the same names and shapes as the
 root's Ed25519 ones for majors 1 and 2: `v3.jwkFromPublicKey(raw65)` returns the `v3.EcPublic` JWK
 object, `v3.thumbprint`, `v3.thumbprintRaw` and `v3.thumbprintPreimage` take that object,
 `v3.publicKeyThumbprintRaw(raw65)` gives the raw fingerprint anchors and transitions carry,

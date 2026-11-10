@@ -135,6 +135,15 @@ test("every docs sample typechecks under strict settings against the source", ()
   }
 });
 
+// The protocol's decision records are not published, so the public docs neither link nor cite one: a
+// reader must get the substance from the page itself or from a published specification.
+test("the public docs link and cite no unpublished decision record", () => {
+  const hits = [...docFiles(), join(REPO, "SECURITY.md")].flatMap((file) =>
+    readFileSync(file, "utf8").split("\n").flatMap((line, i) =>
+      /docs\/adr\/|\bADR[ -]?\d/.test(line) ? [`${relative(REPO, file)}:${i + 1}: ${line.trim()}`] : []));
+  assert.deepEqual(hits, []);
+});
+
 // The reference must name every export: values and types of the package root and of each namespace,
 // read from the compiler's view of src/index.ts (so a new export without a reference entry fails).
 test("docs/reference.md names every public export", () => {
@@ -193,7 +202,7 @@ for (const sample of SAMPLES) {
   });
 }
 
-// Release step for the docs: replace every "0.8.0 (unreleased)" (or the version being released) with
+// Release step for the docs: replace every "2.0.0 (unreleased)" (the version being released) with
 // the bare version. The `since=` fences stay; once that version is published they run here against it.
 //
 // The reader path: every sample that does not need an unreleased version runs exactly as a reader runs

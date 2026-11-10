@@ -12,6 +12,11 @@ clock or private-key access. It is a reimplementation of the protocol's publishe
 held to the protocol's certified conformance corpora, and it runs with identical verdicts on
 Node.js, in browsers, and on Deno, Bun and workers.
 
+To see it work before you install anything, open the
+[verifier bench](https://baselabs.github.io/bounded_authority_protocol_typescript/): it builds a
+demo grant and proof in your browser, verifies them the way a resource server does, and lets you
+tamper with each part to watch the check refuse it.
+
 ## Why use it
 
 - **One call per decision input.** `checkEnvelope` verifies the grant signature, the issuer,
@@ -137,6 +142,8 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 | Guide | What it covers |
 |---|---|
 | [Verify requests](docs/guides/verify-requests.md) | Grants, holder proofs, `checkEnvelope`, selectors, nonces, picking the issuer key |
+| [Protect an HTTP endpoint](docs/guides/http-server.md) | A Node.js server recipe: middleware that verifies the envelope and reserves each invocation once |
+| [Deno, Bun and browsers](docs/guides/runtimes.md) | One module that runs on every runtime, and how to bundle it for a page |
 | [Contract-majors 2 and 3](docs/guides/contract-majors.md) | `lte`/`gte` range selectors (v2) and the ES256 suite with low-S signatures (v3) |
 | [Rotate keys](docs/guides/rotate-keys.md) | Key enrollment checks, several trusted issuer keys, authenticated key transitions |
 | [Consumption chains and archives](docs/guides/chains-and-archives.md) | Consumption rows, boundary anchors, anchored exports |
@@ -144,6 +151,7 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 | [Content assertions](docs/guides/content-assertions.md) | `bap-content-assertion/1`: signed digests of exact content, with successor checks |
 | [Handle errors](docs/guides/handle-errors.md) | The closed result, the functions that throw, and finding why an input rejects |
 | [Test your integration](docs/guides/test-your-integration.md) | Building real fixtures and negative cases without mocks |
+| [Upgrading from 1.x](docs/guides/upgrading.md) | What 2.0.0 (unreleased) changes, who is affected, and the steps |
 | [API reference](docs/reference.md) | Every export: parameters, return shape, errors, examples |
 
 ## Strict Ed25519 (rule S1)
@@ -173,9 +181,8 @@ assert.equal(torsionFree(publicKey32), true); // acceptable, and [L]A = O
 assert.equal(acceptablePublicKey(new Uint8Array(32)), false);
 ```
 
-New in 0.8.0: the "never throws" above also holds for an exotic input whose typed-array getters throw (a
-`Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
-`TypeError` for one.
+"Never throws" holds for any input, including an exotic one whose typed-array getters throw (a
+`Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`).
 
 Verification itself has no subgroup check. A host MUST call `torsionFree` at key enrollment, at
 trust install, and before any deny-list or revocation comparison, so that one secret has one key
@@ -188,7 +195,7 @@ total (it never throws), it returns `true` only for an uncompressed, on-curve P-
 SHA-256 signature over the message. It applies the `REQ3-SIGNING-*` rules of the v3 profile to raw
 bytes.
 
-New in 0.8.0: compact assembly and anchored-export encoding are producer surfaces —
+Compact assembly and anchored-export encoding are producer surfaces —
 they frame a signature and verify none — so each refuses, with the closed error, a signature no
 conforming signer emits and emits every accepted signature's bytes unchanged (erratum 3): an
 Ed25519 signature whose `S` is at least the group order or whose `R` is non-canonical or of small
@@ -225,9 +232,8 @@ To force the portable backend in any of these, add the `bap-portable` condition.
 the implementation, not the platform library under it: `"node"` means `node:crypto` of the running
 runtime, whether that is linked against OpenSSL (Node.js) or BoringSSL (Electron), and it cannot
 tell the two apart. Verdicts do not depend on it, because every protocol gate runs before the
-backend. In 0.7.0 the published map also carried this repository's development condition,
-`bap-source`, whose targets are in `src/`, which the package does not ship: a build that set it
-failed to resolve. New in 0.8.0: the packed manifest no longer carries it.
+backend. The packed manifest carries none of this repository's development conditions, so no
+consumer build can resolve a source file the package does not ship.
 
 ```ts
 import assert from "node:assert/strict";
@@ -242,9 +248,8 @@ checks for ES256), the portable Ed25519 check is an explicit cofactorless one
 (`encode([S]B - [k]A) == R`, never a cofactored verify), and the portable P-256 verify leaves the
 low-S rule to the profile gate. Every certified corpus produces byte-identical verdict digests on
 Node 22 and 24 with either backend, on Deno and Bun, and in Chromium, checked case by case against
-the Node verdicts. CI runs the same browser lane in Chromium, Firefox and WebKit on Linux; for the
-0.7.0 release only Chromium was observed (locally, Chromium 153), and no Firefox or WebKit result
-is claimed for it.
+the Node verdicts. CI, and the release workflow before it stages a publish, runs the same
+browser lane in Chromium, Firefox and WebKit on Linux.
 
 **In-page verification is display-only, never a trust decision.** A result computed in a web page
 is for showing to a person. It must not authorize anything, feed a trust decision, or be sent
@@ -306,8 +311,10 @@ This package verifies; it never signs and never holds a private key. Its sibling
 [`@bounded-authority-protocol/signer`](https://www.npmjs.com/package/@bounded-authority-protocol/signer)
 produces the signed bytes by calling this package's producer functions and delegating each
 signature to a key handle you own. The dependency is one-way: the signer depends on the verifier
-(signer 0.6.0 takes `^1.0.0`), never the reverse. Compatibility between the two is governed by
-the wire contract-majors (signer 0.6.0 signs majors 1, 2 and 3), not by package version numbers.
+through a caret range on one verifier package major (signer 1.0.0 takes `^1.0.0`), never the
+reverse. What the two must agree on is the wire contract-major (signer 1.0.0 signs majors 1, 2
+and 3), not a package version number; the signer's own changelog names the verifier range each
+of its releases takes.
 The [envelope playground](https://baselabs.github.io/bounded_authority_signer_typescript/) runs
 the whole flow in a browser.
 
@@ -405,7 +412,7 @@ load, so a drifted snapshot fails loudly:
 | Content-assertion profile | 131 assertion, 9 digest, 14 successor |
 | Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
 | Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
-| Selector float-zero (erratum 6, additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
+| Selector float-zero (erratum 6, new in 2.0.0 (unreleased), additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
 by construction, so the suite also carries a mutation gate that proves each closure can fail:
@@ -415,7 +422,7 @@ Linux CI runs strict typecheck, build, lint (including a purity rule, no I/O, cl
 in `src/`, and the browser-safety rules: no Node module or global, no dynamic code), a browser
 typecheck, a scan of the browser bundle for unresolved globals, a bundle-size budget, a license
 check, the unit tests (which also typecheck and run every code sample in this README and in
-`docs/`), the mutation gate, and all eight corpora against the vendored snapshots, on Node 22.23.1
+`docs/`), the mutation gate, and every corpus above against the vendored snapshots, on Node 22.23.1
 and Node 24.19.0 with the node and the portable backend; the same corpora on Deno and Bun; the
 browser lane in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of
 the packed tarball; and `npm audit signatures`.
@@ -426,18 +433,37 @@ artifact.
 
 ## Versioning
 
-Package versions follow SemVer. Wire contract-majors are a separate axis: a new contract-major
-lands additively (a minor release; this package already carries majors 1, 2 and 3 side by side),
-and a package major is owed only when a shipped profile or public API is removed or changes
-verdicts. Wire artifacts self-declare their major (payload `v`, the `BAP<n>-…` suite name,
-major-bound domain separators), so the package number never needs to encode it.
+Package versions follow SemVer. **Package majors are not contract-majors.** Wire contract-majors
+are a separate axis: wire artifacts self-declare their major (payload `v`, the `BAP<n>-…` suite
+name, major-bound domain separators), a new contract-major lands additively as a minor release
+(this package carries majors 1, 2 and 3 side by side), and the package number never encodes one.
 
-The package is 1.0: SemVer's ordinary rules apply — a breaking change costs a major version, and
-a caret range such as `^1.0.0` carries every later minor and patch. (Before 1.0 the minor
-position was the breaking boundary: releases 0.5.0 through 0.8.0 each carry verdict or API
-behavior changes listed in the [changelog](CHANGELOG.md).) Deep imports — any path under
-`dist/` — are closed as of 1.0.0: the exports map exposes the package root and
-`./package.json` only, so import from the root.
+**2.0.0 (unreleased) is the selector float-zero soundness repair**, the protocol's erratum 6, and
+nothing else: the exports, the types and every other verdict are 1.0.0's. It is a major because
+1.0.0 promised a major for any verdict change, and erratum 6 changes verdicts: some grants that
+1.0.0 decodes and verifies are rejected, and some selector values its grant producer accepts are
+refused (see [Verify requests](docs/guides/verify-requests.md#arguments-and-selectors)). A minor
+would have changed every `^1.0.0` install without notice. No wire contract-major changes.
+[Upgrading from 1.x](docs/guides/upgrading.md) says who is affected and what to do.
+
+From 2.x on, the package follows one rule for verdicts:
+
+- **A soundness repair is a minor release.** A soundness repair is a correction made under the
+  protocol's [governance](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/governance.md#soundness-repairs):
+  it only turns an accept into a reject, only for inputs no conforming producer emits, changes no
+  verdict of any certified corpus, and arrives with its own additive certified corpus. A caret
+  range such as `^2.0.0` carries it, as it carries every other minor and patch.
+- **Any other verdict change, and any removal or breaking change of the public API, is a major.**
+- **Earlier releases stay installable** and return the pre-repair verdict, which the protocol's
+  [errata registry](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/errata.md)
+  records, unless the repair needs a security advisory because a party without the signing key
+  could exploit the old verdict; those releases are deprecated on npm with a pointer to the
+  advisory. Erratum 6 is signer-bound (every affected value sits inside issuer-signed bytes), so
+  it has no advisory and 1.x stays installable.
+
+Deep imports, any path under `dist/`, are closed: the exports map exposes the package root and
+`./package.json` only, so import from the root. Before 1.0 the minor position was the breaking
+boundary; the [changelog](CHANGELOG.md) lists each release's verdict and API changes.
 
 ## Protocol documentation
 
@@ -448,11 +474,16 @@ behavior changes listed in the [changelog](CHANGELOG.md).) Deep imports — any 
   [role-attestation profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md) ·
   [content-assertion profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md)
 - [Certified conformance corpora](https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/)
-- [ADR 0014: cross-language verifier SDKs](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0014-cross-language-verifier-sdks.md) ·
-  [ADR 0015: graduation and publish topology](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0015-sdk-graduation-and-publish-topology.md) ·
-  [ADR 0036: the role-attestation profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0036-role-attestation-profile.md) ·
-  [ADR 0037: the content-assertion profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0037-content-assertion-profile.md) ·
-  [ADR 0040: strict Ed25519](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0040-strict-ed25519-soundness-erratum.md)
+- [Governance](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/governance.md)
+  (how profiles evolve, soundness repairs, deprecation) and the
+  [errata registry](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/errata.md)
+  (every correction to a published specification, with its corpus impact)
+- This package is an independent reimplementation of those specifications, held to the same
+  certified corpora as the protocol's reference implementation. It publishes from its own
+  repository, so its releases, provenance and issue tracker are separate from the protocol's.
+  Strict Ed25519 (rule S1) is specified in the
+  [v1 specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519)
+  and recorded as erratum 2.
 
 ## Related packages
 
@@ -489,6 +520,8 @@ pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/
 pnpm test:runtimes           # Deno and Bun conformance lanes (BAP_RUNTIMES=deno,bun)
 pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)
 pnpm check:currency          # dependency-currency gate (latest-first)
+pnpm test:readback           # the post-publish read-back, held to the published 1.0.0
+pnpm readback <version> --sha256 <hex>  # read back a release: registry, bytes, provenance, signatures, fresh consumers
 ```
 
 ## Security

@@ -4,6 +4,22 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
+**Adopter summary.** 2.0.0 (unreleased) is the protocol's erratum 6, the selector float-zero
+soundness repair, and nothing else: no export, type, error shape or other verdict changes, and no
+wire contract-major changes. It is a major because 1.0.0 promised one for any verdict change.
+
+- **Resource servers:** a grant whose `equals` value or `one_of` member holds a float-tagged zero
+  (`0.0`, `-0.0`, `1e-400`) now rejects. No conforming producer writes one, and grants a
+  conforming producer already issued, including 1.0.0's, verify as before.
+- **Issuers:** `grantSigningInput` now refuses a selector value holding a float-tagged integral
+  number (`10.0`, `{ t: "float", v: 3 }`). Use an integer, or a float with a fractional part.
+- **To upgrade:** check your selector values, then move to `^2.0.0`; no code changes otherwise.
+  [Upgrading from 1.x](docs/guides/upgrading.md) has a runnable check. 1.x stays installable and
+  is not deprecated: the repair is signer-bound, so the protocol's errata entry is its
+  disclosure and there is no advisory.
+- **From 2.x on,** a soundness repair made under the protocol's governance is a minor release;
+  any other verdict change is a major. Package majors are not contract-majors.
+
 Selector float-zero soundness repair (erratum 6 of the protocol's errata registry). This changes
 verdicts: grants that decoded before now reject, and producer inputs that were accepted before
 now refuse.
@@ -43,10 +59,44 @@ now refuse.
   major's decode and producer; `test/selector-float-zero.test.ts` is the rule matrix, with a
   defect-injection red proof for each of the six gate sites.
 
+### Added
+
+- `tools/readback.mjs` (`pnpm readback <version> --sha256 <hex>`), the post-publish read-back: the
+  registry version and `latest` tag, the registry tarball against `dist.integrity` and the SHA-256
+  the release run verified, the SLSA provenance's subject, repository, workflow, tag, commit and
+  GitHub-hosted builder, `npm audit signatures` in a fresh consumer, and fresh consumers running
+  the README Quickstart on Node.js and the runtimes guide's module on Node.js, Deno, Bun and
+  Chromium. `test/readback.ts` (`pnpm test:readback`, in CI's package job) holds it to the
+  published 1.0.0 and proves it refuses a wrong hash, commit or `latest`.
+
+### Changed
+
+- The release workflow's publish job, the only job that holds the publish token, installs with
+  `--ignore-scripts`, and its header names the read-back command.
+
 ### Documentation
 
 - The API reference (`grantSigningInput`, `decodeGrant`, `SelectorInput`, `parseSelector`) and
-  the Verify requests guide state the new selector rules; the README lists the corpus.
+  the Verify requests guide state the new selector rules, marked "new in 2.0.0 (unreleased)",
+  and the guide carries a runnable example of both the decode and the producer rule; the README
+  lists the corpus.
+- README: the versioning section states why the next release is 2.0.0 and the rule from 2.x on
+  (a governance soundness repair is a minor; package majors are not contract-majors); it links
+  the verifier bench site; the signer pairing names signer 1.0.0 and its `^1.0.0` range; the
+  dead decision-record links are replaced with the protocol's governance and errata registry.
+- New guides, each sample run by the test suite: [Protect an HTTP endpoint](docs/guides/http-server.md)
+  (a Node.js server with envelope middleware and a replay-store sketch), [Deno, Bun and
+  browsers](docs/guides/runtimes.md) (one module run on Node.js, on Deno and Bun from the packed
+  tarball, and bundled in Chromium, Firefox and WebKit under a strict CSP), and
+  [Upgrading from 1.x](docs/guides/upgrading.md).
+- SECURITY.md: the supported line is the npm `latest` line, and the two groups of earlier
+  releases (deprecated with an advisory before 0.6.0; installable, without an advisory, before
+  2.0.0) are stated.
+- The "new in 0.x" notes left in the README, the guides and the reference are removed; this
+  changelog keeps them under each release. The API reference no longer names 0.7.0 as its
+  version, the contract-majors guide no longer says a high-S signature assembles (assembly has
+  refused it since 0.8.0), and the Handle errors example passes `evaluationTime` in seconds rather
+  than `Date.now()` milliseconds.
 
 ## [1.0.0] — 2026-10-29
 

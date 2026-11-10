@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, statSync } from "node:fs";
 // @ts-expect-error tools/pack.mjs is untyped JavaScript
 import { pack } from "../tools/pack.mjs";
+import { MODULE, documentedCommand, verifiedLine } from "./support/runtimes-guide.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as Record<string, unknown>;
@@ -71,6 +72,7 @@ test.before(() => {
   run("pnpm", ["install", "--prefer-offline", "--ignore-scripts", "--config.confirmModulesPurge=false"], consumer);
   writeFileSync(join(consumer, "consumer.ts"), CONSUMER_TS);
   writeFileSync(join(consumer, "main.mjs"), CONSUMER_JS);
+  writeFileSync(join(consumer, "verify-anywhere.ts"), MODULE);
 });
 test.after(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -205,6 +207,19 @@ for (const [label, args, want] of [
     const [cmd, ...rest] = args;
     const out = JSON.parse(run(cmd, [...rest], consumer).trim()) as Record<string, unknown>;
     assert.deepEqual(out, { backend: want, rfc8032: true, es256Garbage: false });
+  });
+}
+
+// The Deno, Bun and browsers guide: its module, run with the exact command the guide gives for each
+// runtime, against the installed tarball (the browser leg is in test/browser.ts).
+for (const [label, command, backend] of [
+  ["deno", "deno run verify-anywhere.ts", "portable"],
+  ["bun", "bun verify-anywhere.ts", "portable"],
+  ["node", "node verify-anywhere.ts", "node"],
+] as const) {
+  test(`runtimes guide: verify-anywhere.ts runs on ${label} from the packed tarball as documented`, () => {
+    const [cmd, ...args] = (label === "node" ? command : documentedCommand(command)).split(" ");
+    assert.equal(run(cmd!, args, consumer).trim(), verifiedLine(backend));
   });
 }
 

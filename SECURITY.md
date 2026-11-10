@@ -20,11 +20,23 @@ reference) belongs to the protocol repository's own private reporting:
 
 ## Supported versions
 
-The latest published release line of `@bounded-authority-protocol/verifier` on npm is supported
-(0.7.x). Releases before 0.6.0 accept Ed25519 signatures that the strict rule S1 rejects and are
-deprecated on npm with a pointer to the advisory
-[GHSA-prrq-qm8j-7j67](https://github.com/baselabs/bounded_authority_protocol_typescript/security/advisories/GHSA-prrq-qm8j-7j67);
-upgrade to the latest release.
+The latest published release line of `@bounded-authority-protocol/verifier` on npm (the line of
+its `latest` tag) is supported, and fixes land only on that line.
+
+Earlier releases fall into two groups, as the protocol's governance (§ Soundness repairs) sets out:
+
+- Releases before 0.6.0 accept Ed25519 signatures that the strict rule S1 rejects. Anyone can
+  produce such a signature without the signing key, so they are deprecated on npm with a pointer
+  to the advisory
+  [GHSA-prrq-qm8j-7j67](https://github.com/baselabs/bounded_authority_protocol_typescript/security/advisories/GHSA-prrq-qm8j-7j67).
+- Releases before 2.0.0 (unreleased) predate the selector float-zero repair (the protocol's
+  erratum 6) and return the pre-repair verdict for a float-tagged zero in a signed selector.
+  Every affected value sits inside issuer-signed bytes, so the repair has no advisory: the
+  [errata registry](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/errata.md)
+  entry is the disclosure, and those releases stay installable and are not deprecated. See
+  [Upgrading from 1.x](docs/guides/upgrading.md).
+
+Upgrade to the latest release.
 
 ## What the package does and does not do
 

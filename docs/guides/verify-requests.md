@@ -210,13 +210,58 @@ matches. Semantic identity compares types and values recursively, ignoring objec
 Every selector of the named operation must match. Major 2 and 3 add the inclusive range kinds
 `lte` and `gte`.
 
-Floats in selector values are restricted (erratum 6). A grant whose `equals` value or `one_of`
-member holds a float-tagged zero (`0.0`, `-0.0`, `0e0`, `1e-400`, at any depth) is rejected at
-decode, so `decodeGrant`, `verifyGrant` and `checkEnvelope` all refuse it; `lte` and `gte` bounds
-and the inert members of `all` are unaffected, and ranges compare `-0.0` equal to `0.0`.
-`grantSigningInput` refuses any float-tagged integral selector value (`0.0`, `10.0`, `-3.0`) in
-every kind, because JCS writes it as integer text. Use an integer, or a float with a fractional
-part.
+New in 2.0.0 (unreleased): floats in selector values are restricted (the protocol's erratum 6).
+A grant whose `equals` value or `one_of` member holds a float-tagged zero (`0.0`, `-0.0`, `0e0`,
+`1e-400`, at any depth) is rejected at decode, so `decodeGrant`, `verifyGrant` and `checkEnvelope`
+all refuse it; `lte` and `gte` bounds and the inert members of `all` are unaffected, and ranges
+compare `-0.0` equal to `0.0`. `grantSigningInput` refuses any float-tagged integral selector value
+(`0.0`, `10.0`, `-3.0`) in every kind, because JCS writes it as integer text, so the float tag the
+issuer meant would not survive signing. Use an integer, or a float with a fractional part. 1.0.0
+accepts both; [Upgrading from 1.x](upgrading.md) says who is affected.
+
+```ts since=2.0.0
+import assert from "node:assert/strict";
+import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import {
+  base64urlDecode, base64urlEncode, decodeGrant, grantSigningInput, jwkFromPublicKey, strUtf8, thumbprint, utf8Str,
+  verifyGrant, type Tagged,
+} from "@bounded-authority-protocol/verifier";
+
+const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
+const issuer = generateKeyPairSync("ed25519");
+const calibrationGrant = (offset: Tagged) => grantSigningInput({
+  keyId: "k1", issuer: "https://issuer.example", grantId: "grant-cal", audiences: ["https://sensors.example"],
+  issuedAt: 1_000, notBefore: 1_000, expiresAt: 9_000,
+  holderThumbprint: thumbprint(jwkFromPublicKey(raw(generateKeyPairSync("ed25519").publicKey))),
+  operations: [{ name: "sensors.calibrate", selectors: [{ kind: "equals", path: ["offset"], value: offset }] }],
+});
+
+// The producer refuses a float-tagged integral value: JCS writes 10.0 as 10, which decodes as an integer.
+assert.deepEqual(calibrationGrant({ t: "float", v: 10 }), { ok: false });
+assert.deepEqual(calibrationGrant({ t: "float", v: 0 }), { ok: false });
+assert.ok(calibrationGrant({ t: "int", v: 10 }).ok);
+assert.ok(calibrationGrant({ t: "float", v: 0.25 }).ok);
+
+// A producer that does not write JCS can still put 0.0 inside issuer-signed bytes. Here the payload
+// text is edited to spell the selector value `offset` as 0.0 (or as the integer 0), then signed.
+const input = calibrationGrant({ t: "int", v: 1 });
+assert.ok(input.ok);
+const { protectedSegment, payloadSegment } = input.value;
+function signedWithOffset(spelling: string): Uint8Array {
+  const payload = utf8Str(base64urlDecode(payloadSegment)).replace('"value":1}', `"value":${spelling}}`);
+  const message = `${utf8Str(protectedSegment)}.${utf8Str(base64urlEncode(strUtf8(payload)))}`;
+  return strUtf8(`${message}.${utf8Str(base64urlEncode(sign(null, strUtf8(message), issuer.privateKey)))}`);
+}
+const trusted = { keyId: "k1", publicKey: raw(issuer.publicKey) };
+const context = { issuer: "https://issuer.example", audience: "https://sensors.example", evaluationTime: 2_000, clockSkew: 60 };
+
+// A float-tagged zero rejects at decode, so the grant never verifies, even under a trusted key.
+assert.deepEqual(decodeGrant(signedWithOffset("0.0")), { ok: false });
+assert.deepEqual(verifyGrant(signedWithOffset("0.0"), trusted, context), { ok: false });
+assert.deepEqual(verifyGrant(signedWithOffset("-0e0"), trusted, context), { ok: false });
+// The integer 0 is unaffected.
+assert.ok(verifyGrant(signedWithOffset("0"), trusted, context).ok);
+```
 
 Two practical notes. `JSON.stringify(2.0)` is `"2"`, which decodes as an integer: if a grant
 selector uses a float, make sure your arguments carry a float lexeme. And the request digest

@@ -1,6 +1,8 @@
 # API reference
 
-This page lists every export of `@bounded-authority-protocol/verifier` 0.7.0. The task guides show
+This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0 (unreleased), whose
+exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the
+[changelog](../CHANGELOG.md) records every earlier change. The task guides show
 the functions in context; every `ts` sample on this page and in the guides is typechecked and run
 by the repository's test suite.
 
@@ -64,9 +66,9 @@ the payload and signature segments are not read. Example: [Rotate keys](guides/r
 ### `decodeGrant(compact, bounds?): Result<GrantDecoded>`
 
 Parses and validates a grant's structure and claims (closed header and payload, encodings,
-coherent times, and the selector rules, including erratum 6: an `equals` value or `one_of` member
-holding a float-tagged zero such as `0.0`, `-0e0` or `1e-400` at any depth rejects) without
-checking the signature or any context. Returns
+coherent times, and the selector rules) without checking the signature or any context. New in
+2.0.0 (unreleased), erratum 6: an `equals` value or `one_of` member holding a float-tagged zero
+such as `0.0`, `-0e0` or `1e-400` at any depth rejects; 1.0.0 decodes it. Returns
 `verification: "not_evaluated"`. For display and debugging only. Example:
 [Handle errors](guides/handle-errors.md#finding-why-a-request-rejects).
 
@@ -90,9 +92,10 @@ Builds the exact signing input of a grant from a [`GrantProducer`](#grantproduce
 operations, v: 1}`, both JCS. Rejects an invalid `keyId`, a non-StringOrURI `issuer`, `grantId` or
 audience, 0 or more than 64 audiences or operations, non-integer times, a `holderThumbprint` that
 is not base64url of 32 bytes, an operation name that is not 1 to 128 printable ASCII bytes, and 0
-or more than 64 selectors per operation, a malformed selector, or a selector value holding a
-float-tagged integral number (`10.0`, `-0.0`, `{ t: "float", v: 3 }`) at any depth, in any kind
-(erratum 6: JCS writes an integral float as integer text, so its tag would not survive signing).
+or more than 64 selectors per operation, or a malformed selector. New in 2.0.0 (unreleased),
+erratum 6: it also rejects a selector value holding a float-tagged integral number (`10.0`,
+`-0.0`, `{ t: "float", v: 3 }`) at any depth, in any kind, because JCS writes an integral float
+as integer text, so its tag would not survive signing; 1.0.0 accepts it.
 Example: [Quickstart](../README.md#quickstart-issue-and-verify-a-grant).
 
 ### `proofSigningInput(proof, bounds?): Result<SigningInput>`
@@ -113,7 +116,7 @@ according to `input.kind` (`grant`, `proof`, `boundary_anchor` or `key_transitio
 anything the matching decoder would reject. It does not verify the signature. Takes a signature,
 never a key or a signing callback.
 
-New in 0.8.0: assembly is a producer surface, so it refuses with the closed error a
+Assembly is a producer surface, so it refuses with the closed error a
 signature no conforming signer emits and never rewrites accepted bytes (erratum 3): an Ed25519
 signature whose `S` is at least the group order or whose `R` is non-canonical or of small order
 (this package's Ed25519 namespaces and the three sibling profiles), an ES256 `r || s` outside
@@ -175,7 +178,7 @@ the key path (each transition hands over from the previous key, times strictly i
 fingerprint repeats, the end anchor uses the last key), and frames the archive. Returns the archive
 bytes and their SHA-256 digest. In major 1, `expected.digest` and `expected.objectVersion` are
 required by the type but not read here. Rejects more than 256 transitions, 65,796 chunks or
-270,820,384 bytes. New in 0.8.0: encoding is a producer surface, so it also refuses,
+270,820,384 bytes. Encoding is a producer surface, so it also refuses,
 with the closed error, a start anchor, end anchor or transition signature that no conforming signer
 emits (erratum 3), and never rewrites accepted bytes. Example: [Consumption chains and archives](guides/chains-and-archives.md#anchored-exports).
 
@@ -321,8 +324,8 @@ raw canonical rows and the range they claim.
 `{ kind: "all" }`, `{ kind: "equals"; path: string[]; value: Tagged }` or
 `{ kind: "one_of"; path: string[]; values: Tagged[] }` (the `v2` and `v3` forms add `lte` and
 `gte` with a numeric `value`). Paths have 1 to 32 segments of 1 to 128 bytes; `one_of` has 1 to
-256 values. No value may hold a float-tagged integral number: use an integer, or a float with a
-fractional part.
+256 values. New in 2.0.0 (unreleased): no value may hold a float-tagged integral number; use an
+integer, or a float with a fractional part.
 
 ### `GrantProducer`
 
@@ -374,11 +377,11 @@ Facts are plain readonly objects. They carry identifiers, times and digests, nev
 selector values, signatures, JWK containers or nonces, and none of them is a credential. No facts
 type has an "allowed" or decision field.
 
-New in 0.8.0: facts follow the profile's redaction rule ("fixed redacted rendering and
+Facts follow the profile's redaction rule ("fixed redacted rendering and
 no generic encoder, string, or enumeration protocol") the way the Elixir reference does:
 
 - Fields are ordinary read-only properties. They read, spread, `structuredClone` and compare by
-  content as before. A facts value is frozen shallowly: its `Uint8Array` fields are ordinary byte
+  content. A facts value is frozen shallowly: its `Uint8Array` fields are ordinary byte
   arrays.
 - In Node, Deno and Bun inspection (`console.log`, `util.inspect`), a facts value renders as the
   fixed text `#BoundedAuthorityProtocol.V1.GrantFacts<redacted>` (with the major and type;
@@ -392,7 +395,7 @@ To log or store facts, copy the fields you need: `{ ...facts }` or
 `const { grantId, invocationId } = envelopeFacts` gives a plain object that serializes normally. A
 decoded content assertion is not a facts value: only its inspection is redacted.
 
-```ts since=0.8.0
+```ts
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { inspect } from "node:util";
@@ -447,15 +450,14 @@ or 3).
 - **`jcsEncode(value, bounds?): Uint8Array`** encodes a `Tagged` value as RFC 8785 canonical JSON
   (members sorted by UTF-16 code units, ECMAScript number text). Throws `InvalidError`.
 - **`strUtf8(text): Uint8Array`** and **`utf8Str(bytes): string`** convert between strings and UTF-8;
-  `utf8Str` throws `InvalidError` on invalid UTF-8 (new in 0.8.0; 0.7.0 throws the
-  platform `TypeError`).
+  `utf8Str` throws `InvalidError` on invalid UTF-8.
 
 ### Selectors and digests
 
 - **`parseSelector(tagged, bounds?): Selector`** validates a decoded selector object for major 1
-  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise, including for an `equals` value
-  or `one_of` member holding a float-tagged zero at any depth (erratum 6). `Selector` is the parsed
-  type.
+  (`all`, `equals`, `one_of`) and throws `InvalidError` otherwise; new in 2.0.0 (unreleased),
+  also for an `equals` value or `one_of` member holding a float-tagged zero at any depth (erratum
+  6). `Selector` is the parsed type.
 - **`selectorMatches(selector, castArguments): boolean`** applies one selector.
 - **`semanticIdentity(value): Uint8Array`** is the canonical bytes selectors compare: the JCS of the
   typed projection. Equal values with different member order have equal identities; `1` and `1.0`
@@ -504,8 +506,8 @@ assert.notDeepEqual(semanticIdentity(jsonDecode(strUtf8("3"))), semanticIdentity
 Every one of these applies rule S1 key acceptance and throws `InvalidError` for a key that is not
 32 bytes or not acceptable (`jwkDecodePublic` returns the closed result instead). The three that take
 a JWK object (`thumbprintPreimage`, `thumbprint`, `thumbprintRaw`) also throw for an object with any
-member besides `crv`, `kty` and `x`, such as a private `d` or an `alg` (new in 0.8.0; the
-`v3` forms likewise require exactly `crv`, `kty`, `x` and `y`).
+member besides `crv`, `kty` and `x`, such as a private `d` or an `alg` (the `v3` forms likewise
+require exactly `crv`, `kty`, `x` and `y`).
 
 ```ts
 import assert from "node:assert/strict";
@@ -538,9 +540,9 @@ assert.deepEqual(jwkDecodePublic(new TextEncoder().encode(`{"crv":"Ed25519","d":
 - **`es256VerifyStrict(message, signature, publicKey): boolean`**: ES256 with a 65-byte uncompressed
   on-curve key, a raw 64-byte `r || s` signature, `0 < r < n` and low-S. Never throws.
 
-All four return `false` for any input that is not valid. New in 0.8.0: that also holds for an exotic input whose typed-array getters throw (a
-`Proxy` around a `Uint8Array`, an object made from `Uint8Array.prototype`); 0.7.0 throws a
-`TypeError` for one.
+All four return `false` for any input that is not valid, including an exotic input whose
+typed-array getters throw (a `Proxy` around a `Uint8Array`, an object made from
+`Uint8Array.prototype`).
 
 Examples: [Strict Ed25519](../README.md#strict-ed25519-rule-s1) and
 [Contract-majors 2 and 3](guides/contract-majors.md#major-3-es256).
@@ -687,9 +689,7 @@ It has the same function list as `v2`, with these key and signature forms:
 - signatures are raw 64-byte `r || s` with `0 < r < n` and `0 < s <= (n - 1) / 2`;
 - the key helpers are the P-256 forms, with the root's names and shapes. Each throws `InvalidError`
   for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the `0x04` prefix, both
-  coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it. 0.7.0 has only
-  `v3.jwkEncodePublic` (width check only), `v3.jwkDecodePublic` and `v3.thumbprint` (no point check);
-  the other four, and the point checks, are new in 0.8.0:
+  coordinates below p, on the curve), as the Elixir `V3.EcJwk` functions refuse it:
 
 | Function | Returns |
 |---|---|
@@ -701,7 +701,7 @@ It has the same function list as `v2`, with these key and signature forms:
 | `v3.thumbprintRaw(jwk)` | the same digest as 32 raw bytes |
 | `v3.publicKeyThumbprintRaw(raw65)` | the raw thumbprint straight from a raw key: the `keyFingerprint` of v3 anchors and transitions |
 
-```ts since=0.8.0
+```ts
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { v3 } from "@bounded-authority-protocol/verifier";

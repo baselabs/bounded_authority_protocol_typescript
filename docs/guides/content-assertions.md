@@ -82,9 +82,8 @@ most 8,192 bytes, and content at most 65,536 bytes (`content_bytes`, which you c
 
 `ContentAssertionFacts` repeats the signed fields and adds the attestor key fingerprint and
 `digest`, the SHA-256 of the exact assertion bytes. Read fields by name: inspection prints the
-facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>` (0.7.0
-prints `ContentAssertionFacts<redacted>`), and in
-0.8.0 `JSON.stringify` and `String()` of the facts throw (see the
+facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>`, and
+`JSON.stringify` and `String()` of the facts throw (see the
 [reference](../reference.md#facts-and-decoded-types)). To keep facts for a later `verifySuccessor`,
 store a copy of their fields (`{ ...facts }`); a reconstructed plain object with those fields is
 accepted.
@@ -156,5 +155,4 @@ subjects, keep the highest generation you have accepted per subject (so an old b
 assertion cannot roll you back), and handle forks, first-version bootstrap and revocation by your
 own policy. The verifier does not derive key windows or walk key transitions. The full rules are
 in the
-[content-assertion profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md)
-and [ADR 0037](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/adr/0037-content-assertion-profile.md).
+[content-assertion profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md).
