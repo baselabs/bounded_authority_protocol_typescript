@@ -446,6 +446,11 @@ Releases from 0.2.1 on are published only from this repository's release workflo
 trusted publishing (GitHub Actions OIDC, no long-lived tokens) with npm provenance on every
 artifact.
 
+After human approval makes npm latest available, Pages checks the registry against its deployed
+`api/release.json` at minutes 17 and 47 of each hour and rebuilds only when they differ. The
+release workflow's staging success is not publication. Registry or Pages read failures fail
+closed; push and manual Pages runs still rebuild the site. GitHub may delay scheduled runs.
+
 ## Versioning
 
 Package versions follow SemVer. **Package majors are not contract-majors.** Wire contract-majors
@@ -515,6 +520,7 @@ boundary; the [changelog](CHANGELOG.md) lists each release's verdict and API cha
 pnpm install
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
 pnpm docs:api                # strict TypeDoc reference in site-dist/api, stamped with package version
+pnpm test:network            # real npm release API, normative spec anchors and built-site version checks
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 and the key census (vendored v1 snapshot)
@@ -544,7 +550,14 @@ TypeDoc discovers entry points from `package.json`'s `exports` map; `typedoc.jso
 leaves `entryPoints` unset so a new public subpath cannot bypass documentation coverage. Build the
 bench with `pnpm build:site` before `pnpm docs:api`: the site builder recreates `site-dist`, and the
 API build adds `site-dist/api`. CI rejects undocumented declarations and warnings. The Pages
-workflow uploads both outputs together, with the API header stamped from the package version.
+workflow uploads both outputs together. `pnpm docs:api` is the local, strict source-tree build.
+The hosted `/api/` uses `pnpm docs:api:release`, built from the npm-latest release tag and stamped
+"released vX.Y.Z", with version, tag and commit recorded in `release.json`.
+
+The built-site check rejects every standalone semantic version in HTML, including metadata,
+badges, headers, footers and API pages, unless it equals npm latest. Development-source labels
+and release tags do not exempt claims. Dependency source paths, SVG drawing coordinates and
+four-part addresses are not package-version claims.
 
 ## Security
 

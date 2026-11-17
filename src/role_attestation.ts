@@ -369,8 +369,8 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
 }
 
 /**
- * Parses and validates a role attestation's structure without checking its signature or window
- * (`verification: "not_evaluated"`).
+ * Parses and validates a role attestation's structure and coherent nbf/exp window, without
+ * signature, historical-key-window or current-time verification (`verification: "not_evaluated"`).
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
  * @returns Canonical attestation claims in a success Result, with verification not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */

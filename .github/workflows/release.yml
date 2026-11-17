@@ -62,6 +62,9 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Network documentation checks (registry and normative specs, fail closed)
+        run: pnpm test:network
+
       - name: Supply chain (registry signatures and attestations)
         run: npm audit signatures
 

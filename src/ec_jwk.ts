@@ -115,7 +115,8 @@ export function thumbprintPreimage(jwk: EcPublic): Uint8Array {
 }
 
 /**
- * The RFC 7638 thumbprint of a public P-256 JWK `{crv, kty, x, y}`, as unpadded base64url.
+ * Structural RFC 7638 hash of the supplied P-256 JWK members, as unpadded base64url. This internal
+ * helper does not validate the JWK shape or curve point; use checkedThumbprint for validated input.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
  * @throws InvalidError when the documented representation or resource limits are violated.

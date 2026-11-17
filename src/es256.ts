@@ -98,7 +98,7 @@ export function es256Verify(
 
 /**
  * Verifies an ES256 signature: 65-byte uncompressed on-curve P-256 key, raw 64-byte `r || s` with
- * `0 < r < n` and low-S, then ECDSA P-256 / SHA-256. Returns `false` for any invalid input; never
+ * `0 < r < n` and `0 < s <= (n-1)/2`, then ECDSA P-256 / SHA-256. Returns `false` for any invalid input; never
  * throws.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns `true` when the strict key/scalar encodings and ECDSA P-256/SHA-256 equation verify the exact message; `false` otherwise. Never throws.

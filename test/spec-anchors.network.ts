@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { citationText } from "./comments.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -27,12 +28,12 @@ function anchors(markdown: string): Set<string> {
 }
 
 test("every spec citation resolves to a real protocol heading or explicit anchor", async () => {
-  const paths = [join(root, "README.md"), join(root, "CHANGELOG.md"),
-    ...(await Promise.all(["src", "conformance", "docs"].map((name) => files(join(root, name))))).flat()];
+  const paths = [join(root, "README.md"), join(root, "CHANGELOG.md"), join(root, "SECURITY.md"), join(root, "eslint.config.js"),
+    ...(await Promise.all(["src", "conformance", "docs", "web", "tools", "test"].map((name) => files(join(root, name))))).flat()];
   const citations: { path: string; spec: string; anchor: string }[] = [];
   for (const path of paths) {
     // Comments can wrap a filename across lines, including immediately after a hyphen.
-    const text = (await readFile(path, "utf8")).replace(/\r?\n\s*(?:\/\/|\*)\s*/g, "");
+    const text = citationText(await readFile(path, "utf8"), path);
     for (const match of text.matchAll(/spec\/([\w.-]+\.md)#([\w%.-]+)/g)) {
       citations.push({ path, spec: match[1]!, anchor: decodeURIComponent(match[2]!.replace(/[.,;:]+$/, "")) });
     }

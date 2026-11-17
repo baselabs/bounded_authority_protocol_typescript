@@ -71,7 +71,7 @@ export const MAXIMA = {
   chain_row_bytes: 4096,
   /** Maximum rows per checked consumption range. */
   chain_rows: 65536,
-  /** Maximum anchor size in bytes. */
+  /** Maximum anchor or key-transition compact size in bytes. */
   anchor_bytes: 8192,
   /** Maximum archive header size in bytes. */
   archive_header_bytes: 8192,
@@ -159,8 +159,9 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
 }
 
 // Revalidate structural Bounds at each public boundary and in leaf resolution. Callers can
-// construct objects without boundsNew, so validate the maximum table and every override instead
-// of trusting them. Reject widening overrides and malformed structure with InvalidError.
+// construct objects without boundsNew. Require a non-null object in maximum and validate every
+// override against MAXIMA; do not inspect maximum entries. resolve uses MAXIMA for defaults.
+// Reject widening overrides and malformed structure with InvalidError.
 // Overrides must be a Map; arbitrary ReadonlyMap implementations are not accepted. This
 // prevents native iteration errors and forged limits.
 export function coerceBounds(b: Bounds): Bounds {

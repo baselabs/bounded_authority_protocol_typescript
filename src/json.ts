@@ -29,13 +29,13 @@ export type Tagged =
   | {
     /** Integer lexeme without a fraction or exponent. */
     readonly t: "int";
-    /** Safe integer within the caller's integer_magnitude bound. */
+    /** Safe integer within the fixed profile magnitude maximum; consumers may impose tighter bounds. */
     readonly v: number;
   }
   | {
     /** Number lexeme containing a fraction or exponent, even if numerically integral. */
     readonly t: "float";
-    /** Finite binary64 value within float_magnitude; the float tag remains distinct from an int tag. */
+    /** Finite binary64 value within the fixed profile magnitude maximum; the float tag remains distinct from an int tag. */
     readonly v: number;
   }
   | {
@@ -78,8 +78,9 @@ interface DecodeCtx {
 
 /**
  * Decodes exactly one strict JSON value into the tagged algebra: UTF-8 required, duplicate member
- * names rejected, numbers tagged `int` or `float` by lexeme, every limit enforced. Throws
- * `InvalidError`.
+ * names rejected and numbers tagged `int` or `float` by lexeme. Enforces JSON byte and structure
+ * bounds. Numeric magnitudes use the fixed profile maxima, not tightened magnitude overrides.
+ * Throws `InvalidError`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
  * @returns One tagged JSON value retaining number tags and object member order.
  * @throws InvalidError when the documented representation or resource limits are violated.
@@ -374,7 +375,7 @@ function lexemeMagnitudeWithin(text: string, maximum: number): boolean {
   );
 }
 
-// Null-prototype object parse: Object.create(null) shape; duplicate keys reject at every depth.
+// Object parse into an insertion-ordered Map; duplicate keys reject at every depth.
 function parseObject(ctx: DecodeCtx, childLevel: number): Tagged {
   node(ctx);
   const src = ctx.src;

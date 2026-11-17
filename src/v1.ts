@@ -154,7 +154,7 @@ export interface ExpectedKeyTransition {
 export interface ConsumptionEntry {
   /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
-  /** Safe-integer boundary sequence: consumption rows start at 1; genesis anchors use 0. */
+  /** Positive safe-integer consumption-row sequence, starting at 1. */
   readonly sequence: number;
   /** Raw 32-byte digest before this row or range; all zeros at genesis. */
   readonly previousHash: Uint8Array;
@@ -219,7 +219,7 @@ export interface ExpectedRequest {
   readonly issuer: string;
   /** Expected audience StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
   readonly audience: string;
-  /** Uppercase HTTP method, 1 to 32 ASCII bytes, matched exactly. */
+  /** RFC 9110 method token, 1 to 32 ASCII bytes (tightenable via method_bytes), matched case-sensitively without folding. */
   readonly method: string;
   /** Already-normalized target of at most 8,192 ASCII bytes. Standard profiles require HTTPS; the explicit v1 loopback profile permits only literal loopback HTTP. */
   readonly targetUri: string;
@@ -325,7 +325,7 @@ export interface ProofProducer {
   readonly holderPublicKey: Uint8Array;
   /** Proof StringOrURI identifier, 1 to 512 UTF-8 bytes, unique per proof. */
   readonly proofId: string;
-  /** Uppercase HTTP method, 1 to 32 ASCII bytes, matched exactly. */
+  /** RFC 9110 method token, 1 to 32 ASCII bytes (tightenable via method_bytes), matched case-sensitively without folding. */
   readonly method: string;
   /** Already-normalized target of at most 8,192 ASCII bytes. Standard profiles require HTTPS; the explicit v1 loopback profile permits only literal loopback HTTP. */
   readonly targetUri: string;
@@ -390,7 +390,7 @@ export interface KeyTransitionProducer {
 /**
  * Rows, signed boundary anchors and ordered signed key transitions to frame as an archive. Encoding
  * checks canonical structures and consistency without verifying embedded signatures.
- * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  */
 export interface AnchoredExportInput {
   /** Ordered canonical UTF-8 JSON rows, at most 65,536 rows, each at most 4,096 bytes. */
@@ -399,7 +399,7 @@ export interface AnchoredExportInput {
   readonly startAnchor: Uint8Array;
   /** Signed ASCII boundary-anchor compact at the last row. */
   readonly endAnchor: Uint8Array;
-  /** Ordered signed transition compacts or matching expected contexts, at most 256 entries. */
+  /** Ordered signed key-transition compacts, at most 256 entries. */
   readonly transitions: Uint8Array[];
   /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
@@ -419,7 +419,7 @@ export interface AnchoredExportInput {
  * Major-1 archive construction and verification expectations. Verification compares the retained
  * digest and object version; encoding returns its computed digest. Retain the expected boundaries
  * independently of the presented archive.
- * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  */
 export interface ExpectedExport {
   /** Independently retained expected contiguous-row boundaries. */
@@ -430,7 +430,7 @@ export interface ExpectedExport {
   readonly startAnchor: ExpectedAnchor;
   /** Independently retained expected anchor identity, timestamp, key and chain boundary. */
   readonly endAnchor: ExpectedAnchor;
-  /** Ordered signed transition compacts or matching expected contexts, at most 256 entries. */
+  /** Ordered independently expected key-transition contexts, at most 256 entries. */
   readonly transitions: ExpectedKeyTransition[];
   /** Independently obtained storage version, 1 to 512 UTF-8 bytes. */
   readonly objectVersion: string;
@@ -1666,7 +1666,7 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
 /**
  * Successful archive encoding: complete framed bytes and their SHA-256 digest. Encoding checks
  * structure and consistency but verifies no signatures and grants no authority.
- * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  */
 export interface EncodedAnchoredExport {
   /** Complete binary archive including the unframed 20-byte magic prefix. */
@@ -1677,7 +1677,7 @@ export interface EncodedAnchoredExport {
 /**
  * Checks rows, anchors and transitions, then frames them into an anchored-export archive. Returns
  * the archive bytes and their SHA-256 digest.
- * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  * @returns Framed archive bytes and their raw 32-byte SHA-256 digest in a success Result, without signature verification. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
@@ -1961,7 +1961,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
 /**
  * Verifies a stored anchored-export archive (in any chunking) under the ordered archive keys:
  * digest, object version, framing, both anchors, every transition and every row.
- * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  * @returns Redacted AnchoredExportFacts in a success Result; authorization remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedExport): Result<AnchoredExportFacts> {
@@ -2248,7 +2248,7 @@ function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPubl
   if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail(`${ctx}: signature`);
 }
 
-// Parse the archive byte stream into its frames (spec/bap-v1.md#chain § Anchored export).
+// Parse the archive byte stream into its frames (spec/bap-v1.md#archive).
 interface ParsedArchive {
   readonly headerBytes: Uint8Array;
   readonly start: Uint8Array;

@@ -47,7 +47,7 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds: 
 
 // The major-independent digest core: SHA-256(prefix || JCS([operation, typed(cast_arguments)])).
 // The domain separator is the only per-major input (REQ1-SIGNING-digest-prefix; the v2 profile
-// carries BAP2-REQUEST\0 per spec/bap-v2.md#selectors's contract-major activation).
+// uses BAP2-REQUEST\0 as defined in spec/bap-v2.md#substitutions).
 export function digestWithPrefix(
   prefix: Uint8Array,
   operation: string,

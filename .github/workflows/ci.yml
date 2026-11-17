@@ -57,6 +57,9 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Network documentation checks (registry and normative specs, fail closed)
+        run: pnpm test:network
+
       - name: Typecheck (strict)
         run: pnpm typecheck
 

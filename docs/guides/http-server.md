@@ -26,7 +26,7 @@ Two choices here are this recipe's, not the protocol's:
   accepts, because replay retention lasts as long as the grant.
   This implements the host's single-use responsibility in the protocol's
   [security considerations](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#21-security-considerations)
-  and [invocation guidance](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#21-security-considerations).
+  and [invocation guidance](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification).
 
 ```ts
 import assert from "node:assert/strict";

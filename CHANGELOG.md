@@ -12,18 +12,22 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Fixed
 
-- Replay stores own their authoritative expiry clock; caller clocks cannot evict live entries.
-  Hosts may cap accepted grant lifetimes to bound retention.
+- Reconcile Pages with npm latest after staged-release approval and validate every built-site
+  version claim. Network documentation checks run in their own required CI and release lane.
+- The HTTP guide gives replay stores their own authoritative expiry clock so caller clocks
+  cannot evict live entries, and explains how hosts can cap accepted grant lifetimes.
 - Spec citations are checked against real normative headings, including wrapped comments.
 - Pages builds `/api/` from the release tag matching npm latest and records its commit.
   The bench identifies its bundled verifier as development source.
 - Permit only esbuild dependency install scripts so clean installs prepare the native binary.
-
 - HTTP integration replay reservations last through grant expiry plus allowed clock skew.
   A fresh proof for an already accepted invocation cannot execute again after the earlier
   proof ages out. The regression runs the guide's actual store with real signatures.
 
 ### Documentation
+
+- Correct HTTP method, row-sequence, archive-transition, JSON numeric-bound and EC hash-helper
+  comments against the code. Release tooling uses portable package commands and remote tag refs.
 
 - Every public declaration has TSDoc, including field units, byte widths and public spec links.
   TypeDoc 0.28.20 builds the package-versioned API reference from the package exports map.
@@ -82,8 +86,8 @@ now refuse.
   reject it. `lte`/`gte` bounds and the inert members of `all` are unchanged, range comparison
   keeps `-0.0` equal to `0.0`, and integer `0`/`-0` and non-zero integral floats such as `10.0`
   still decode.
-- **Breaking:** `grantSigningInput` of each major refuses any selector value holding a float-tagged integral
-  number at any depth (`0.0`, `10.0`, `-3.0`, `{ t: "float", v: 3 }`;
+- **Breaking:** `grantSigningInput` of each major refuses a float-tagged integral number in an
+  `equals` value, `one_of` member, or `lte`/`gte` bound at any depth (`0.0`, `10.0`, `-3.0`, `{ t: "float", v: 3 }`;
   `REQ1/REQ2/REQ3-SIGNING-integral-float-selector`). Use an integer, or a float with a fractional
   part.
 - One shared walker in `src/selector.ts` (`floatZeroFree`, `integralFloatFree`) serves every
@@ -596,8 +600,7 @@ silently coerced, across the v1/v2/v3 façades.
   points (`0x04||x||y`) with pure-arithmetic coordinate-range and on-curve validation before
   any backend; the proof JWK is exactly `{crv:"P-256", kty:"EC", x, y}` with the RFC 7638
   thumbprint over that member set; signatures are the RFC 7518 §3.4 raw `r||s` form (64 bytes)
-  with `0 < r < n`, `0 < s ≤ (n−1)/2`. Low-S is required because Node's backend
-  accepts the malleable high-S counterpart. The mutation test proves the profile gate rejects it.
+  with `0 < r < n`, `0 < s ≤ (n−1)/2`. Low-S is a protocol requirement; the SDK enforces it because Node's backend accepts the high-S counterpart. The mutation test proves the profile gate rejects it.
   Every v1 and v2 artifact rejects under `v3` with the single closed error, and vice versa.
 - New modules `src/es256.ts` (the P-256 arithmetic + `node:crypto` ECDSA layer, with its own
   census tracking for the runner's verify-import leg) and `src/ec_jwk.ts` (the EC JWK

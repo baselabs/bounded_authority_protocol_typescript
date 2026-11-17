@@ -21,6 +21,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import semver from "semver";
+import { commentProse } from "./comments.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const VERIFIER_SOURCE = join(REPO, "src", "index.ts");
@@ -160,31 +161,37 @@ test("private-record hygiene recognizes citation spellings", () => {
   assert.equal(privateRecord.test("address and quadrant"), false);
 });
 
+test("private-record comment scanning preserves offsets after templates and regexes", () => {
+  const source = [
+    'const template = `first ${1} tail`;',
+    '// ADR-123 is private',
+    'const regex = /[/*]/;',
+    '/* docs/adr/456.md is private */',
+  ].join("\n");
+  const hits = commentProse(source, "probe.ts").split("\n")
+    .flatMap((line, i) => privateRecord.test(line) ? [i + 1] : []);
+  assert.deepEqual(hits, [2, 4]);
+});
+
 test("public prose and source cite no unpublished decision record", () => {
   const hits = PUBLIC_FILES.flatMap((file) =>
-    publicProse(file).split("\n").flatMap((line, i) =>
-      privateRecord.test(line) ? [`${relative(REPO, file)}:${i + 1}: ${line.trim()}`] : []));
+    (/\.md$/.test(file) ? readFileSync(file, "utf8") : publicProse(file)).split("\n").flatMap((line, i) =>
+      (privateRecord.test(line) || /docs\/adr\/|\bADR[ -]?\d/.test(line)) ? [`${relative(REPO, file)}:${i + 1}: ${line.trim()}`] : []));
   assert.deepEqual(hits, []);
 });
 
 // Code literals and vectors keep their punctuation. For source files, examine comment trivia
-// rather than operators or string literals; in prose, ignore inline code and fenced code blocks.
+// at their original offsets rather than operators or literals. The private-record gate reads
+// full Markdown, including fences; sentence-style checks omit fenced code.
 function publicProse(file: string): string {
   const source = readFileSync(file, "utf8");
   if (/\.(?:ts|js|mjs)$/.test(file)) {
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, source);
-    const comments: string[] = [];
-    for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-      if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) {
-        comments.push(scanner.getTokenText());
-      }
-    }
-    return comments.join("\n");
+    return commentProse(source, file);
   }
-  if (file.endsWith(".css")) return [...source.matchAll(/\/\*[\s\S]*?\*\//g)].map((m) => m[0]).join("\n");
-  if (file.endsWith(".html")) return source.replace(/<[^>]*>/g, "");
-  if (file.endsWith(".yml")) return source.split("\n").filter((line) => /^\s*#/.test(line)).join("\n");
-  return source.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, "");
+  if (file.endsWith(".css")) return source.replace(/(\/\*[\s\S]*?\*\/)|[^\r\n]/g, (text, comment: string | undefined) => comment ?? " ");
+  if (file.endsWith(".html")) return source.replace(/<[^>]*>/g, (tag) => tag.startsWith("<!--") ? tag : tag.replace(/[^\r\n]/g, " "));
+  if (file.endsWith(".yml")) return source.split("\n").map((line) => /^\s*#/.test(line) ? line : line.replace(/[^\r\n]/g, " ")).join("\n");
+  return source.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, (block) => block.replace(/[^\r\n]/g, " "));
 }
 const proseDash = /—|[a-z][.,;:!?]?[ \t]+-[ \t]+(?=[a-z])/i;
 
