@@ -4,6 +4,12 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
+### Changed
+
+- Development dependencies use signer 2.0.0, ESLint 10.15.0, Playwright 1.65.1 and
+  typescript-eslint 8.73.0. The site and documentation samples use the signer release that
+  depends on verifier 2.x. Runtime dependency versions are unchanged.
+
 ### Fixed
 
 - HTTP integration replay reservations last through grant expiry plus allowed clock skew.
