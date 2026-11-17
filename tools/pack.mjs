@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 // Builds the package tarball that is checked and published (pnpm pack:release; test:tarball and the
-// release workflow both use it). Run `pnpm build` first.
+// publish workflow both use it). Run `pnpm build` first.
 //
 // It never writes the working tree. It copies the files npm would pack (the "files" list, read with
 // `npm pack --dry-run --ignore-scripts`) into a staging directory outside the repository, writes the
 // staged package.json without this repository's development conditions, and packs the staging
 // directory with scripts ignored. The development condition bap-source points "#crypto" at
 // src/crypto/*.ts, which the package does not ship, so the published manifest must not carry it.
-// npm packs with fixed file times and order, so the same tree gives the same bytes: the release job
-// compares the SHA-256 of its tarball with the one the verify job checked, and then publishes that
-// file (`npm stage publish <file>`, which runs no scripts and reads the manifest from the tarball).
-//
+// npm packs with fixed file times and order, so the same tree gives the same bytes.
+// publish.yml inspects and hashes this archive, checks its hash, then stages those bytes
+// (`npm stage publish <file> --provenance`) for the owner to approve on npmjs.com.
+
 // Usage: node tools/pack.mjs [--out <dir>]   Prints {"file": <absolute path>, "sha256": <hex>}.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

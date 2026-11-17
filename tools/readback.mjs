@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-// Post-publish read-back of one released version (pnpm readback; the release's read-back step, run
-// once the staged publish is approved). Every check reads the public registry or runs the package
+// Post-publish read-back of one released version (pnpm readback; infra-1 runs it after
+// the owner approves the staged version on npmjs.com). Every check reads the public registry or runs the package
 // installed from it, so it needs no credential and changes nothing. Each check is fatal.
 //
 //   node tools/readback.mjs <version> --sha256 <hex> [--commit <sha>] [--latest <version>]
 //
-//   --sha256  the tarball SHA-256 the release run verified (its verify job prints
-//             "packed <file> sha256 <hex>", and its publish job "publishing <file> sha256 <hex>")
+//   --sha256  the tarball SHA-256 publish.yml inspected before staging
 //   --commit  the commit the release tag names (default: git rev-parse v<version>^{commit})
 //   --latest  the version npm's `latest` tag must name (default: <version>)
 //
@@ -14,7 +13,7 @@
 // 2. bytes: the registry tarball's SHA-512 equals its `dist.integrity`, and its SHA-256 equals
 //    --sha256, so the published bytes are the bytes the release workflow verified;
 // 3. provenance: the SLSA v1 attestation's subject is that tarball, built by this repository's
-//    .github/workflows/release.yml from refs/tags/v<version> at --commit on a GitHub-hosted runner;
+//    .github/workflows/publish.yml from refs/heads/main at --commit on a GitHub-hosted runner;
 // 4. signatures: `npm audit signatures` in a fresh consumer verifies the registry signatures and the
 //    attestation (this is the check of the attestation's signature; step 3 reads its content);
 // 5. a fresh consumer: the README Quickstart on Node.js, and the Deno, Bun and browsers guide's
@@ -31,7 +30,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const NAME = "@bounded-authority-protocol/verifier";
 const REPOSITORY = "https://github.com/baselabs/bounded_authority_protocol_typescript";
-const WORKFLOW = ".github/workflows/release.yml";
+const WORKFLOW = ".github/workflows/publish.yml";
+const WORKFLOW_REF = "refs/heads/main";
 const CSP = "default-src 'none'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'";
 
 class ReadbackError extends Error {}
@@ -87,12 +87,12 @@ export async function readback({ version, sha256, commit, latest }, log = consol
   const workflow = statement.predicate?.buildDefinition?.externalParameters?.workflow;
   check(workflow?.repository === REPOSITORY, `provenance repository ${workflow?.repository}`);
   check(workflow?.path === WORKFLOW, `provenance workflow ${workflow?.path}`);
-  check(workflow?.ref === `refs/tags/v${version}`, `provenance ref ${workflow?.ref}`);
+  check(workflow?.ref === WORKFLOW_REF, `provenance ref ${workflow?.ref}`);
   const source = statement.predicate.buildDefinition.resolvedDependencies?.[0];
-  check(source?.uri === `git+${REPOSITORY}@refs/tags/v${version}` && source?.digest?.gitCommit === commit,
+  check(source?.uri === `git+${REPOSITORY}@${WORKFLOW_REF}` && source?.digest?.gitCommit === commit,
     `provenance source ${source?.uri} at ${source?.digest?.gitCommit}, expected commit ${commit}`);
   check(statement.predicate.runDetails?.builder?.id === "https://github.com/actions/runner/github-hosted", "provenance builder is not a GitHub-hosted runner");
-  log(`ok provenance: ${WORKFLOW} at refs/tags/v${version} (${commit}), GitHub-hosted`);
+  log(`ok provenance: ${WORKFLOW} at ${WORKFLOW_REF} (${commit}), GitHub-hosted`);
 
   const consumer = mkdtempSync(join(tmpdir(), "bap-readback-"));
   try {

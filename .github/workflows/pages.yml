@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   build:
+    environment: github-pages
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
     timeout-minutes: 5 # Run 44039148515: green build job 27s.
     name: Build the bench bundle
@@ -30,16 +31,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-        with:
-          version: 10.20.0
-
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .tool-versions
           package-manager-cache: false
+      - name: Activate the declared pnpm with Corepack
+        run: |
+          manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
+          case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
+          corepack enable
+          corepack prepare "$manager" --activate
+          test "pnpm@$(pnpm --version)" = "$manager"
       - name: Refuse a different Node version
         run: |
           expected="$(awk '$1 == "nodejs" {print $2}' .tool-versions)"

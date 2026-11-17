@@ -1,56 +1,91 @@
-// Parse the actual workflow documents, including the publishing and Pages paths.
+// Parse the actual workflow documents, including publishing and Pages.
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
+import {existsSync, readFileSync} from "node:fs";
 import {parse} from "yaml";
 const workflow = name => parse(readFileSync(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8"));
-test("CI checks named artifacts while both release jobs enforce freshness", () => {
-  const ci = workflow("ci"), release = workflow("release");
-  const ciRun = ci.jobs["corpus-artifact"].steps.map(s => s.run ?? "").join("\n");
-  assert.match(ciRun, /ci --main/); assert.match(ciRun, /pnpm check:corpus:artifact/);
+const commands = job => job.steps.map(s => s.run ?? "").join("\n");
+const owners = `contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)`;
+
+test("candidate CI checks the named artifact and dispatch publication enforces freshness", () => {
+  const ci = workflow("ci"), publish = workflow("publish");
+  const ciRun = commands(ci.jobs["corpus-artifact"]);
+  assert.match(ciRun, /check-corpus.mjs ci --main/);
   assert.doesNotMatch(ciRun, /check:corpus:release|check-corpus.mjs (release|adopt)/);
-  for (const name of ["verify", "publish"]) {
-    const steps = release.jobs[name].steps;
-    const gate = steps.findIndex(s => s.run === "pnpm check:corpus:release");
-    assert.ok(gate >= 0 && gate < steps.findIndex(s => s.name === "Build"));
-  }
+  assert.deepEqual(ci.on, {push: {branches: ["kci/**"]}});
+  assert.equal(ci.jobs.qualified.if, "always()");
+  assert.deepEqual(new Set(ci.jobs.qualified.needs), new Set(Object.keys(ci.jobs).filter(n => n !== "qualified")));
+  assert.match(commands(ci.jobs.qualified), /job\['result'\] != 'success'/);
+  assert.equal(existsSync(new URL("../.github/workflows/release.yml", import.meta.url)), false);
+  const steps = publish.jobs.publish.steps;
+  const gate = steps.findIndex(s => s.run === "pnpm check:corpus:release");
+  assert.ok(gate >= 0 && gate < steps.findIndex(s => s.name === "Build the library and documentation"));
+  assert.match(commands(publish.jobs.publish), /npm stage publish \.\/artifacts\/package\.tgz --provenance/);
+  assert.doesNotMatch(commands(publish.jobs.publish), /npm publish|git tag|gh release|readback/);
+  assert.doesNotMatch(commands(ci.jobs.package), /test:readback|tools\/readback/);
 });
-test("weekly adoption dispatches CI and maintains one exact-title issue and preserves the public repository's runner", () => {
+
+test("weekly adoption maintains one exact-title landing issue without dispatching qualification", () => {
   const job = workflow("corpus-adoption");
-  assert.equal(job.on.schedule.length, 1); assert.equal(job.on.push, undefined);
+  assert.equal(job.on.schedule.length, 1);
+  assert.equal(job.on.push, undefined);
   assert.equal(job.jobs.adopt["runs-on"], "ubuntu-24.04");
-  const run = job.jobs.adopt.steps.map(s => s.run ?? "").join("\n");
-  assert.match(run, /check-corpus.mjs adopt/); assert.match(run, /gh workflow run ci.yml --ref/);
+  const run = commands(job.jobs.adopt);
+  assert.match(run, /check-corpus.mjs adopt/);
   assert.match(run, /gh issue create/); assert.match(run, /gh issue edit/);
   assert.match(run, /select\(\.pull_request == null and \.title ==/); assert.match(run, /state=all/);
-  assert.equal(job.permissions.actions, "write"); assert.equal(job.permissions.issues, "write");
+  assert.match(run, /kimosabe-land --repo \. --sha \$sha/);
+  assert.equal(job.permissions.actions, undefined); assert.equal(job.permissions.issues, "write");
   assert.equal(job.permissions["pull-requests"], undefined);
-  assert.doesNotMatch(run, /gh pr/);
-  assert.doesNotMatch(run, /--force|reset --hard|stash/);
+  assert.doesNotMatch(run, /gh pr|gh workflow run|--force|reset --hard|stash/);
 });
+
+test("publication and every Pages job require both owners and refuse nondefault refs first", () => {
+  for (const name of ["publish", "pages"]) {
+    assert.deepEqual(workflow(name).on, {workflow_dispatch: null});
+    for (const job of Object.values(workflow(name).jobs)) {
+      assert.equal(job.if, owners);
+      assert.equal(typeof job.environment === "string" ? job.environment : job.environment.name,
+        name === "publish" ? "publish" : "github-pages");
+      assert.match(job.steps[0].run, /test "\$GITHUB_REF" = "refs\/heads\/\$DEFAULT_BRANCH"/);
+      assert.equal(job.steps[0].env.DEFAULT_BRANCH, "${{ github.event.repository.default_branch }}");
+      assert.doesNotMatch(commands(job), /gh workflow run ci.yml/);
+    }
+  }
+});
+
 test("Pages builds the site, released API, then checks it, in that order", () => {
   const steps = workflow("pages").jobs.build.steps.map(s => s.run);
   const order = ["pnpm build:site", "pnpm docs:api:release", "pnpm check:site"].map(c => steps.indexOf(c));
   assert.ok(order.every(i => i >= 0)); assert.ok(order[0] < order[1] && order[1] < order[2]);
 });
 
-test("main, PRs targeting main, and dispatch on main all enforce release SOURCE", () => {
-  const ci = workflow("ci");
-  assert.ok(Object.hasOwn(ci.on, "workflow_dispatch"));
-  const step = ci.jobs["corpus-artifact"].steps.find(s => s.env?.REQUIRE_HEX_RELEASE);
-  assert.equal(step.env.REQUIRE_HEX_RELEASE, "${{ github.ref == 'refs/heads/main' || github.base_ref == 'main' }}");
-  assert.match(step.run, /REQUIRE_HEX_RELEASE.*true/);
-  assert.match(step.run, /check-corpus.mjs ci --main/);
-});
 test("every conformance lane checks complete snapshot self-consistency offline", () => {
   for (const name of ["verify", "runtimes", "package", "browser-conformance"]) {
     assert.ok(workflow("ci").jobs[name].steps.some(s => s.run === "pnpm check:corpus"), name);
   }
 });
+
+test("every dependency install uses Corepack's declared pnpm without a cache writer", () => {
+  for (const name of ["ci", "publish", "pages", "corpus-adoption"]) {
+    for (const job of Object.values(workflow(name).jobs)) {
+      if (!commands(job).includes("pnpm install")) continue;
+      assert.match(commands(job), /corepack prepare "\$manager" --activate/);
+      assert.match(commands(job), /test "pnpm@\$\(pnpm --version\)" = "\$manager"/);
+      assert.match(commands(job), /pnpm install --frozen-lockfile/);
+      for (const step of job.steps) {
+        assert.doesNotMatch(step.uses ?? "", /^actions\/cache@|^pnpm\/action-setup@/);
+        assert.equal(step.with?.cache, undefined);
+        if (step.uses?.startsWith("actions/setup-node@")) assert.equal(step.with["package-manager-cache"], false);
+      }
+    }
+  }
+});
+
 test("CI installs pinned checksum-verified gitleaks and scans full history", () => {
   const steps = workflow("ci").jobs.secrets.steps;
   assert.equal(steps[0].with["fetch-depth"], 0);
-  const commands = steps.map(s => s.run ?? "").join("\n");
-  assert.match(commands, /scripts\/install_gitleaks.sh/);
-  assert.match(commands, /secret_scan.sh --check/); assert.match(commands, /secret_scan.sh --history/);
+  const run = commands(workflow("ci").jobs.secrets);
+  assert.match(run, /scripts\/install_gitleaks.sh/);
+  assert.match(run, /secret_scan.sh --check/); assert.match(run, /secret_scan.sh --history/);
 });

@@ -36,6 +36,13 @@ jobs:
         with:
           node-version-file: .tool-versions
           package-manager-cache: false
+      - name: Activate the declared pnpm with Corepack
+        run: |
+          manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
+          case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
+          corepack enable
+          corepack prepare "$manager" --activate
+          test "pnpm@$(pnpm --version)" = "$manager"
       - name: Refuse a different Node version
         run: |
           expected="$(awk '$1 == "nodejs" {print $2}' .tool-versions)"
@@ -43,7 +50,7 @@ jobs:
       - name: Pin archive tooling
         run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Install with the frozen lockfile
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       - name: Refuse a published or tagged version
         run: |
           node --input-type=module <<'JAVASCRIPT'
@@ -57,10 +64,12 @@ jobs:
           const tags = execFileSync('git', ['ls-remote', '--tags', 'origin', `refs/tags/v${version}`, `refs/tags/v${version}^{}`], {encoding: 'utf8'});
           assert.equal(tags.trim(), '', `v${version} is already tagged`);
           JAVASCRIPT
+      - name: Refuse a stale corpus before publication
+        run: pnpm check:corpus:release
       - name: Build the library and documentation
         run: |
-          npm run build
-          npm run docs:api
+          pnpm build
+          pnpm docs:api
       - name: Pack the package archive
         run: |
           mkdir -p artifacts
@@ -115,5 +124,5 @@ jobs:
       - name: Verify the inspected archive checksum
         working-directory: artifacts
         run: sha256sum --check SHA256SUMS
-      - name: Publish to npm with trusted publishing
-        run: npm publish ./artifacts/package.tgz --provenance --ignore-scripts --access public --registry=https://registry.npmjs.org/
+      - name: Stage the inspected archive with trusted publishing
+        run: npm stage publish ./artifacts/package.tgz --provenance
