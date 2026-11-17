@@ -42,7 +42,6 @@ const DIR = corpusDir("strict-ed25519");
 // The profile identity and revision are part of the implemented contract.
 const PROFILE_IDENTITY = "bap-strict-ed25519/1";
 const CERTIFIED_REVISION = 1;
-const CERTIFIED_CASES = 2410;
 
 function abort(message: string): never {
   throw new CoreAbort("strict-ed25519 conformance", message);
@@ -87,7 +86,6 @@ function loadCorpus(source: CorpusSource): Loaded {
   const index = JSON.parse(utf8(indexBytes)) as Loaded["index"] & { profile: string; revision: number; private_material_tracked: boolean };
   if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
-  if (index.total_cases !== CERTIFIED_CASES) abort(`total_cases: ${index.total_cases}`);
   if (index.private_material_tracked !== false) abort("private_material_tracked must be false");
   // The exact file set: every file on disk is listed (or is index.json itself), and every listed file exists.
   const listed = index.files.map((f) => f.path).sort();

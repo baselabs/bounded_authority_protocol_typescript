@@ -136,14 +136,16 @@ node --conditions=bap-portable --test
 
 ## Conformance vectors
 
-This repository certifies the verifier against Hex `bounded_authority_protocol` 1.0.0's
+This repository certifies the verifier against the Hex `bounded_authority_protocol` release named in SOURCE and its
 `priv/conformance/` subtree, preserved at `conformance/priv/conformance/`. `conformance/SOURCE`
-pins the release checksum and all nine indexes. Tests verify the actual indexed files and complete
+pins the release checksum, entire snapshot tree digest, and all nine indexes. Tests prove
+self-consistency against SOURCE for every file and complete
 execution offline, then compare computed and expected JCS verdict digests in index order.
 CI separately fetches and byte-compares the named release, verifying both Hex checksums.
 
 If you implement a protocol surface in another language, use the
-[certified Hex release](https://hex.pm/packages/bounded_authority_protocol/1.0.0) as the artifact.
+[certified Hex release](https://hex.pm/packages/bounded_authority_protocol) as the artifact.
 [Corpus adoption](corpus-adoption.md) explains SOURCE, vendoring, candidate commits, and the weekly
-adoption PR. The npm tarball contains runtime files only. Release workflows require the newest
-non-retired Hex release after its revert window; a new upstream release does not break push CI.
+adoption branch, dispatched CI, and issue. The npm tarball contains runtime files only. Release workflows require the newest
+non-retired Hex release after its revert window; new upstream versions do not impose freshness on push CI. Hex outages and retirement of the
+pinned version fail the online artifact job closed.

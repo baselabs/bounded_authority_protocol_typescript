@@ -411,35 +411,42 @@ fault or a wrong-key rotation race fails as `signing_failed` instead of producin
 package rejects. Its full key-handle contract is in the
 [signer's README](https://github.com/baselabs/bounded_authority_signer_typescript#readme).
 
-## Certified, not self-tested
+## Conformance and release binding
 
-Every release of this package is verified against the protocol's published, certified conformance
-corpora. The binding is Hex `bounded_authority_protocol` 1.0.0's entire `priv/conformance/`
-subtree, vendored at `conformance/priv/conformance/`. `conformance/SOURCE` records the release's
-outer tarball checksum and all nine index SHA-256 pins. Every runner checks the index pin, every
-indexed file's recorded digest, the exact file set, counts, applicability, and unique certified and
-executed ids before accepting results. Tests are offline; CI separately fetches the named Hex
-release, verifies both archive checksums, and byte-compares the whole tree in both directions:
+The snapshot at `conformance/priv/conformance/` preserves the protocol's entire published
+`priv/conformance/` subtree, including auxiliary schemas and vectors. Offline lanes prove
+self-consistency against `conformance/SOURCE`: its complete-tree SHA-256 and index pins cover
+all snapshot bytes, while each core checks indexed digests, counts, applicability, and unique,
+complete execution. These checks cannot establish the snapshot's origin by themselves.
+
+The online `corpus-artifact` job on every push and PR, and the release gate, establish the Hex
+binding: they fetch the named release, verify both archive checksums, and compare the whole tree
+in both directions. A Hex outage or retirement of the pinned release fails closed by design.
+See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
+
+<!-- corpus-source:start -->
+Pinned Hex corpus: [bounded_authority_protocol 1.0.0](https://hex.pm/packages/bounded_authority_protocol/1.0.0).
 
 | Corpus | Cases |
 |---|---|
-| Contract-major 1 | 283 |
-| Contract-major 2 | 268 |
-| Contract-major 3 | 292 |
-| Local-loopback proof profile | 44 |
-| Role-attestation profile | 40 |
-| Content-assertion profile | 131 assertion, 9 digest, 14 successor |
-| Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
-| Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
-| Selector float-zero (erratum 6, new in 2.0.0, additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
+| v1 | 283 |
+| v2 | 268 |
+| v3 | 292 |
+| local-loopback-http | 44 |
+| role-attestation | 40 |
+| content-assertion | 154 |
+| strict-ed25519 | 2410 |
+| producer-canonicality | 75 |
+| selector-float-zero | 161 |
+<!-- corpus-source:end -->
 
 Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.
 Expected values come from the certified cases; computed values come from the SDK. A future
 published `bap-corpus-verdict-digests/1` file must agree as well. The npm tarball excludes the corpus.
 
 [Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring
-tool, candidate verification, and weekly adoption PRs. Candidate snapshots are refused on main
-and at release. Releases require the newest non-retired Hex version after its revert window;
+tool, candidate verification, and weekly adoption branches, dispatched CI, and issues. Candidate snapshots are refused on main, on PRs targeting main,
+and at release. Releases require the newest eligible stable, non-retired Hex version without build metadata after its revert window;
 per-push CI remains bound to the named version.
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
@@ -536,17 +543,17 @@ pnpm docs:api                # strict TypeDoc reference in site-dist/api, stampe
 pnpm test:network            # real npm release API, normative spec anchors and built-site version checks
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
-pnpm conformance             # 283/283 and the key census (vendored v1 snapshot)
-pnpm conformance:v2          # 268/268 and the key census (vendored v2 snapshot)
-pnpm conformance:v3          # 292/292 and the key census (vendored v3 snapshot)
-pnpm conformance:role-attestation    # 40/40 and the cross-profile legs
-pnpm conformance:content-assertion   # 131 + 9 + 14 and producer/assembly byte agreement
-pnpm conformance:strict-ed25519      # 2410/2410 strict-Ed25519 verdicts
-pnpm conformance:local-loopback-http # 44/44 local-loopback proof verdicts
-pnpm conformance:producer-canonicality # 75/75 producer-surface canonicality verdicts
-pnpm conformance:selector-float-zero  # 161/161 selector float-zero verdicts (decode, producer, envelope)
+pnpm conformance                       # vendored contract-major v1, including its key census
+pnpm conformance:v2                    # vendored contract-major v2
+pnpm conformance:v3                    # vendored contract-major v3
+pnpm conformance:role-attestation      # and the cross-profile legs
+pnpm conformance:content-assertion     # and producer/assembly byte agreement
+pnpm conformance:strict-ed25519        # strict-Ed25519 verdicts
+pnpm conformance:local-loopback-http   # local-loopback proof verdicts
+pnpm conformance:producer-canonicality # producer-surface canonicality verdicts
+pnpm conformance:selector-float-zero   # selector float-zero verdicts (decode, producer, envelope)
 pnpm test:portable           # unit tests and the mutation gate under --conditions=bap-portable
-pnpm conformance:portable    # every corpus under the portable backend (same verdict digests)
+pnpm conformance:portable              # every corpus under the portable backend (same verdict digests)
 pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types
 pnpm guard:browser           # browser bundle: portable backend only, no unresolved globals or eval
 pnpm size                    # browser bundle-size budget
@@ -554,6 +561,9 @@ pnpm pack:release            # the release tarball, packed from a staging copy (
 pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/Bun runs
 pnpm test:runtimes           # Deno and Bun conformance lanes (BAP_RUNTIMES=deno,bun)
 pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)
+pnpm check:corpus            # complete snapshot and documentation self-consistency (offline)
+pnpm check:corpus:artifact   # real Hex identity, both checksums, and whole-tree byte comparison
+pnpm secrets                 # full-history, sensitivity, staged and unstaged secret scans
 pnpm check:currency          # dependency-currency gate (latest-first)
 pnpm test:readback           # the post-publish read-back, held to the published 1.0.0
 pnpm readback <version> --sha256 <hex>  # read back a release: registry, bytes, provenance, signatures, fresh consumers

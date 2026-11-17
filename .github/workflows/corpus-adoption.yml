@@ -7,7 +7,8 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  actions: write
+  issues: write
 
 concurrency:
   group: corpus-adoption
@@ -34,27 +35,54 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Fetch the newest eligible release
         run: node scripts/check-corpus.mjs adopt
-      - name: Open an adoption PR when SOURCE changes
+      - name: Push adoption branch, dispatch CI, and maintain its issue
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eo pipefail
           if git diff --quiet -- conformance/SOURCE; then exit 0; fi
           version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync("conformance/SOURCE")).version)')
           branch="automation/adopt-corpus-$version"
-          existing=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')
-          if [ -n "$existing" ]; then echo "$existing"; exit 0; fi
-          if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+          title="Adopt certified Hex corpus $version"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch"
+            # Refuse an existing branch whose adopted bytes or generated summary differ.
+            git diff --exit-code FETCH_HEAD -- conformance/SOURCE conformance/priv/conformance README.md
+            sha=$(git rev-parse FETCH_HEAD)
+          else
             git switch -c "$branch"
-            git add -- conformance/SOURCE conformance/priv/conformance
+            git add -- conformance/SOURCE conformance/priv/conformance README.md
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Adopt certified Hex corpus $version"
             git push --set-upstream origin "$branch"
+            sha=$(git rev-parse HEAD)
           fi
+          # GITHUB_TOKEN pushes do not start CI. Dispatch explicitly; no PR permission is needed.
+          dispatched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run ci.yml --ref "$branch"
+          run_url=""
+          for attempt in {1..12}; do
+            run_url=$(gh run list --workflow ci.yml --branch "$branch" --event workflow_dispatch --commit "$sha" --created ">=$dispatched_at" --limit 1 --json url --jq '.[0].url // empty')
+            if [ -n "$run_url" ]; then break; fi
+            echo "Waiting for dispatched CI run (attempt $attempt)"
+            sleep 5
+          done
+          if [ -z "$run_url" ]; then echo "Dispatched CI run did not become visible" >&2; exit 1; fi
           body=$(mktemp)
           trap 'rm -f "$body"' EXIT
           cat > "$body" <<TEXT
-          Adopt the complete priv/conformance subtree certified by bounded_authority_protocol $version on Hex. Both archive checksums and all nine index pins were verified before the transactional replacement.
+          Adopt the complete priv/conformance subtree from Hex bounded_authority_protocol $version.
 
-          CI checks every file against the named artifact and recomputes every verdict offline. Review and merge this adoption before the next npm release.
+          Branch: $branch
+          Compare: https://github.com/$GH_REPO/compare/main...$branch
+          Dispatched CI: $run_url
+
+          Vendoring verified both Hex checksums. Offline conformance checks self-consistency against SOURCE, including its complete-tree digest; corpus-artifact fetches and compares the named Hex release. A Hex outage or retirement fails that job closed. Review the branch and its CI results before opening a PR targeting main.
           TEXT
-          gh pr create --base main --head "$branch" --title "Adopt certified Hex corpus $version" --body-file "$body"
+          # Paginate all issues, including closed ones; exact title equality provides deduplication.
+          issue=$(gh api --paginate "repos/$GH_REPO/issues?state=all&per_page=100" --jq ".[] | select(.pull_request == null and .title == \"$title\") | .number" | sed -n '1p')
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --body-file "$body"
+          else
+            gh issue create --title "$title" --body-file "$body"
+          fi

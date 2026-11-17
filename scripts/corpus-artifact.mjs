@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { rewriteCorpusSummary } from "./corpus-docs.mjs";
 import catalogue from "../conformance/catalogue.json" with { type: "json" };
 
 export const PACKAGE = "bounded_authority_protocol";
@@ -17,10 +18,11 @@ const safePath = (path) => typeof path === "string" && path.length > 0 && !path.
 export function parseSource(bytes) {
   const source = JSON.parse(bytes.toString());
   const candidate = Object.hasOwn(source, "candidate");
-  const keys = ["format", "package", "version", "checksum", "indexes", ...(candidate ? ["candidate"] : [])].sort();
+  const keys = ["format", "package", "version", "checksum", "tree_sha256", "indexes", ...(candidate ? ["candidate"] : [])].sort();
   if (!same(Object.keys(source).sort(), keys) || source.format !== "bap-corpus-source/1" || source.package !== PACKAGE) fail("SOURCE: invalid closed format or package");
   if (candidate ? typeof source.candidate !== "string" || !/^[a-f0-9]{40}$/.test(source.candidate) || source.version !== null || source.checksum !== null
-    : typeof source.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(source.version) || !/^[a-f0-9]{64}$/.test(source.checksum)) fail("SOURCE: invalid release or candidate identity");
+    : typeof source.version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(source.version) || !/^[a-f0-9]{64}$/.test(source.checksum)) fail("SOURCE: invalid release or candidate identity");
+  if (typeof source.tree_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(source.tree_sha256)) fail("SOURCE: invalid tree_sha256");
   if (!source.indexes || !same(Object.keys(source.indexes).sort(), CORPORA) || Object.values(source.indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) fail("SOURCE: exactly nine index pins required");
   return source;
 }
@@ -44,7 +46,15 @@ export function treeFiles(root) {
   return files;
 }
 
+// SHA-256 of compact UTF-8 JSON [[relative path, lowercase file SHA-256], ...],
+// sorted by path in UTF-16 code-unit order. No BOM or trailing newline.
+export const treeDigest = files => hash(JSON.stringify([...files.keys()].sort().map(path => [path, hash(files.get(path))])));
+export function assertTree(files, source) {
+  if (treeDigest(files) !== source.tree_sha256) fail("snapshot tree SHA-256 differs from SOURCE");
+}
+
 export function validateArtifact(files, source) {
+  assertTree(files, source);
   const indexes = [...files.keys()].filter(p => p.endsWith("/index.json")).map(p => p.slice(0, -11)).sort();
   if (!same(indexes, CORPORA)) fail("artifact: index inventory differs from the nine certified corpora");
   for (const path of CORPORA) {
@@ -66,7 +76,9 @@ export function validateArtifact(files, source) {
 
 // A bounded in-memory tar reader. It never writes archive paths. Links, devices, duplicates,
 // traversal, truncated records and invalid header checksums fail before staging anything.
-export function readTar(bytes) {
+// With a subtree, irrelevant entries (including links) are ignored; structural tar headers
+// are still checked. Only directories and regular files are allowed inside the subtree.
+export function readTar(bytes, subtree) {
   const files = new Map(), names = new Set();
   let pax = {}, globalPax = {}, ended = false;
   const text = (buf) => buf.toString("utf8").replace(/\0.*$/s, "");
@@ -97,6 +109,7 @@ export function readTar(bytes) {
     const attributes = {...globalPax, ...pax}; pax = {};
     const prefix = text(header.subarray(345, 500));
     const name = (attributes.path ?? `${prefix ? prefix + "/" : ""}${text(header.subarray(0, 100))}`).replace(/\/$/, "");
+    if (subtree !== undefined && name !== subtree.slice(0, -1) && !name.startsWith(subtree)) continue;
     if (!safePath(name) || names.has(name)) fail(`tar: unsafe or duplicate path ${name}`);
     names.add(name);
     if (type === "5") { if (size !== 0) fail("tar: directory with data"); continue; }
@@ -115,7 +128,7 @@ export function unpackHex(bytes, checksum) {
   if (outer.get("VERSION").toString() !== "3") fail("Hex: unsupported archive VERSION");
   const inner = hash(Buffer.concat([outer.get("VERSION"), outer.get("metadata.config"), outer.get("contents.tar.gz")]));
   if (outer.get("CHECKSUM").toString().toLowerCase() !== inner) fail("Hex inner CHECKSUM mismatch");
-  const contents = readTar(gunzipSync(outer.get("contents.tar.gz"), {maxOutputLength: 64 * 1024 * 1024}));
+  const contents = readTar(gunzipSync(outer.get("contents.tar.gz"), {maxOutputLength: 64 * 1024 * 1024}), "priv/conformance/");
   return new Map([...contents].filter(([p]) => p.startsWith("priv/conformance/")).map(([p, b]) => [p.slice("priv/conformance/".length), b]));
 }
 
@@ -128,26 +141,27 @@ async function fetchBytes(url) {
 }
 export const fetchJson = async (url) => JSON.parse(await fetchBytes(url));
 
-export function validateReleaseMetadata(release, version) {
+export function validateReleaseMetadata(release, version, pinnedChecksum) {
   if (release.version !== version || !Object.hasOwn(release, "retirement") || release.retirement !== null) fail(`Hex ${version}: retired release or invalid metadata`);
   if (!/^[a-f0-9]{64}$/.test(release.checksum)) fail("Hex: invalid registry checksum");
+  if (pinnedChecksum !== undefined && pinnedChecksum !== release.checksum) fail("Hex registry checksum differs from pinned eligibility metadata or SOURCE");
   return release;
 }
-export async function releaseMetadata(version) {
-  if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) fail("invalid Hex version");
+export async function releaseMetadata(version, pinnedChecksum) {
+  if (typeof version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) fail("invalid Hex version");
   const release = await fetchJson(`${API}/releases/${version}`);
-  return validateReleaseMetadata(release, version);
+  return validateReleaseMetadata(release, version, pinnedChecksum);
 }
 
 export async function releaseArtifact(version, pinnedChecksum) {
-  const release = await releaseMetadata(version);
-  if (pinnedChecksum !== undefined && pinnedChecksum !== release.checksum) fail("Hex registry checksum differs from SOURCE; owner investigation required");
+  const release = await releaseMetadata(version, pinnedChecksum);
   const tarball = await fetchBytes(`https://repo.hex.pm/tarballs/${PACKAGE}-${version}.tar`);
   return {files: unpackHex(tarball, release.checksum), release};
 }
 
 export function sourceFor(files, identity) {
   const source = {format: "bap-corpus-source/1", package: PACKAGE, version: null, checksum: null, ...identity,
+    tree_sha256: treeDigest(files),
     indexes: Object.fromEntries(CORPORA.map(path => [path, hash(files.get(`${path}/index.json`) ?? fail(`${path}: index missing`), "base64url")]))};
   parseSource(JSON.stringify(source));
   validateArtifact(files, source);
@@ -176,16 +190,16 @@ export function installSnapshot(root, files, source) {
   } finally { rmSync(temp, {recursive: true, force: true}); }
 }
 
-export async function vendor(root, version, candidate) {
+export async function vendor(root, version, candidate, pinnedChecksum) {
   let files, source;
   if (candidate !== undefined) {
     if (!/^[a-f0-9]{40}$/.test(candidate)) fail("candidate must be a full lowercase monorepo commit SHA");
-    const archive = readTar(gunzipSync(await fetchBytes(`https://codeload.github.com/baselabs/${PACKAGE}/tar.gz/${candidate}`), {maxOutputLength: 64 * 1024 * 1024}));
     const prefix = `${PACKAGE}-${candidate}/priv/conformance/`;
+    const archive = readTar(gunzipSync(await fetchBytes(`https://codeload.github.com/baselabs/${PACKAGE}/tar.gz/${candidate}`), {maxOutputLength: 64 * 1024 * 1024}), prefix);
     files = new Map([...archive].filter(([p]) => p.startsWith(prefix)).map(([p, b]) => [p.slice(prefix.length), b]));
     source = sourceFor(files, {candidate});
   } else {
-    const artifact = await releaseArtifact(version);
+    const artifact = await releaseArtifact(version, pinnedChecksum);
     files = artifact.files; source = sourceFor(files, {version, checksum: artifact.release.checksum});
     const current = join(root, "conformance/SOURCE");
     if (existsSync(current)) {
@@ -194,6 +208,7 @@ export async function vendor(root, version, candidate) {
     }
   }
   installSnapshot(root, files, source);
+  rewriteCorpusSummary(root, files, source);
   return source;
 }
 

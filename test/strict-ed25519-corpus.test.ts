@@ -33,7 +33,6 @@ test("the strict corpus snapshot is exactly the files its index lists, each at i
   };
   assert.equal(index.profile, "bap-strict-ed25519/1");
   assert.equal(index.revision, 1);
-  assert.equal(index.total_cases, 2410);
   assert.equal(index.private_material_tracked, false);
   const listed = index.files.map((f) => f.path).sort();
   assert.deepEqual(listed, files(STRICT).filter((p) => p !== "index.json").sort(), "no unlisted or missing file");

@@ -1,4 +1,4 @@
-// Run all 75 producer-canonicality cases through compact and archive assembly for
+// Run all indexed producer-canonicality cases through compact and archive assembly for
 // all three majors and sibling profiles. Producers frame signatures without crypto
 // verification and preserve accepted bytes. Ed25519 requires canonical R and S below
 // L; ES256 requires in-range r and low-S s. Validate index and file hashes, exact file
@@ -30,7 +30,6 @@ const DIR = corpusDir("producer-canonicality");
 // SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-producer-canonicality/1";
 const CERTIFIED_REVISION = 1;
-const CERTIFIED_CASES = 75;
 const FAMILY_FILES: Readonly<Record<string, string>> = {
   "ed25519-assemble": "cases/ed25519-assemble/assemble.json",
   "ed25519-export-encode": "cases/ed25519-export-encode/encode.json",
@@ -107,7 +106,6 @@ function loadCorpus(source: CorpusSource): { families: Array<{ name: string; cas
   // Identity, revision, total, and per-family counts BEFORE the per-file digests are trusted.
   if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
-  if (index.total_cases !== CERTIFIED_CASES) abort(`total cases: ${index.total_cases}`);
   const familyNames = Object.keys(FAMILY_FILES).sort();
   const indexFamilies = Object.keys(index.families).sort();
   if (JSON.stringify(indexFamilies) !== JSON.stringify(familyNames)) {
@@ -137,7 +135,7 @@ function loadCorpus(source: CorpusSource): { families: Array<{ name: string; cas
     counted += doc.cases.length;
     families.push({ name, cases: doc.cases });
   }
-  if (counted !== CERTIFIED_CASES) abort(`family case sum ${counted} != ${CERTIFIED_CASES}`);
+  if (counted !== index.total_cases) abort(`family case sum ${counted} != ${index.total_cases}`);
   return { families };
 }
 
@@ -240,6 +238,7 @@ function runExportCase(entry: ExportCase): { ok: boolean } {
 
 function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry[] } {
   const { families } = loadCorpus(source);
+  const caseCount = certifyCorpus(source, DIR).cases.length;
   const verdicts: VerdictEntry[] = [];
   const seen = new Set<string>();
   let refused = 0;
@@ -284,11 +283,11 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
       verdicts.push([entry.id, computedOutcome(entry.expected, result.ok ? {} : null)]);
     }
   }
-  if (seen.size !== CERTIFIED_CASES) abort(`case census: ${seen.size} != ${CERTIFIED_CASES}`);
+  if (seen.size !== caseCount) abort(`case census: ${seen.size} != ${caseCount}`);
 
   const byFamily = families.map((f) => `${f.name} ${f.cases.length}`).join(", ");
   return { verdicts: completeVerdicts(source, DIR, verdicts), summary: [
-    `producer-canonicality conformance: PASS: ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
+    `producer-canonicality conformance: PASS: ${caseCount}/${caseCount} verdict agreement ` +
       `(${refused} refused, ${accepted} accepted with bytes unchanged; revision ${CERTIFIED_REVISION}, ` +
       `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…; ${byFamily}).`,
   ] };

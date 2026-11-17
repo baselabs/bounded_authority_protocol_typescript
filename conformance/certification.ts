@@ -14,12 +14,13 @@ export interface Certification { cases: CertifiedCase[]; indexSha: string; path:
 
 export function sourcePins(source: CorpusSource): Record<string, string> {
   const pin = json(source, "SOURCE"), candidate = Object.hasOwn(pin, "candidate");
-  const keys = ["format", "package", "version", "checksum", "indexes", ...(candidate ? ["candidate"] : [])].sort();
+  const keys = ["format", "package", "version", "checksum", "tree_sha256", "indexes", ...(candidate ? ["candidate"] : [])].sort();
   if (jcs(Object.keys(pin).sort()) !== jcs(keys) || pin.format !== "bap-corpus-source/1" || pin.package !== "bounded_authority_protocol") stop("SOURCE: closed format or package mismatch");
   if (candidate ? typeof pin.candidate !== "string" || !/^[a-f0-9]{40}$/.test(pin.candidate) || pin.version !== null || pin.checksum !== null
-    : typeof pin.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(pin.version) || typeof pin.checksum !== "string" || !/^[a-f0-9]{64}$/.test(pin.checksum)) stop("SOURCE: invalid release or candidate");
+    : typeof pin.version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(pin.version) || typeof pin.checksum !== "string" || !/^[a-f0-9]{64}$/.test(pin.checksum)) stop("SOURCE: invalid release or candidate");
   const indexes = pin.indexes as Record<string, string>;
   if (!indexes || jcs(Object.keys(indexes).sort()) !== jcs(paths) || Object.values(indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) stop("SOURCE: exactly nine index pins required");
+  if (typeof pin.tree_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(pin.tree_sha256)) stop("SOURCE: invalid tree_sha256");
   return indexes;
 }
 
@@ -41,6 +42,16 @@ export function expectedOutcome(path: string, file: string, c: Record<string, un
   } else return stop(`${c.id}: no expected or declared outcome schema`);
   const result = Object.fromEntries(members.map(k => [k, c[k]]));
   jcs(result); return result;
+}
+
+export function snapshotDigest(source: CorpusSource): string {
+  const files = source.list(SNAPSHOT).sort();
+  if (files.some(p => !safe(p)) || new Set(files).size !== files.length) stop("snapshot: unsafe or duplicate path");
+  return hashHex(new TextEncoder().encode(jcs(files.map(path => [path, hashHex(source.read(`${SNAPSHOT}/${path}`))]))));
+}
+export function assertSnapshot(source: CorpusSource): void {
+  sourcePins(source);
+  if (snapshotDigest(source) !== json(source, "SOURCE").tree_sha256) stop("snapshot tree SHA-256 differs from SOURCE");
 }
 
 export function certifyCorpus(source: CorpusSource, dir: string): Certification {
@@ -97,6 +108,7 @@ export function certifyCorpus(source: CorpusSource, dir: string): Certification 
       }
       if (cases.some(c => typeof c.data.class !== "string" || !classes.includes(c.data.class))) stop(`${path}: undeclared case class`);
     }
+    assertSnapshot(source);
     return {cases, indexSha, path};
   } catch (error) { if (error instanceof CoreAbort) throw error; return stop(`${dir}: ${String(error)}`); }
 }

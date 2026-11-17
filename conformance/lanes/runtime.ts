@@ -45,9 +45,8 @@ for (const core of CORES) {
   try {
     const report = core.run(source);
     const digest = assertVerdictDigest(source, core.dir, report.verdicts);
-    const pinned = true;
-    ok &&= pinned && report.failures.length === 0;
-    corpora[core.corpus] = { cases: report.verdicts.length, digest, ms: Math.round(performance.now() - start), failures: [...report.failures], pinned, verdicts: [...report.verdicts] };
+    ok &&= report.failures.length === 0;
+    corpora[core.corpus] = { cases: report.verdicts.length, digest, ms: Math.round(performance.now() - start), failures: [...report.failures], pinned: true, verdicts: [...report.verdicts] };
   } catch (e) {
     ok = false;
     const message = e instanceof CoreAbort ? `${e.prefix}: ${e.message}` : String(e);

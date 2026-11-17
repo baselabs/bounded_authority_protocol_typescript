@@ -1,5 +1,5 @@
 // Recompute each v2 verdict through src/v2.ts against the independent vendored
-// corpus. Validate the index digest and run the two-boundary census. Disagreement
+// corpus. Validate snapshot integrity and complete execution against the index. Disagreement
 // aborts with the case ID and expected and actual verdicts. The normative spec and
 // corpus define the contract; the SDK is the implementation under test.
 import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";

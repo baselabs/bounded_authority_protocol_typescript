@@ -29,7 +29,6 @@ const DIR = corpusDir("role-attestation");
 // SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-role-attestation/1";
 const CERTIFIED_REVISION = 1;
-const CERTIFIED_CASES = 40;
 
 function abort(message: string): never {
   throw new CoreAbort("role-attestation conformance", message);
@@ -69,7 +68,6 @@ function loadCorpus(source: CorpusSource): { profile: ProfileContext; cases: Cas
   // Identity, revision, and case count BEFORE the per-file digests are trusted.
   if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
-  if (index.attestation_cases !== CERTIFIED_CASES) abort(`case count: ${index.attestation_cases}`);
   const paths = index.files.map((f) => f.path).sort();
   if (JSON.stringify(paths) !== JSON.stringify(["attestation-cases.json", "profile.json"])) {
     abort(`exact two-file set required: ${JSON.stringify(paths)}`);
@@ -152,7 +150,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
       abort(`${entry.id}: decode false but verify true`);
     }
   }
-  if (seen.size !== CERTIFIED_CASES) abort(`case census: ${seen.size} != ${CERTIFIED_CASES}`);
+  if (seen.size !== cases.length) abort(`case census: ${seen.size} != ${cases.length}`);
 
   // ---- producer/assembly byte symmetry against the certified valid compact ----
   const valid = cases.find((c) => c.id === "issuer-valid");
@@ -209,8 +207,8 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   if (!crossProfileGrant) abort("cross-profile v1-grant case missing");
 
   return { verdicts: completeVerdicts(source, DIR, verdicts), summary: [
-    `role-attestation conformance: PASS: ${decodeAgree}/${CERTIFIED_CASES} decode + ` +
-      `${verifyAgree}/${CERTIFIED_CASES} verify agreement (revision ${CERTIFIED_REVISION}, ` +
+    `role-attestation conformance: PASS: ${decodeAgree}/${cases.length} decode + ` +
+      `${verifyAgree}/${cases.length} verify agreement (revision ${CERTIFIED_REVISION}, ` +
       `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…), producer/assembly byte symmetry ` +
       `against the certified compact, cross-profile rejection both directions ` +
       `(${crossProfileGrant.id} in-corpus + v1/v2/v3 out-of-profile).`,

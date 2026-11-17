@@ -2,7 +2,7 @@
 // @bounded-authority-protocol/verifier. Loads the vendored certified corpus snapshot
 // (conformance/priv/conformance/selector-float-zero) and drives every case through its contract-major's own
 // surface: decode_grant, grant_signing_input (the package's grant producer) and check_envelope, for
-// majors 1, 2 and 3, asserting the certified verdict on all 161 cases.
+// majors 1, 2 and 3, asserting the certified verdict on every indexed case.
 //
 // REQ1/2/3-SELECTOR-float-zero: grant decode rejects an `equals` value or `one_of` member holding a
 // float-tagged number equal to zero at any depth, whatever its sign or spelling (`0.0`, `-0e0`,
@@ -42,8 +42,6 @@ const DIR = corpusDir("selector-float-zero");
 // SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-selector-float-zero/1";
 const CERTIFIED_REVISION = 1;
-const CERTIFIED_CASES = 161;
-const CERTIFIED_FAMILIES: Readonly<Record<string, number>> = { envelope: 35, "grant-decode": 78, "grant-signing-input": 48 };
 const FAMILY_SURFACE: Readonly<Record<string, Surface>> = {
   envelope: "check_envelope",
   "grant-decode": "decode_grant",
@@ -95,11 +93,7 @@ function loadCorpus(source: CorpusSource): Family[] {
   // Identity, revision, total, and per-family counts BEFORE the per-file digests are trusted.
   if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
-  if (index.total_cases !== CERTIFIED_CASES) abort(`total cases: ${index.total_cases}`);
-  if (JSON.stringify(sortedEntries(index.families)) !== JSON.stringify(sortedEntries(CERTIFIED_FAMILIES))) {
-    abort(`family counts: ${JSON.stringify(index.families)}`);
-  }
-  const caseFiles = Object.keys(CERTIFIED_FAMILIES).flatMap((family) => MAJORS.map((major) => `cases/${family}/major-${major}.json`));
+  const caseFiles = Object.keys(FAMILY_SURFACE).flatMap((family) => MAJORS.map((major) => `cases/${family}/major-${major}.json`));
   const expectedPaths = [...caseFiles, "profile.json", "revision.json"].sort();
   const paths = index.files.map((f) => f.path).sort();
   if (JSON.stringify(paths) !== JSON.stringify(expectedPaths)) {
@@ -132,7 +126,7 @@ function loadCorpus(source: CorpusSource): Family[] {
     perFamily[name] = (perFamily[name] ?? 0) + cases.length;
     families.push({ name: file.path, major, cases });
   }
-  if (JSON.stringify(sortedEntries(perFamily)) !== JSON.stringify(sortedEntries(CERTIFIED_FAMILIES))) {
+  if (JSON.stringify(sortedEntries(perFamily)) !== JSON.stringify(sortedEntries(index.families))) {
     abort(`loaded family counts: ${JSON.stringify(perFamily)}`);
   }
   return families;
@@ -319,6 +313,7 @@ function agrees(c: FloatZeroCase, outcome: Outcome): boolean {
 
 function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry[]; failures: string[] } {
   const families = loadCorpus(source);
+  const caseCount = certifyCorpus(source, DIR).cases.length;
   const verdicts: VerdictEntry[] = [];
   const failures: string[] = [];
   const seen = new Set<string>();
@@ -345,11 +340,11 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
       }
     }
   }
-  if (seen.size !== CERTIFIED_CASES) abort(`case census: ${seen.size} != ${CERTIFIED_CASES}`);
+  if (seen.size !== caseCount) abort(`case census: ${seen.size} != ${caseCount}`);
 
-  const byFamily = sortedEntries(CERTIFIED_FAMILIES).map(([name, n]) => `${name} ${n}`).join(", ");
+  const byFamily = families.map(f => `${f.name} ${f.cases.length}`).join(", ");
   return { verdicts: completeVerdicts(source, DIR, verdicts), failures, summary: [
-    `selector-float-zero conformance: PASS: ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
+    `selector-float-zero conformance: PASS: ${caseCount}/${caseCount} verdict agreement ` +
       `(${rejected} rejected, ${accepted} accepted with certified outputs; revision ${CERTIFIED_REVISION}, ` +
       `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…; ${byFamily}).`,
   ] };

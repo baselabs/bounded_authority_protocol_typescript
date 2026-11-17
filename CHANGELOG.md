@@ -7,17 +7,24 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 ### Changed
 
 - Bind certification to the complete `priv/conformance/` subtree of Hex
-  `bounded_authority_protocol` 1.0.0 at `conformance/priv/conformance/`, with release identity,
-  outer checksum and nine index pins in `conformance/SOURCE`. Transactional vendoring verifies
+  `bounded_authority_protocol` named in SOURCE at `conformance/priv/conformance/`, with release identity,
+  outer checksum, complete-tree SHA-256 and nine index pins in `conformance/SOURCE`. Transactional vendoring verifies
   both Hex checksums, refuses retirement, and supports immutable candidate commits for PRs.
 - Every corpus checks indexed bytes, file sets, counts, applicability and unique, complete
   execution. Shared verdict digests now use index-ordered JCS `[[id, value], ...]` and unpadded
   base64url SHA-256, deriving expected values from certified outcomes and checking a published
   digest file when present. Remove the separate census inputs and the former digest pins.
 - CI compares the complete snapshot with the named artifact. Main and release workflows refuse
-  candidates; releases require the newest eligible non-retired Hex version. Weekly adoption PRs
-  handle newer releases without making push CI depend on upstream freshness. The npm `files`
+  candidates, including PRs targeting main; releases require the newest eligible stable non-retired
+  Hex version without build metadata. Weekly adoption branches dispatch CI and maintain an issue.
+  Offline lanes prove self-consistency; Hex outages or pinned-version retirement fail artifact CI closed. The npm `files`
   allowlist remains runtime-only. The corpus adoption guide documents the complete workflow.
+
+- Pin checksum-verified Gitleaks 8.30.1 for full-history and developer scans. Scope vendored
+  fixture exceptions to rules and anchored paths; retain commit-scoped historical exceptions.
+- Adoption pins the eligibility checksum, ignores prereleases and build metadata, and reports
+  SOURCE ahead of eligibility explicitly. Archive readers ignore irrelevant entries and reject
+  links and special files inside the selected corpus subtree.
 
 - Development dependencies use signer 2.0.0, ESLint 10.15.0, Playwright 1.65.1 and
   typescript-eslint 8.73.0. The site and documentation samples use the signer release that

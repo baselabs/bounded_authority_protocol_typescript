@@ -1,7 +1,8 @@
 # Adopt a certified corpus
 
 The certification artifact is the entire `priv/conformance/` subtree of the Hex release
-[`bounded_authority_protocol` 1.0.0](https://hex.pm/packages/bounded_authority_protocol/1.0.0).
+[`bounded_authority_protocol`](https://hex.pm/packages/bounded_authority_protocol)
+named by `conformance/SOURCE`.
 This checkout preserves it byte for byte at `conformance/priv/conformance/`, including the
 schemas and auxiliary vectors outside the nine corpus directories. Tests read only this snapshot.
 The npm package's `files` allowlist contains runtime output and package documentation, so none of
@@ -10,24 +11,38 @@ the corpus, tests, or development tooling ships in the npm tarball.
 ## SOURCE
 
 `conformance/SOURCE` is UTF-8 JSON with two-space indentation and a final newline. Its closed
-`bap-corpus-source/1` format contains `package`, `version`, `checksum`, and `indexes`. The checksum
+`bap-corpus-source/1` format contains `package`, `version`, `checksum`, `tree_sha256`, and `indexes`. The checksum
 is lowercase hexadecimal SHA-256 of the whole Hex tarball, obtained from the
-[release API](https://hex.pm/api/packages/bounded_authority_protocol/releases/1.0.0).
+[release API](https://hex.pm/api/packages/bounded_authority_protocol), selecting the version in SOURCE.
 `indexes` has exactly nine keys, sorted lexicographically. Each key is a corpus directory relative
 to `priv/conformance`; its value is unpadded base64url SHA-256 of that directory's `index.json`.
-It binds each runner to the certified index before the runner trusts the index's file digests.
+The pins prove only offline self-consistency against SOURCE, not origin. The online artifact job
+and release gate bind SOURCE and every snapshot byte to the checksum-verified Hex release.
+
+`tree_sha256` is lowercase hexadecimal SHA-256 of a complete path-and-content listing:
+list every regular file recursively under `conformance/priv/conformance/`, using relative paths
+with `/` separators. Sort paths lexicographically by UTF-16 code units (ECMAScript's default
+string sort). For each path, form `[path, lowercase_hex_sha256_of_exact_file_bytes]`. Encode the
+array of these pairs as compact JSON (ECMAScript `JSON.stringify`, equivalent to JCS for these
+strings), in UTF-8 with no BOM or trailing newline, and hash those bytes with SHA-256. Every file
+participates, including `v1/schemas`, `v1/vectors`, and root `verdict-digests.json` when present.
+Links and special files are refused. Every conformance core checks this digest offline in every
+runtime lane, even when only one corpus is run.
 
 For a candidate, `version` and `checksum` are JSON null and `candidate` is the full lowercase
 40-character monorepo commit SHA. The other members and index pins follow the same rules. A
-candidate is for amendment verification on a PR branch. Main CI and the release gate refuse it.
+candidate is for amendment verification on a branch not targeting main. Main CI, PRs targeting
+main, workflow dispatch on main, and the release gate refuse it.
 
 ## Vendor and verify
 
 From the repository root, the development tool uses Node built-ins and no runtime dependency:
 
 ```bash
-corepack pnpm vendor 1.0.0
-corepack pnpm check:corpus
+version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync("conformance/SOURCE")).version)')
+corepack pnpm vendor "$version"
+corepack pnpm check:corpus         # offline self-consistency
+corepack pnpm check:corpus:artifact # online artifact binding
 corepack pnpm conformance:all
 corepack pnpm conformance:portable
 ```
@@ -51,25 +66,31 @@ digest derived from the corpus, independently of the per-case comparator.
 The GitHub commit archive over HTTPS is the equivalent of archiving a monorepo commit's subtree.
 The tool uses `https://codeload.github.com/baselabs/bounded_authority_protocol/tar.gz/<commit>`
 and selects only that commit's `priv/conformance/`. For example, this immutable commit contains
-the 1.0.0 corpus:
+a released corpus:
 
 ```bash
 corepack pnpm vendor --candidate 61d26051eb1a400c9cbabf135a6c1e808bb73c30
 ```
 
-Replace the example SHA with the full commit SHA under review. Candidate PR CI compares the
+Replace the example SHA with the full commit SHA under review. Candidate branch CI compares the
 snapshot to that immutable commit archive. After the amendment has been released on Hex and its
 revert window closes, vendor the released version and run the release gate:
 
 ```bash
-corepack pnpm vendor 1.0.0
+version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync("conformance/SOURCE")).version)')
+corepack pnpm vendor "$version"
 corepack pnpm check:corpus:release
 ```
 
 ## Adoption and release eligibility
 
 The weekly `corpus-adoption.yml` workflow finds the newest non-retired eligible Hex version,
-vendors it transactionally, and opens an adoption PR with SOURCE and the snapshot. Maintainers
+vendors it transactionally on `automation/adopt-corpus-<version>`, including the generated README
+summary, and pushes that branch. Because a GITHUB_TOKEN push does not start CI, it explicitly runs
+`gh workflow run ci.yml --ref <branch>`. It opens or updates one issue, deduplicated by exact title
+across open and closed issues, with the version, branch, compare URL, and dispatched CI run URL.
+It creates no PR and needs only `contents: write`, `actions: write`, and `issues: write`. Repository
+permission to create and approve PRs stays disabled. Maintainers
 can run the same selection manually:
 
 ```bash
@@ -78,11 +99,15 @@ node scripts/check-corpus.mjs adopt
 
 The release workflow requires SOURCE to name that newest eligible version, with its registry
 checksum, and byte-compares its complete artifact. Per-push CI compares only the named release:
-a new upstream release cannot make an unrelated push fail.
+a newer eligible version does not require immediate adoption on a push. A Hex outage or retirement
+of the pinned version fails `corpus-artifact` by design; this behavior is fail closed.
 
 Eligibility follows the [Hex revert policy](https://hex.pm/docs/faq#packages):
 a release must be at least 60 minutes old, and the package
-must be at least 24 hours old. Both windows must have closed. Retirement excludes a version.
+must be at least 24 hours old. Both windows must have closed. Retirement excludes a version, as do prerelease identifiers and build metadata.
+Adoption uses the checksum obtained with eligibility metadata and refuses a changed checksum on
+re-fetch. If SOURCE is ahead of the newest eligible release while its window closes, adoption
+prints that fact, keeps the snapshot, and exits successfully.
 After the window, a corpus repair needs a new release and retirement of the faulty one; the tool
 never accepts replacement bytes under the old identity.
 
@@ -111,9 +136,25 @@ Inputs and modifiers never enter the projection. An unknown or incomplete outcom
 The runner computes the corresponding values from SDK results and orders them using the index,
 even when its internal loader accumulates cases differently.
 
-Hex 1.0.0 has no `priv/conformance/verdict-digests.json`, so tests derive the expected digest from
-the certified cases. If a future snapshot includes that file, the runner also requires its entry
+Tests derive the expected digest from the snapshot cases. When the snapshot includes
+`priv/conformance/verdict-digests.json`, the runner also requires its entry
 to match. Its closed format is `bap-corpus-verdict-digests/1`, with `corpora` keyed by the same
 relative directory paths, each holding `index_sha256_base64url`, `case_count`, and
 `verdict_digest_sha256_base64url`. An offline test copies the real snapshot into a temporary
 directory, generates this file, proves agreement, changes its digest, and proves rejection.
+
+## Derived documentation and secret scanning
+
+The marked `corpus-source` block in README is the only current corpus version/count summary.
+`vendor` and scheduled adoption rewrite it from SOURCE and the snapshot indexes. `check:corpus`
+is offline: it checks the complete tree and indexes, requires the exact generated summary, and
+rejects copied numeric corpus versions/counts elsewhere in tracked docs and workflows. Released
+changelog sections remain historical. Runner counts come from the checked indexes at runtime.
+
+CI installs checksum-verified Gitleaks 8.30.1 with `scripts/install_gitleaks.sh` and scans complete,
+merge-aware history using `.gitleaks.toml`. Developers run `pnpm secrets` with that version on PATH;
+`--check` proves sensitivity in a disposable scratch tree, `--history` scans history only, and the
+default also scans staged and unstaged changes. Rule-scoped anchored corpus path exceptions are
+justified only because every byte must match the checksum-verified Hex release, whose reference
+repository scans it. Historical removed paths are limited to the exact commits that carried them;
+non-corpus fixture exceptions still require exact matched bytes and paths.

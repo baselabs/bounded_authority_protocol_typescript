@@ -9,6 +9,7 @@ on:
     paths-ignore:
       - ".github/ISSUE_TEMPLATE/**"
   pull_request:
+  workflow_dispatch:
 
   # Nightly currency meter (latest-first): paths-ignore
   # applies only to push/pull_request events, so a scheduled run executes the
@@ -27,6 +28,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: secret scan (full history and sensitivity)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install verified Gitleaks 8.30.1
+        run: |
+          scripts/install_gitleaks.sh "$RUNNER_TEMP/gitleaks-bin"
+          echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
+      - name: Verify scanner sensitivity and checksum rejection
+        run: |
+          scripts/install_gitleaks.sh --check
+          scripts/secret_scan.sh --check
+      - name: Scan merge-aware history
+        run: scripts/secret_scan.sh --history
+
   corpus-artifact:
     name: vendored corpus equals its certified artifact
     runs-on: ubuntu-24.04
@@ -44,18 +65,20 @@ jobs:
           cache: pnpm
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      # No newest-version check here: an upstream release cannot break a push.
+      # Check the pinned artifact, not freshness. Hex outages and retirement fail closed.
       - name: Fetch, verify both Hex checksums, and compare the whole tree both ways
+        env:
+          REQUIRE_HEX_RELEASE: ${{ github.ref == 'refs/heads/main' || github.base_ref == 'main' }}
         run: |
           set -eo pipefail
-          if [ "$GITHUB_REF" = refs/heads/main ]; then
+          if [ "$REQUIRE_HEX_RELEASE" = true ]; then
             node scripts/check-corpus.mjs ci --main
           else
-            pnpm check:corpus
+            pnpm check:corpus:artifact
           fi
 
   verify:
-    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, producer canonicality, selector float-zero, census; node and portable backends) on Node ${{ matrix.node }}
+    name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, producer canonicality, selector float-zero; node and portable backends) on Node ${{ matrix.node }}
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +106,9 @@ jobs:
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      - name: Check complete snapshot and documentation offline
+        run: pnpm check:corpus
 
       - name: Network documentation checks (registry and normative specs, fail closed)
         run: pnpm test:network
@@ -117,31 +143,31 @@ jobs:
       - name: Permissiveness mutation-gate
         run: pnpm test:permissiveness
 
-      - name: Check conformance for vendored v1 snapshot (283 + two-boundary census)
+      - name: Check conformance for vendored v1 snapshot
         run: pnpm conformance
 
-      - name: Check conformance for vendored v2 snapshot (268 + key census)
+      - name: Check conformance for vendored v2 snapshot
         run: pnpm conformance:v2
 
-      - name: Check conformance for vendored v3 snapshot (292 + key census)
+      - name: Check conformance for vendored v3 snapshot
         run: pnpm conformance:v3
 
-      - name: Check conformance for vendored role-attestation profile snapshot (40 + cross-profile)
+      - name: Check conformance for vendored role-attestation profile snapshot
         run: pnpm conformance:role-attestation
 
       - name: Check conformance for vendored content-assertion profile snapshot
         run: pnpm conformance:content-assertion
 
-      - name: Check conformance for vendored strict Ed25519 snapshot (2410, additive to the corpora above)
+      - name: Check conformance for vendored strict Ed25519 snapshot
         run: pnpm conformance:strict-ed25519
 
-      - name: Check conformance for vendored local-loopback HTTP profile snapshot (44)
+      - name: Check conformance for vendored local-loopback HTTP profile snapshot
         run: pnpm conformance:local-loopback-http
 
-      - name: Check conformance for vendored producer-canonicality snapshot (75, erratum 3)
+      - name: Check conformance for vendored producer-canonicality snapshot
         run: pnpm conformance:producer-canonicality
 
-      - name: Check conformance for vendored selector-float-zero snapshot (161, erratum 6)
+      - name: Check conformance for vendored selector-float-zero snapshot
         run: pnpm conformance:selector-float-zero
 
       - name: Unit + permissiveness under the portable backend (--conditions=bap-portable)
@@ -190,6 +216,9 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Check complete snapshot and documentation offline
+        run: pnpm check:corpus
+
       - name: Conformance lane (builds first)
         env:
           BAP_RUNTIMES: ${{ matrix.runtime }}
@@ -228,6 +257,9 @@ jobs:
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
+
+      - name: Check complete snapshot and documentation offline
+        run: pnpm check:corpus
 
       - name: Packed tarball checks (builds first)
         run: pnpm test:tarball
@@ -269,6 +301,9 @@ jobs:
 
       - name: Install the ${{ matrix.engine }} build pinned by the locked Playwright
         run: pnpm exec playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Check complete snapshot and documentation offline
+        run: pnpm check:corpus
 
       - name: Browser conformance lane (builds first)
         env:

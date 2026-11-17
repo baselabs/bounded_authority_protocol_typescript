@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { fsSource, CONFORMANCE_DIR } from "../conformance/node_source.js";
 import { CORES } from "../conformance/core/index.js";
 import { CoreAbort, type Core, type VerdictEntry } from "../conformance/core/types.js";
-import { assertVerdictDigest, certifyCorpus, completeVerdicts, expectedOutcome, expectedVerdicts } from "../conformance/certification.js";
+import { assertVerdictDigest, certifyCorpus, completeVerdicts, expectedOutcome, expectedVerdicts, snapshotDigest, assertSnapshot } from "../conformance/certification.js";
 import { firstDifferences, hash64, jcs, verdictDigest } from "../conformance/digest.js";
 const source = fsSource();
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -18,6 +18,11 @@ function fixture(run: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "bap-corpus-"));
   try { cpSync(join(CONFORMANCE_DIR, "priv"), join(dir, "priv"), {recursive: true}); cpSync(join(CONFORMANCE_DIR, "SOURCE"), join(dir, "SOURCE")); run(dir); }
   finally { rmSync(dir, {recursive: true, force: true}); }
+}
+function repinTree(dir: string): void {
+  const path = join(dir, "SOURCE"), pin = JSON.parse(readFileSync(path, "utf8"));
+  pin.tree_sha256 = snapshotDigest(fsSource(dir));
+  writeFileSync(path, JSON.stringify(pin));
 }
 function red(label: string, run: () => unknown, pattern: RegExp): void {
   assert.throws(run, (error: Error) => { assert.match(error.message, pattern); console.log(`RED ${label}: ${error.message}`); return true; });
@@ -78,7 +83,7 @@ test("duplicate certified ids are enforced even after rehashing a candidate", ()
   doc.cases[1].id = doc.cases[0].id;
   writeFileSync(target, JSON.stringify(doc));
   index.files.find((f: {path: string}) => f.path === file).sha256_base64url = hash64(readFileSync(target));
-  writeFileSync(indexPath, JSON.stringify(index)); pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(sourcePath, JSON.stringify(pin));
+  writeFileSync(indexPath, JSON.stringify(index)); pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(sourcePath, JSON.stringify(pin)); repinTree(dir);
   red("duplicate certified id", () => core.run(fsSource(dir)), /duplicate or invalid case id/);
 }));
 test("applicability and counts remain total even when an index is rehashed", () => fixture(dir => {
@@ -91,7 +96,7 @@ test("applicability and counts remain total even when an index is rehashed", () 
     else if (mutation === "count") index.files.find((f: {cases: number}) => f.cases > 0).cases++;
     else index.total_cases++;
     writeFileSync(indexPath, JSON.stringify(index));
-    pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(pinPath, JSON.stringify(pin));
+    pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(pinPath, JSON.stringify(pin)); repinTree(dir);
     red(`rehash ${mutation}`, () => certifyCorpus(fsSource(dir), core.dir), /applicability is not total|case count mismatch/);
   }
   writeFileSync(indexPath, bytes); cpSync(join(CONFORMANCE_DIR, "SOURCE"), pinPath);
@@ -100,7 +105,7 @@ test("applicability and counts remain total even when an index is rehashed", () 
 test("future published digests are checked from a real snapshot plus a generated file", () => fixture(dir => {
   const corpora = Object.fromEntries(CORES.map(core => { const cert = certifyCorpus(source, core.dir); return [cert.path, {index_sha256_base64url: cert.indexSha, case_count: cert.cases.length, verdict_digest_sha256_base64url: verdictDigest(expectedVerdicts(source, core.dir))}]; }));
   const path = join(dir, "priv/conformance/verdict-digests.json");
-  const write = () => writeFileSync(path, JSON.stringify({format: "bap-corpus-verdict-digests/1", corpora}, null, 2) + "\n");
+  const write = () => { writeFileSync(path, JSON.stringify({format: "bap-corpus-verdict-digests/1", corpora}, null, 2) + "\n"); repinTree(dir); };
   write();
   for (const core of CORES) assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
   const core = CORES[0]!, pin = corpora[certifyCorpus(source, core.dir).path]!, original = pin.verdict_digest_sha256_base64url;
@@ -143,3 +148,30 @@ test("JCS is structured, ordered, field-sensitive, and refuses non-JSON", () => 
   assert.deepEqual(firstDifferences(entries, entries), []);
   for (const value of [undefined, NaN, Infinity, "\ud800"]) assert.throws(() => jcs(value));
 });
+
+test("every core refuses auxiliary snapshot mutations, including a root digest file", () => fixture(dir => {
+  for (const path of ["v1/schemas/corpus-index.schema.json", "v1/vectors/grant-holder-proof.json", "verdict-digests.json"]) {
+    const target = join(dir, "priv/conformance", path);
+    const original = path === "verdict-digests.json" ? undefined : readFileSync(target);
+    writeFileSync(target, original ? Buffer.concat([original, Buffer.from(" ")]) : "{}");
+    for (const core of CORES) red(`${core.corpus} auxiliary ${path}`, () => core.run(fsSource(dir)), /tree SHA-256/);
+    if (original) writeFileSync(target, original); else rmSync(target);
+  }
+  assertSnapshot(fsSource(dir));
+}));
+test("a repinned real attestation case can grow the corpus without editing a runner count", () => fixture(dir => {
+  const core = CORES.find(c => c.corpus === "role-attestation")!;
+  const casePath = join(dir, core.dir, "attestation-cases.json"), indexPath = join(dir, core.dir, "index.json"), pinPath = join(dir, "SOURCE");
+  const cases = JSON.parse(readFileSync(casePath, "utf8")), index = JSON.parse(readFileSync(indexPath, "utf8")), pin = JSON.parse(readFileSync(pinPath, "utf8"));
+  cases.push({...cases[0], id: "adoption-count-growth-control"});
+  writeFileSync(casePath, JSON.stringify(cases));
+  index.attestation_cases = cases.length;
+  index.files.find((f: {path: string}) => f.path === "attestation-cases.json").sha256 = createHash("sha256").update(readFileSync(casePath)).digest("hex");
+  writeFileSync(indexPath, JSON.stringify(index));
+  pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath));
+  writeFileSync(pinPath, JSON.stringify(pin)); repinTree(dir);
+  const report = core.run(fsSource(dir));
+  assert.deepEqual(report.failures, []);
+  assert.equal(report.verdicts.length, cases.length);
+  assertVerdictDigest(fsSource(dir), core.dir, report.verdicts);
+}));
