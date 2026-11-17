@@ -6,6 +6,9 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Changed
 
+- CI runs on every push to `main` and `kci/**`: the push trigger has no `paths-ignore`, because a
+  landing candidate whose files were all filtered gets no run and cannot land. The
+  `test/ci-paths.test.ts` guard for that filter is removed with it.
 - Bind certification to the complete `priv/conformance/` subtree of Hex
   `bounded_authority_protocol` named in SOURCE at `conformance/priv/conformance/`, with release identity,
   outer checksum, complete-tree SHA-256 and nine index pins in `conformance/SOURCE`. Transactional vendoring verifies
