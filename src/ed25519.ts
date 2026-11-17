@@ -192,13 +192,11 @@ const isIdentity = ([x, y, z]: Point): boolean => x === 0n && y === z;
 
 // ---- public strict API (names and semantics mirror BoundedAuthorityProtocol.Ed25519) ----
 
-// Returns whether a raw 32-byte Ed25519 public key may enter a verification input: canonical, not one
-// of the eight small-order encodings, and on the curve (the RFC 8032 section 5.1.3 decode succeeds).
-// Any other input, including a non-32-byte or non-byte input, returns false.
 /**
  * Whether a raw 32-byte Ed25519 key may enter verification under rule S1: canonical, not one of
  * the eight small-order encodings, and on the curve. Never throws.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns `true` for a canonical, on-curve 32-byte key outside the small-order set; `false` otherwise. Never throws.
  */
 export function acceptablePublicKey(publicKey: Uint8Array): boolean {
   // Total: an exotic input whose typed-array getters throw (a Proxy, an object made from
@@ -211,15 +209,11 @@ export function acceptablePublicKey(publicKey: Uint8Array): boolean {
   }
 }
 
-// Returns whether a raw 32-byte public key is acceptable and torsion free ([L]A = O). A host calls this
-// at key enrollment, at trust install and before any deny-list or revocation comparison. It runs one
-// full scalar multiplication in pure BigInt arithmetic, so it never belongs on the per-signature
-// verification path. A canonical, torsion-free key has exactly one encoding per secret, so key equality
-// is identity equality.
 /**
  * Whether a raw 32-byte Ed25519 key is acceptable and torsion free (`[L]A = O`). Call it at key
  * enrollment, trust install and before deny-list comparison, not per request. Never throws.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns `true` for an acceptable key in the prime-order subgroup; `false` otherwise. Never throws.
  */
 export function torsionFree(publicKey: Uint8Array): boolean {
   try {
@@ -232,13 +226,11 @@ export function torsionFree(publicKey: Uint8Array): boolean {
   }
 }
 
-// Verifies an Ed25519 signature under rule S1. Returns true only for a 64-byte signature and a 32-byte
-// key that pass the canonical, small-order and scalar-range checks and then the backend's cofactorless
-// equation. Any other input, including wrong-size or non-byte input, returns false; it never throws.
 /**
  * Verifies an Ed25519 signature under rule S1 (canonical `A` and `R`, neither of small order, `S <
  * L`, cofactorless equation). Returns `false` for any invalid input; never throws.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns `true` when the strict encodings and Ed25519 equation verify the exact message; `false` otherwise. Never throws.
  */
 export function verifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   try {
@@ -303,20 +295,19 @@ export function ed25519Verify(
   }
 }
 
-// SHA-256 helper (FIPS 180-4), used by thumbprints + digests. The backend computes it. Every part must
-// be a Uint8Array; anything else throws InvalidError on both backends (never coerced).
 /**
  * SHA-256 over the concatenation of the parts. Throws `InvalidError` if any part is not a
  * `Uint8Array`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns The raw 32-byte SHA-256 digest of the byte parts concatenated in order. There is no protocol-rejection result.
  */
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   return backendSha256(...parts);
 }
 
-// SHA-256 over an ARRAY of chunks (no spread). Used by archive-verify, which hashes a caller-supplied
-// chunk list that may hold up to archive_chunks (65796) entries — beyond V8's ~65534 call-argument
-// ceiling, so the chunk list MUST be fed as an array, not spread into sha256(...chunks).
+// Hash an array of chunks without spreading it into call arguments. Archive verification can
+// supply 65,796 chunks, exceeding V8 call-argument limits. Pass the array directly to the
+// backend.
 export function sha256Concat(parts: readonly Uint8Array[]): Uint8Array {
   return backendSha256Concat(parts);
 }

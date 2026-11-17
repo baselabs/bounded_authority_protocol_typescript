@@ -93,8 +93,8 @@ test("role attestation round-trips both roles and returns anchor-posture facts",
     assert.equal(verified.ok, true, role);
     if (!verified.ok) return;
     const facts = verified.value;
-    // The facts contract (ADR 0036 D5): the anchor posture — trust not_evaluated, NO
-    // authorization marker (critical rule 1 reserves it to grant/envelope/export facts).
+    // Attestation facts report trust as not_evaluated, with no authorization marker.
+    // Only grant, envelope and anchored-export facts carry that separate marker.
     assert.deepEqual(
       Object.keys(facts).sort(),
       [
@@ -143,9 +143,8 @@ test("role attestation verify proves kid binding, signature, subject binding, an
     false,
   );
 
-  // Self-attestation. This first leg overrides only the expected context (the wire still
-  // carries the subject key), so it rejects at the subject-binding gate — a sanity leg; the
-  // wire-carried legs below are the discriminating proofs (cross-vendor review n2).
+  // This expected-only mismatch rejects at subject binding. The wire-carried fixture
+  // independently isolates the self-attestation guard.
   const selfMaterial = verifyAttestation(f.compact, {
     ...f.expected,
     subjectKeyId: "attestor-1",
@@ -266,14 +265,11 @@ test("role attestation producer validates its inputs fail-closed", () => {
   assert.equal(attestationSigningInput({ ...f.producer, jti: "" }).ok, false);
   assert.equal(attestationSigningInput({ ...f.producer, keyId: "attestor 1" }).ok, false);
   assert.equal(attestationSigningInput({ ...f.producer, subjectKeyId: "subject 1" }).ok, false);
-  // Non-string field types reject with the closed error — never coerce ("null") or throw a
-  // TypeError past the Result contract (cross-vendor review m2).
+  // Non-string fields return the closed error without coercion or TypeError.
   assert.equal(attestationSigningInput({ ...f.producer, keyId: null as unknown as string }).ok, false);
   assert.equal(attestationSigningInput({ ...f.producer, subjectKeyId: 999 as unknown as string }).ok, false);
   assert.equal(attestationSigningInput({ ...f.producer, jti: 12345 as unknown as string }).ok, false);
-  // A malformed caller Bounds object rejects with the closed error on every surface — not a
-  // TypeError out of coerceBounds' iteration (cross-vendor review m1 + the repair pass: the
-  // missing/null/array-override shapes are the ones that reached the broken branch).
+  // Malformed Bounds return the closed error on every profile surface.
   for (const malformedBounds of [
     {} as never,
     { maximum: { compact_bytes: 1 } } as never,
@@ -286,10 +282,10 @@ test("role attestation producer validates its inputs fail-closed", () => {
     assert.equal(assembleAttestationCompact(f.input, f.signature, malformedBounds).ok, false);
     assert.equal(verifyAttestation(f.compact, { ...f.expected, bounds: malformedBounds }).ok, false);
   }
-  // The legal hand-crafted shape still works (tightening takes effect — parse bounds).
+  // The legal hand-crafted shape remains valid and observes tightened parse bounds.
   const handCrafted = { maximum: MAXIMA, overrides: new Map([["compact_bytes", 4096]]) } as never;
   assert.equal(decodeAttestation(f.compact, handCrafted).ok, true);
-  // The producer takes no expected role and no private key — external signature only.
+  // Production takes an external signature with no expected role or private key.
   assert.equal(attestationSigningInput(f.producer).ok, true);
 });
 
@@ -307,12 +303,9 @@ test("role attestation producer honors caller bounds on its EMITTED bytes (findi
   assert.equal(attestationSigningInput(longJti, boundsNew({ json_bytes: 128 })).ok, false);
   assert.equal(attestationSigningInput(longJti, boundsNew({ jcs_bytes: 128 })).ok, false);
   assert.equal(attestationSigningInput(longJti, boundsNew({ compact_bytes: 200 })).ok, false);
-  // The emitted-number-lexeme class is closed one layer down in this surface: any integer
-  // whose Number-toString carries an exponent is >= 1e21 — far past the 2^53-1 magnitude
-  // bound — and the shared JCS encoder rejects it at production time (jcsEncode throws
-  // "jcs: integer bound"; injection-probed — a producer-side lexeme gate is structurally
-  // unreachable and was removed rather than shipped as dead coverage). The producing call
-  // still fails closed:
+  // Integers whose Number-toString spelling uses an exponent are at least 1e21, beyond
+  // the 2^53-1 magnitude bound. JCS rejects them during production; a separate producer
+  // lexeme guard is unreachable. The producing call must still return the closed error.
   assert.equal(
     attestationSigningInput({ ...f.producer, notBefore: 10 ** 30, expiresAt: 10 ** 31 }).ok,
     false,
@@ -392,15 +385,12 @@ test("role attestation decode enforces the closed header and payload sets and ca
   const extra = basePayloadMembers();
   extra.set("scope", { t: "string", v: strUtf8("everything") });
   assert.equal(decodeAttestation(buildCompact(baseHeaderMembers(), extra, sig)).ok, false);
-  // v deviations: value and integer/float tag distinction. The float leg must be built from
-  // raw text — jcsEncode canonicalizes Number 1.0 to the integer lexeme "1", so the float tag
-  // is only observable on the wire as a literal "1.0" lexeme (the corpus's v-float-lexeme
-  // bytes; the tagged decoder must reject it).
+  // Construct v:1.0 from raw text. JCS would encode Number 1.0 as 1 and erase the
+  // wire-level tag distinction being tested.
   assert.equal(decodeAttestation(buildCompact(baseHeaderMembers(), new Map([...basePayloadMembers(), ["v", { t: "int", v: 2 }]]), sig)).ok, false);
   const floatPayload = utf8(jcsEncode({ t: "object", v: basePayloadMembers() } as never)).replace('"v":1}', '"v":1.0}');
   assert.notEqual(floatPayload.indexOf("1.0"), -1);
-  // The header segment is the base64url of the JCS bytes — single-encoded (a stray double
-  // encode made these legs reject on a malformed header, not on the gate each names).
+  // Encode the JCS header once so malformed double encoding cannot mask the named guard.
   const canonicalHeaderSegment = utf8(base64urlEncode(jcsEncode({ t: "object", v: baseHeaderMembers() } as never)));
   const floatCompact = strUtf8(
     `${canonicalHeaderSegment}.${utf8(base64urlEncode(strUtf8(floatPayload)))}.${utf8(base64urlEncode(sig))}`,
@@ -435,10 +425,8 @@ test("role attestation decode enforces the closed header and payload sets and ca
   const nonCanonical = strUtf8(`${headerText}.${utf8(base64urlEncode(strUtf8(raw)))}.${utf8(base64urlEncode(sig))}`);
   assert.equal(decodeAttestation(nonCanonical).ok, false, "non-canonical payload order must reject");
 
-  // Duplicate member: raw JSON with a duplicated role member. The rejection is JOINT — the
-  // tagged decoder's duplicate gate fires first, and the payload-canonical gate is the
-  // backstop (a duplicate re-encodes to different bytes); the discriminating proof of the
-  // duplicate closure itself is the shared battery's json-level entry (depth-3 duplicate).
+  // This duplicate role member violates both duplicate detection and canonicality.
+  // The depth-3 decoder case isolates duplicate detection; this case pins wire rejection.
   const canonicalPayload = utf8(jcsEncode({ t: "object", v: basePayloadMembers() } as never));
   const dupPayload = canonicalPayload.replace('"role":"issuer"', '"role":"issuer","role":"issuer"');
   assert.notEqual(dupPayload, canonicalPayload);

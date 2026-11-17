@@ -1,74 +1,120 @@
 import { fail } from "./error.js";
 
-// The fixed v1 profile maxima, plus the content_bytes ceiling added by ADR 0037.
-// Pinned by the corpus bounds.new cases so any mistyped constant fails. Fixed-width keys
-// (REQ1-BOUNDS-fixed-widths, L395): digest_bytes, public_key_bytes, signature_bytes are the immutable
-// cryptographic constants of suite BAP1-Ed25519-SHA256 — they MUST equal the maximum exactly (widening
-// is forbidden); all others may be tightened to a positive integer at most the maximum.
 /**
  * The profile maxima, one entry per limit name. `boundsNew` can only tighten these.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
  */
 export const MAXIMA = {
+  /** Maximum compact size in bytes. */
   compact_bytes: 65536,
-  content_bytes: 65536, // ADR 0037: exact external content bytes, tightenable.
+  /** Maximum content size in bytes. */
+  content_bytes: 65536, // spec/bap-content-assertion-v1.md: exact external content bytes, tightenable.
+  /** Maximum encoded segment size in bytes. */
   encoded_segment_bytes: 32768,
+  /** Maximum decoded segment size in bytes. */
   decoded_segment_bytes: 24576,
+  /** Maximum input JSON size in bytes. */
   json_bytes: 65536,
+  /** Maximum nesting levels, with the root at depth zero. */
   depth: 32,
+  /** Maximum members per JSON object. */
   object_members: 64,
+  /** Maximum elements per JSON array. */
   array_items: 256,
+  /** Maximum JSON value nodes, including scalar and container nodes. */
   total_nodes: 4096,
+  /** Maximum decoded JSON string size in UTF-8 bytes. */
   string_bytes: 8192,
+  /** Maximum decoded JSON member-name size in UTF-8 bytes. */
   key_bytes: 128,
+  /** Maximum number lexeme size in bytes. */
   number_lexeme_bytes: 64,
+  /** Maximum absolute integer magnitude (2^53 - 1). */
   integer_magnitude: 9007199254740991,
+  /** Maximum absolute finite binary64 magnitude (2^53 - 1). */
   float_magnitude: 9007199254740991,
+  /** Maximum protected-header key ID size in ASCII bytes. */
   kid_bytes: 128,
+  /** Maximum canonical JSON output size in bytes. */
   jcs_bytes: 65536,
+  /** Maximum ASCII target URI size in bytes. */
   uri_bytes: 8192,
+  /** Maximum identifier size in bytes. */
   identifier_bytes: 512,
+  /** Maximum nonce size in bytes. */
   nonce_bytes: 512,
+  /** Maximum method size in bytes. */
   method_bytes: 32,
+  /** Maximum operation size in bytes. */
   operation_bytes: 128,
+  /** Maximum distinct audiences per grant. */
   audiences: 64,
+  /** Maximum distinct operations per grant. */
   operations: 64,
+  /** Maximum selectors per operation. */
   selectors: 64,
+  /** Maximum member-name segments per selector path. */
   path_segments: 32,
+  /** Maximum candidates in a one_of selector. */
   one_of_values: 256,
+  /** Exact raw Ed25519 key width in bytes. Major 3 checks its 65-byte P-256 keys separately. */
   public_key_bytes: 32,
+  /** Exact raw signature width in bytes, immutable for all supported suites. */
   signature_bytes: 64,
+  /** Exact SHA-256 digest width in bytes, immutable for all supported suites. */
   digest_bytes: 32,
+  /** Maximum allowed clock skew in seconds. Zero is allowed in expected context. */
   clock_skew: 60,
+  /** Maximum allowed proof age in seconds. Expected proof age must be positive. */
   proof_max_age: 300,
+  /** Maximum chain row size in bytes. */
   chain_row_bytes: 4096,
+  /** Maximum rows per checked consumption range. */
   chain_rows: 65536,
+  /** Maximum anchor size in bytes. */
   anchor_bytes: 8192,
+  /** Maximum archive header size in bytes. */
   archive_header_bytes: 8192,
+  /** Maximum framed or transport chunks in an archive input. */
   archive_chunks: 65796,
+  /** Maximum archive size in bytes. */
   archive_bytes: 270820384,
+  /** Maximum object version size in bytes. */
   object_version_bytes: 512,
+  /** Maximum archive-key transitions. */
   key_transitions: 256,
 } as const;
 
+/**
+ * A recognized MAXIMA limit name. Names ending in bytes count octets; clock_skew and proof_max_age use
+ * seconds; other entries count structures or bound numeric magnitude.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ */
 export type MaximaKey = keyof typeof MAXIMA;
 
-// The immutable maximum. Bounds.maximum() returns the profile maxima (REQ1-BOUNDS-tighten-only).
+/**
+ * Immutable-view resource limits. Use boundsNew to tighten positive ceilings. Digest, public-key and
+ * signature widths are fixed suite constants. Public boundaries revalidate caller-constructed values.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ */
 export interface Bounds {
+  /** Fixed profile ceiling table. Raw digests and signatures are 32 and 64 bytes; Ed25519 keys are 32 bytes. Major 3 checks its 65-byte P-256 keys separately. */
   readonly maximum: typeof MAXIMA;
+  /** Recognized positive tightened ceilings; cryptographic widths must stay exact. */
   readonly overrides: ReadonlyMap<MaximaKey, number>;
 }
 
 /**
  * The shared untightened `Bounds` value. Do not mutate it; build tightened bounds with
  * `boundsNew`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
  */
 export const MAXIMUM_BOUNDS: Bounds = { maximum: MAXIMA, overrides: new Map() };
 
 /**
  * A new, untightened `Bounds` value (the profile maxima).
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @returns Fresh untightened bounds using the profile ceiling table. No input is accepted and no protocol rejection occurs.
  */
 export function boundsMaximum(): Bounds {
   // Return a FRESH Bounds each call so a caller cannot mutate a shared singleton's overrides Map
@@ -88,7 +134,9 @@ const FIXED_WIDTH_KEYS: ReadonlySet<MaximaKey> = new Set<MaximaKey>([
 /**
  * A `Bounds` value that tightens named limits. Throws `InvalidError` for an unknown name, a
  * non-integer, non-positive or widening value, or a change to a fixed width.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @returns Bounds containing the validated tighten-only overrides; omitted input returns MAXIMUM_BOUNDS.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds {
   if (tightening === undefined) return MAXIMUM_BOUNDS;
@@ -110,22 +158,11 @@ export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds
   return { maximum: MAXIMA, overrides };
 }
 
-// Re-validate a Bounds object (mirrors the reference's Bounds.coerce/1, anchored_export_codec.ex:33
-// + runtime.ex:123 etc.). Bounds is an exported structural interface, so a caller can hand-craft a
-// {maximum, overrides} object that bypasses boundsNew — including a WIDENING override
-// (compact_bytes > MAXIMA). resolve() trusts the override directly; without this gate the
-// verify/decode paths would honor the forged widening. coerceBounds re-runs the boundsNew
-// validation over the override map so every entry point that COERCES caller-supplied bounds fails
-// closed on a forgery; the leaf resolve() carries the same structural gate for the paths that
-// resolve before coercing.
-//
-// Malformed STRUCTURE fails closed here too: a non-object, a missing maximum table, or an overrides
-// that is not a Map — missing, null, a bare array of non-pairs, a string — returns the single
-// closed error instead of throwing a TypeError out of the iteration below (which `trying` re-throws
-// as a bug, crashing the caller). Every legal Bounds carries its overrides as a Map (boundsNew,
-// MAXIMUM_BOUNDS, and the hand-crafted shape), so the instanceof gate is total; a hand-rolled
-// non-Map ReadonlyMap implementation now fails closed rather than iterating — a deliberate
-// tightening of an undocumented, never-produced shape.
+// Revalidate structural Bounds at each public boundary and in leaf resolution. Callers can
+// construct objects without boundsNew, so validate the maximum table and every override instead
+// of trusting them. Reject widening overrides and malformed structure with InvalidError.
+// Overrides must be a Map; arbitrary ReadonlyMap implementations are not accepted. This
+// prevents native iteration errors and forged limits.
 export function coerceBounds(b: Bounds): Bounds {
   if (typeof b !== "object" || b === null) fail("bounds.coerce: object required");
   if (typeof b.maximum !== "object" || b.maximum === null) fail("bounds.coerce: maximum table required");

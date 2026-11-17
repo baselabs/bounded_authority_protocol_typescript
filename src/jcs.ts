@@ -2,23 +2,18 @@ import { fail } from "./error.js";
 import { resolve, coerceBounds, MAXIMUM_BOUNDS, type Bounds, type MaximaKey } from "./bounds.js";
 import { strUtf8, utf8Str, type Tagged } from "./json.js";
 
-// RFC 8785 JSON Canonicalization Scheme over the tagged JSON algebra (spec/bap-v1.md,
-// REQ1-JSON-jcs-exact). Accepts only the tagged algebra. Enforces every JSON + output bound while
-// emitting RFC 8785 bytes: exact string escaping, invalid-Unicode rejection, unsigned UTF-16 object-
-// name sorting at every depth, preserved array order, and ECMAScript binary64 number text
-// (-0 as 0, fixed/exponent thresholds, lowercase e).
-//
-// Number formatting: RFC 8785 §3.2.2 mandates the shortest representation. ECMAScript's
-// Number.prototype.toString (and JSON.stringify of a number) IS the shortest round-tripping repr
-// (V8/Node matches this), so integers emit as bare integers and finite floats via their JS string
-// form. The tagged algebra's int/float distinction is preserved (1 → "1" as int; 1.0 → "1" as float
-// would be a Float tag, but JS coerces 1.0 to 1 at the value layer — the TAG carries the distinction,
-// the serialization is byte-identical for equal numeric value, matching the Elixir JCS).
+// Encode the tagged JSON algebra as RFC 8785 canonical UTF-8 bytes under JSON and output
+// bounds. Validate Unicode, escape strings exactly, sort object names by unsigned UTF-16 code
+// units and preserve array order. ECMAScript number formatting provides the shortest binary64
+// round-trip spelling, including negative zero as 0. Numeric tags retain semantic identity even
+// when integer and float values serialize identically. See REQ1-JSON-jcs-exact.
 
 /**
  * Encodes a tagged value as RFC 8785 canonical JSON bytes. Throws `InvalidError` on a value over
  * the limits or invalid Unicode.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ * @returns RFC 8785 canonical UTF-8 JSON bytes.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   // Re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override can widen
@@ -187,8 +182,8 @@ function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
   for (let i = 0; i < s.length; i++) {
     const cp = s.codePointAt(i)!;
     if (cp > 0xffff) {
-      // Astral — emit the two UTF-16 surrogates as raw UTF-8 bytes (RFC 8785 keeps them, no \u).
-      // Actually RFC 8785 emits astral chars as their UTF-8 bytes (not \u escapes). Emit raw.
+      // Emit astral code points as four-byte UTF-8 sequences. RFC 8785 preserves these
+      // characters without Unicode escape sequences.
       appendUtf8Bytes(cp, out);
       i++; // surrogate pair consumed 2 code units
     } else if (cp < 0x20) {
@@ -202,12 +197,9 @@ function escapeString(bytes: Uint8Array, bounds: Bounds): Uint8Array {
       const short = SHORT_ESCAPES[cp]!;
       for (let j = 0; j < short.length; j++) out.push(short.charCodeAt(j));
     } else if (cp === 0x7f) {
-      // DEL (0x7f): RFC 8785 serializes strings per ECMAScript JSON.stringify, which escapes only
-      // U+0000–U+001F plus quote (0x22) and backslash (0x5c) — so raw DEL is RFC-COMPLIANT, NOT an
-      // RFC deviation. The Elixir reference (whose bytes are the contract) emits RAW 0x7f here
-      // (jcs.ex:147 has no DEL case, so the general codepoint branch passes it through raw), and the
-      // SDK matches those bytes for identical signed inputs and request digests. Verified:
-      // Jcs.encode("x<DEL>y") -> [34,120,127,121,34].
+      // Emit DEL (0x7f) unchanged. RFC 8785 requires escaping U+0000 through U+001F, quotation
+      // marks and backslashes; DEL is outside that set. This preserves exact signing and
+      // request-digest bytes.
       out.push(0x7f);
     } else {
       appendUtf8Bytes(cp, out);
@@ -236,8 +228,8 @@ function appendUtf8Bytes(cp: number, out: number[]): void {
     out.push(0x80 | ((cp >> 6) & 0x3f));
     out.push(0x80 | (cp & 0x3f));
   } else {
-    // Astral code points (cp >= 0x10000) — 4-byte UTF-8 (RFC 8785 keeps astral chars as their UTF-8
-    // bytes, not \u escapes). The prior 3-byte-cap branch produced a malformed sequence for astral.
+    // Emit astral code points as four-byte UTF-8 sequences. RFC 8785 preserves these characters
+    // without Unicode escape sequences.
     out.push(0xf0 | (cp >> 18));
     out.push(0x80 | ((cp >> 12) & 0x3f));
     out.push(0x80 | ((cp >> 6) & 0x3f));

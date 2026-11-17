@@ -1,3 +1,11 @@
+/**
+ * The bap-role-attestation/1 sibling profile binds a distinct public subject key to issuer or holder
+ * for a bounded window under an already-trusted Ed25519 attestor. Select explicitly: no grant profile
+ * parses these bytes. Verification proves a signature and context only; trust and operational
+ * enrollment remain host policy.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @module roleAttestation
+ */
 import { isStringOrUri } from "./string_or_uri.js";
 import { fail, assert, trying, type Result } from "./error.js";
 import { parseCompact, assembleSegments, type SigningInput } from "./compact.js";
@@ -10,80 +18,117 @@ import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } fr
 import type { HistoricalPublicKey } from "./v1.js";
 import { redacted } from "./redact.js";
 
-// The bap-role-attestation/1 sibling profile (ADR 0036; spec/bap-role-attestation-v1.md) — a
-// standalone, grant-unbound compact JWS in which an attestor key binds a subject key to a role
-// for a bounded window. It single-sources the contract-major-1 primitives (Ed25519/EdDSA under
-// BAP1-Ed25519-SHA256, the tagged JSON/JCS/base64url/JWK machinery — this module imports the
-// same primitive layers src/v1.ts builds on) and is parsed by no contract-major profile: every
-// major rejects its `ba+role-attestation` typ, and it rejects every major typ, with the single
-// closed error. Profile selection lives in this separately named namespace — never inferred
-// from bytes, context, or a failed verification (REQ-RA1-CORE-no-inference-fallback).
-//
-// Derived from the normative sources alone (ADR 0014's no-derivation bar): the profile spec +
-// the certified 40-case corpus at conformance/corpus-role-attestation.
-//
-// Verification is not authority: facts carry trust "not_evaluated" and NO
-// authorization marker — the anchor-facts posture ADR 0036 D5 fixes for this profile.
+// The separately selected bap-role-attestation/1 profile binds a subject key to a role for a
+// bounded window. It reuses Ed25519, tagged JSON, JCS, base64url and JWK primitives. Contract-
+// major grant profiles reject its typ, and it rejects theirs. Verification returns signature
+// and window facts with trust not_evaluated and no authorization marker. See spec/bap-role-
+// attestation-v1.md.
 
 const ALG = "EdDSA";
 const ATTESTATION_TYP = "ba+role-attestation";
 const VERSION = 1;
 const ROLES = ["issuer", "holder"] as const;
 
-// --- public types (spec §3 expected context; ADR 0036 D4/D5) ---
+// --- public types (spec §3 expected context; spec/bap-role-attestation-v1.md §3) ---
 
-// The attestor context is the anchor's HistoricalPublicKey shape: key id, raw 32-byte public
-// key, and its own [valid_from, valid_before) validity window (valid_before null = unbounded).
+/**
+ * An already-trusted Ed25519 attestor key and its half-open historical validity window. Raw keys are
+ * 32 bytes; endpoints are integer Unix seconds, with null for an unbounded upper endpoint.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ */
 export type AttestorKey = HistoricalPublicKey;
 
+/**
+ * Explicit attestor trust, subject identity and evaluation time for role verification. Success proves
+ * a signature and window, but does not enroll the subject or operationally authorize its role.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ */
 export interface ExpectedAttestation {
+  /** Already-trusted attestor public key and its half-open validity window. */
   readonly attestor: AttestorKey;
+  /** Subject kid, 1 to 128 permitted ASCII bytes. Verification rejects equality with the attestor kid. */
   readonly subjectKeyId: string;
-  readonly subjectPublicKey: Uint8Array; // raw 32
-  readonly now: number; // integer; the SDK reads no clock
+  /** Raw 32-byte acceptable Ed25519 subject key. Verification rejects self-attestation by key material. */
+  readonly subjectPublicKey: Uint8Array;
+  /** Host-supplied integer Unix seconds. The verifier reads no clock. */
+  readonly now: number;
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
-// The producer input (external-signature-only: the package owns no signer and accepts no
-// private key or signing callback — REQ-RA1-API-no-signer).
+/**
+ * Unsigned, grant-unbound role attestation for a distinct subject key. Verification requires
+ * [notBefore, expiresAt) to fit within the attestor window. Signing remains external.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ */
 export interface AttestationProducer {
-  readonly keyId: string; // the attestor key id (kid rules)
-  readonly jti: string; // non-empty bounded StringOrUri (grant jti rules)
-  readonly subjectKeyId: string; // kid rules
-  readonly subjectPublicKey: Uint8Array; // raw 32
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Artifact StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly jti: string;
+  /** Subject kid, 1 to 128 permitted ASCII bytes. Verification rejects equality with the attestor kid. */
+  readonly subjectKeyId: string;
+  /** Raw 32-byte acceptable Ed25519 subject key. Verification rejects self-attestation by key material. */
+  readonly subjectPublicKey: Uint8Array;
+  /** Attested role, exactly issuer or holder. Operational enrollment remains host policy. */
   readonly role: "issuer" | "holder";
-  readonly notBefore: number; // integer
-  readonly expiresAt: number; // integer; the acceptance window is [notBefore, expiresAt)
+  /** Inclusive validity lower endpoint in integer Unix seconds. */
+  readonly notBefore: number;
+  /** Exclusive attestation expiry in integer Unix seconds. No clock skew applies. */
+  readonly expiresAt: number;
 }
 
-// Bounded decode result: value-bearing, no trust evaluation (the decode surface mirrors
-// decodeGrant's posture — verification: "not_evaluated").
+/**
+ * Canonical role-attestation claims after bounded decoding only. Signature, key window and expected
+ * subject remain unverified. These values cannot enroll a key or authorize a role.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ */
 export interface AttestationDecoded {
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
   readonly keyId: string;
+  /** Artifact StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly jti: string;
+  /** Subject kid, 1 to 128 permitted ASCII bytes. Verification rejects equality with the attestor kid. */
   readonly subjectKeyId: string;
-  readonly subjectPublicKey: Uint8Array; // raw 32
+  /** Raw 32-byte acceptable Ed25519 subject key. Verification rejects self-attestation by key material. */
+  readonly subjectPublicKey: Uint8Array;
+  /** Attested role, exactly issuer or holder. Operational enrollment remains host policy. */
   readonly role: string;
+  /** Inclusive validity lower endpoint in integer Unix seconds. */
   readonly notBefore: number;
+  /** Exclusive attestation expiry in integer Unix seconds. No clock skew applies. */
   readonly expiresAt: number;
+  /** No cryptographic verification has run. Parsing alone establishes no trust or execution authority. */
   readonly verification: "not_evaluated";
 }
 
-// AttestationFacts (ADR 0036 D5): the enumerated field set is the facts contract — the
-// anchor-facts posture (verification signature_and_window, trust not_evaluated, NO
-// authorization marker; fingerprints are RFC 7638 Ed25519 thumbprints derived internally;
-// facts carry no raw key material, no signature, and no decision).
+/**
+ * Role facts after signature, subject and validity-window checks. Fingerprints are raw 32-byte RFC
+ * 7638 thumbprints. Trust remains unevaluated; there is no authorization marker or execution meaning.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ */
 export interface AttestationFacts {
+  /** Role-attestation profile version 1, not the npm package version. */
   readonly version: 1;
+  /** Attestor protected-header kid, 1 to 128 permitted ASCII bytes. */
   readonly attestorKeyId: string;
-  readonly attestorKeyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte RFC 7638 thumbprint of the attestor public key. */
+  readonly attestorKeyFingerprint: Uint8Array;
+  /** Subject kid, 1 to 128 permitted ASCII bytes. Verification rejects equality with the attestor kid. */
   readonly subjectKeyId: string;
-  readonly subjectKeyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte RFC 7638 thumbprint of the subject public key. */
+  readonly subjectKeyFingerprint: Uint8Array;
+  /** Attested role, exactly issuer or holder. Operational enrollment remains host policy. */
   readonly role: string;
+  /** Artifact StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly jti: string;
+  /** Inclusive validity lower endpoint in integer Unix seconds. */
   readonly notBefore: number;
+  /** Exclusive attestation expiry in integer Unix seconds. No clock skew applies. */
   readonly expiresAt: number;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "signature_and_window";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
 }
 
@@ -150,8 +195,8 @@ interface AttestationClaims {
   readonly exp: number;
 }
 
-// Protected header: exactly {alg, kid, typ}; JCS-canonical bytes (REQ-RA1-HEADER-closed-set,
-// REQ-RA1-CLAIM-canonical — both segments must equal their RFC 8785 re-encoding).
+// The protected header has exactly {alg, kid, typ}. Both protected and payload segments must
+// equal their RFC 8785 canonical encoding under REQ-RA1-CLAIM-canonical.
 function parseAttestationHeader(seg: ReturnType<typeof parseCompact>, bounds: Bounds): { kid: string } {
   const h = jsonDecode(seg.protectedBytes, bounds);
   requireObjectExact(h, ["alg", "kid", "typ"], "attestation header");
@@ -162,11 +207,10 @@ function parseAttestationHeader(seg: ReturnType<typeof parseCompact>, bounds: Bo
   return { kid };
 }
 
-// Payload: exactly {v, jti, key_id, public_key, role, nbf, exp} with the member rules of
-// spec §2 — v an integer 1 (the tagged algebra's int tag rejects float lexemes like 1.0),
-// jti under grant-jti StringOrUri rules, key_id under kid rules, public_key base64url of
-// exactly 32 raw Ed25519 bytes, role in the closed {issuer, holder} set, integral nbf < exp
-// (REQ-RA1-CLAIM-closed-required, -window, -canonical).
+// The payload has exactly {v, jti, key_id, public_key, role, nbf, exp}. Version v is integer-
+// tagged 1. Apply the grant-jti and kid string rules, decode public_key to exactly 32 Ed25519
+// bytes, require role issuer or holder, and enforce integral nbf < exp. See spec/bap-role-
+// attestation-v1.md#claims.
 function parseAttestationPayload(seg: ReturnType<typeof parseCompact>, bounds: Bounds): AttestationClaims {
   const p = jsonDecode(seg.payloadBytes, bounds);
   requireObjectExact(p, ["exp", "jti", "key_id", "nbf", "public_key", "role", "v"], "attestation payload");
@@ -198,12 +242,9 @@ function parseAttestation(compact: Uint8Array, bounds: Bounds): { kid: string; c
 
 // --- the caller-supplied expected context (fail-closed shallow + magnitude parity) ---
 
-// Context validation before any deref: a null/wrong-typed struct fails closed as the single error,
-// never a native TypeError. The attestor window endpoints and `now` are magnitude-bounded under
-// integer_magnitude (2^53-1) and must be integers — the verifyHistoricalAnchor parity (v1.ts: the
-// Rust round-4 fix); the sibling Python/Go legs shipped without it once and it was repaired the
-// same day. A fractional `now` is verdict-load-bearing: the half-open window comparison alone would
-// admit it.
+// Validate context before dereferencing fields. Wrong types return the closed error. Attestor-
+// window endpoints and now must be integers within integer_magnitude. Half-open window
+// comparisons alone would admit fractional times.
 function validateExpected(expected: ExpectedAttestation): Bounds {
   if (expected === null || typeof expected !== "object") fail("verify_attestation: expected context required");
   const a = expected.attestor;
@@ -229,11 +270,11 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
 
 // --- the four public surfaces (spec §4; REQ-RA1-API-complete) ---
 
-// 1. attestation signing-input production (external signature only).
 /**
  * Builds the signing input of a `bap-role-attestation/1` attestation: the attestor binds a subject
  * key to the `issuer` or `holder` role for `[notBefore, expiresAt)`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
+ * @returns Canonical protected and payload base64url segments for the role attestation in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function attestationSigningInput(attestation: AttestationProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -272,9 +313,8 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
       ["role", { t: "string", v: strUtf8(attestation.role) }],
       ["v", { t: "int", v: VERSION }],
     ]);
-    // Producer/consumer bounds agreement: the EMITTED segments and projected compact must satisfy
-    // the same caller-resolved limits the decoder enforces, and the emitted number lexemes must be
-    // decodable — the producer must not mint bytes its own consumer rejects.
+    // Apply decoder bounds to emitted segments, the projected compact and emitted number
+    // lexemes. A producer must refuse bytes its consumer would reject.
     const payloadJson = jcsEncode({ t: "object", v: payload }, b);
     if (payloadJson.length > resolve(b, "json_bytes" as MaximaKey)) {
       fail("attestation_signing_input: emitted json_bytes");
@@ -303,13 +343,11 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
   });
 }
 
-// 2. compact assembly from signing input and external signature — revalidates the protected
-// header, payload member rules, segment bounds, and signature width under this profile before
-// returning a compact artifact (REQ-RA1-API-assembly-revalidate; symmetry with decode/verify).
 /**
  * Joins a role-attestation signing input and a 64-byte signature into a compact JWS and re-parses
  * it. It does not verify the signature.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
+ * @returns Exact ASCII role-attestation compact bytes in a success Result, without signature verification. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function assembleAttestationCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -330,11 +368,11 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
   });
 }
 
-// 3. attestation decoding — bounded decode, no trust evaluation.
 /**
  * Parses and validates a role attestation's structure without checking its signature or window
  * (`verification: "not_evaluated"`).
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
+ * @returns Canonical attestation claims in a success Result, with verification not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<AttestationDecoded> {
   return trying(() => {
@@ -354,18 +392,12 @@ export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<
   });
 }
 
-// 4. attestation verification — the citation surface
-// (BoundedAuthorityProtocol.RoleAttestation.V1.verify_attestation/2). Pure function from
-// caller-supplied bytes + caller-supplied trusted inputs and expected context; proves spec §3
-// (1) closed sets + canonical bytes, (2) kid binding + Ed25519 signature under the attestor
-// key, (3) subject binding byte-equality, (4) self-attestation rejection (thumbprint and key
-// id legs), (5) window containment in the attestor key window (exp == valid_before is
-// containment and accepts), (6) now in the half-open [nbf, exp). Single closed error.
 /**
  * Verifies a role attestation under the attestor key: signature, subject key id and key, no
  * self-attestation, window containment in the attestor key's validity, and `nbf <= now < exp`.
  * Facts carry `trust: "not_evaluated"`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
+ * @returns Redacted AttestationFacts in a success Result after signature, subject and window checks; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttestation): Result<AttestationFacts> {
   return trying(() => {
@@ -378,16 +410,15 @@ export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttesta
     if (!ed25519Verify(seg.signingInput, seg.signature, key)) fail("verify_attestation: signature");
     if (claims.subjectKeyId !== expected.subjectKeyId) fail("verify_attestation: subject key id binding");
     if (!bytesEqual(claims.subjectPublicKey, expected.subjectPublicKey)) fail("verify_attestation: subject key binding");
-    // Self-attestation (REQ-RA1-VERIFY-no-self-attestation): the attestor thumbprint MUST NOT
-    // equal the subject thumbprint, and the attestor key id MUST NOT equal the subject key id —
-    // each leg rejects on its own.
+    // Reject self-attestation when either the attestor thumbprint equals the subject thumbprint
+    // or the attestor key identifier equals the subject key identifier. Each check is
+    // independently required by REQ-RA1-VERIFY-no-self-attestation.
     const subjectFingerprint = thumbprintRaw(jwkFromPublicKey(claims.subjectPublicKey));
     if (bytesEqual(attestorFingerprint, subjectFingerprint)) fail("verify_attestation: self-attestation material");
     if (expected.attestor.keyId === claims.subjectKeyId) fail("verify_attestation: self-attestation key id");
-    // Window containment (REQ-RA1-VERIFY-window-containment): nbf >= valid_from and, when the
-    // attestor window is bounded, exp <= valid_before — a retired attestor key cannot backdate
-    // an outliving attestation; exp == valid_before is containment and accepts (the half-open
-    // now window already prevents acceptance at any instant the key no longer covers).
+    // Require nbf >= valid_from and, for a bounded attestor window, exp <= valid_before.
+    // Equality at expiry is valid containment because verification still requires now < exp. A
+    // retired key cannot attest beyond its validity window.
     if (claims.nbf < expected.attestor.validFrom) fail("verify_attestation: nbf containment");
     if (expected.attestor.validBefore !== null && claims.exp > expected.attestor.validBefore) {
       fail("verify_attestation: exp containment");

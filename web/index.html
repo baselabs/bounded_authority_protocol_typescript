@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BAP verifier — the resource's side, in your browser</title>
-<meta name="description" content="The verify side of the Bounded Authority Protocol: check envelopes, decode grants and proofs, get cryptographic facts — deterministically, with no reason codes for attackers. Runs the real verifier package in your browser.">
+<title>BAP verifier: verify requests in your browser</title>
+<meta name="description" content="The verify side of the Bounded Authority Protocol: check envelopes, decode grants and proofs, get deterministic cryptographic facts with closed failures. Runs the real verifier package in your browser.">
 <link rel="stylesheet" href="./styles.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%230f172a'/%3E%3Ctext x='24' y='32' font-family='Arial,sans-serif' font-size='19' font-weight='800' text-anchor='middle' fill='%2334d399'%3E[BAP]%3C/text%3E%3C/svg%3E">
 </head>
@@ -33,8 +33,9 @@
     <span class="brand"><span class="wordmark"><i>[</i>BAP<i>]</i></span></span>
     <span class="fam">
       <a href="https://baselabs.github.io/bounded_authority_protocol/" title="The protocol hub">Protocol</a>
-      <a href="https://baselabs.github.io/bounded_authority_signer_typescript/" title="The signer package — with the live envelope playground">Signer</a>
+      <a href="https://baselabs.github.io/bounded_authority_signer_typescript/" title="The signer package and live envelope playground">Signer</a>
       <a href="#" class="here" title="You are here">Verifier</a>
+      <a href="./api/" title="Search the versioned verifier API">API reference</a>
       <a href="https://github.com/baselabs/bounded_authority_report_adapter" title="The Elixir reference implementation">Elixir&nbsp;reference</a>
     </span>
     <a class="gh" href="https://github.com/baselabs/bounded_authority_protocol_typescript">GitHub&nbsp;↗</a>
@@ -48,12 +49,12 @@
     <p class="lede">Somewhere between your MCP server and the caller, a question has to be answered
     without trusting anyone: <strong>does this request carry a valid grant and proof for exactly this call?</strong> The verifier
     package answers it deterministically: issuer signature, holder binding, operation match, time
-    window — cryptographic facts, no reason codes, no oracles. This page runs the real package.</p>
+    window. Success returns cryptographic facts; failure carries no reason code. This page runs the real package.</p>
     <div class="hero-actions">
       <a class="btn primary" href="#bench"><svg class="ic"><use href="#i-terminal"/></svg> Open the bench</a>
       <a class="btn ghost" href="#install">npm i @bounded-authority-protocol/verifier</a>
     </div>
-    <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier never sees private keys — only public keys and bytes. The demo envelope below is minted
+    <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier accepts public keys and bytes. It never sees private keys. The demo envelope below is minted
     in your browser by the signer package; this package just judges it.</p>
     <ul class="badges">
       <li>npm 2.0.0</li><li>tested in Linux CI</li><li>pure, deterministic verify path</li>
@@ -73,12 +74,12 @@
       <h3>Facts, not feelings.</h3>
       <p class="pain">“The token looked valid” is not an answer your auditors, or your incident
       review, can use.</p>
-      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> checkEnvelope returns the binding facts — issuer identity, holder key
-      fingerprint, operation, window — <strong>or exactly {"ok":false}</strong>. Never a maybe.</p>
+      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> checkEnvelope returns binding facts for the issuer, holder key, operation and window on success.
+      A refusal is <strong>exactly {"ok":false}</strong>.</p>
     </article>
     <article class="whycard">
       <h3>No oracle for attackers.</h3>
-      <p class="pain">Verbose verifiers leak which check failed — free reconnaissance for anyone
+      <p class="pain">Verbose verifiers reveal which check failed, giving reconnaissance to anyone
       probing your boundary.</p>
       <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The result is closed: one invalid, <strong>no reason, no partial</strong>.
       Your logs record what YOU choose; the caller learns nothing.</p>
@@ -87,8 +88,8 @@
       <h3>Pure and deterministic.</h3>
       <p class="pain">A verifier that reads the clock, the network, or the environment decides
       differently on Tuesday.</p>
-      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The verify path is pure — no I/O, no clock, no RNG —
-      <strong>enforced by its own lint gate</strong>, and proven against certified conformance corpora.</p>
+      <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The verify path performs no I/O and reads no clock or random source.
+      <strong>A lint gate enforces purity</strong>, and certified corpora check conformance.</p>
     </article>
   </div>
 </section>
@@ -97,7 +98,7 @@
   <div class="sec-head">
     <h2>The bench</h2>
     <p>Everything is live: this page bundles the real verifier and signer packages. Step 1 mints a
-    genuine envelope in your browser — then judge it, decode it, and try to sneak one past.</p>
+    genuine envelope in your browser. Verify it, decode it and try a mutation.</p>
     <button id="reset" class="btn subtle"><svg class="ic"><use href="#i-key"/></svg> New keys · reset</button>
   </div>
 
@@ -124,23 +125,23 @@
     <article class="lane verifier" id="lane-verifier">
       <header><svg class="ic"><use href="#i-shield"/></svg> Your resource <span class="role-badge">the verifier</span></header>
       <dl class="props">
-        <div><dt>trusts issuer key</dt><dd><code id="trust-key">—</code></dd></div>
-        <div><dt>expects</dt><dd>the request as minted — nothing more</dd></div>
+        <div><dt>trusts issuer key</dt><dd><code id="trust-key">Not evaluated</code></dd></div>
+        <div><dt>expects</dt><dd>the exact minted request</dd></div>
       </dl>
       <button id="btn-verify" class="btn actorbtn verifier" disabled><svg class="ic"><use href="#i-shield"/></svg> checkEnvelope</button>
       <div class="verdict" id="verdict" data-state="idle">
         <span class="verdict-mark"><svg class="ic"><use href="#i-terminal"/></svg></span>
         <span class="verdict-text">verify an envelope to see the fact sheet</span>
       </div>
-      <div id="facts-body">—</div>
+      <div id="facts-body">Not evaluated</div>
     </article>
   </div>
 
   <div class="decode-row">
     <div class="panel-head"><div class="panel-badge"><svg class="ic"><use href="#i-doc"/></svg></div><div class="panel-titles"><span class="panel-title">Decode</span><span class="panel-sub">The contents of each artifact, decoded structurally. Decoding checks no signature and grants no trust; the verdict comes from checkEnvelope.</span></div></div>
     <div class="decode-grid">
-      <div id="decode-grant" data-label="grant (decodeGrant)">—</div>
-      <div id="decode-proof" data-label="proof (decodeProof)">—</div>
+      <div id="decode-grant" data-label="grant (decodeGrant)">Not evaluated</div>
+      <div id="decode-proof" data-label="proof (decodeProof)">Not evaluated</div>
     </div>
   </div>
 
@@ -153,7 +154,7 @@
       <button class="btn danger" data-tamper="impostor" disabled>Steal the grant with another key</button>
       <button class="btn danger" data-tamper="issuer" disabled>Wrong issuer trusted</button>
     </div>
-    <p class="hint" id="tamper-hint">Mint and verify first — then try to sneak one past.</p>
+    <p class="hint" id="tamper-hint">Mint and verify an envelope, then try a mutation.</p>
   </div>
 
   <div class="wireviewer">
@@ -166,24 +167,24 @@
 <section id="lifecycle" class="wrap">
   <div class="why-head"><h2>The family lifecycle</h2><p>Three protocols, one chain of evidence: what the agent is, what was agreed, what this call may do.</p></div>
   <div class="lifecycle">
-<a class="lstep" href="https://baselabs.github.io/agent_blueprint_protocol/"><span class="lmark"><i>[</i>ABP<i>]</i></span><div><b>Define the agent</b><small>Blueprint Core + Deployment Manifest — identity, bounds that only narrow, evidence commitments, pinned to one release digest</small></div></a>
+<a class="lstep" href="https://baselabs.github.io/agent_blueprint_protocol/"><span class="lmark"><i>[</i>ABP<i>]</i></span><div><b>Define the agent</b><small>Blueprint Core and Deployment Manifest bind identity, narrowing bounds and evidence commitments to one release digest</small></div></a>
     <div class="larrow">→</div>
-<a class="lstep" href="https://baselabs.github.io/charter_agreement_protocol/"><span class="lmark"><i>[</i>CAP<i>]</i></span><div><b>Agree the terms</b><small>Charter revisions bind ABP release digests (abp_bindings); every receipt records the action’s deployment digest — signed by both parties</small></div></a>
+<a class="lstep" href="https://baselabs.github.io/charter_agreement_protocol/"><span class="lmark"><i>[</i>CAP<i>]</i></span><div><b>Agree the terms</b><small>Charter revisions bind ABP release digests (abp_bindings); both parties sign receipts that record each action’s deployment digest</small></div></a>
     <div class="larrow">→</div>
-<span class="lstep now"><span class="lmark"><i>[</i>BAP<i>]</i></span><div><b>Authorize each request</b><small>Issuer-signed grants + holder proofs govern every call, per request — the authority layer over OAuth</small></div></span>
+<span class="lstep now"><span class="lmark"><i>[</i>BAP<i>]</i></span><div><b>Bind authority to each request</b><small>OAuth 2.0 is an authorization framework for delegated, scoped access. BAP complements it with issuer grants and holder proofs bound to exact typed request bytes. The pure verifier returns facts; the host applies authorization policy.</small></div></span>
   </div>
 </section>
 
 <section class="props-band">
   <div class="wrap grid4">
     <article><svg class="ic big"><use href="#i-lock"/></svg><h3>Verify-only</h3>
-      <p>The package produces no signatures and holds no keys — it consumes bytes and returns facts. The signing side lives in the signer package.</p></article>
+      <p>The package consumes public keys and bytes and returns facts. It produces no signatures and holds no private keys. The signing side lives in the signer package.</p></article>
     <article><svg class="ic big"><use href="#i-ban"/></svg><h3>Closed results</h3>
       <p>Ok&lt;Facts&gt; or {"ok":false}. No error taxonomy to leak, no partial acceptance to abuse.</p></article>
     <article><svg class="ic big"><use href="#i-alert"/></svg><h3>Profile separation</h3>
       <p>Standard and local-loopback proofs never mix: each family verifies through its own check function and rejects the other.</p></article>
     <article><svg class="ic big"><use href="#i-x"/></svg><h3>Conformance-proven</h3>
-      <p>Certified corpora from the protocol monorepo run in CI — the bytes this page verifies are the bytes the spec froze.</p></article>
+      <p>CI checks this implementation against the protocol’s certified corpora. This page runs that verifier directly.</p></article>
   </div>
 </section>
 
@@ -192,11 +193,11 @@
   <table class="signers">
     <thead><tr><th>Function</th><th>Answers</th></tr></thead>
     <tbody>
-      <tr><td><code>checkEnvelope</code></td><td>grant + proof against an expected request — the resource’s entry point</td></tr>
+      <tr><td><code>checkEnvelope</code></td><td>grant and proof against the resource’s expected request</td></tr>
       <tr><td><code>checkLocalLoopbackHttpEnvelope</code></td><td>same, for the <code>ba+loopback-proof</code> profile (canonical loopback targets only)</td></tr>
       <tr><td><code>verifyGrant</code></td><td>a grant standalone against one trusted issuer</td></tr>
       <tr><td><code>decodeGrant</code> / <code>decodeProof</code></td><td>structural contents of either compact, marked <code>verification: not_evaluated</code>; no signature check. What the bench shows</td></tr>
-      <tr><td><code>verifyHistoricalAnchor</code> / <code>verifyKeyTransition</code></td><td>the historical surfaces — boundary anchors and key rotations</td></tr>
+      <tr><td><code>verifyHistoricalAnchor</code> / <code>verifyKeyTransition</code></td><td>historical boundary anchors and key rotations</td></tr>
       <tr><td><code>checkChain</code> / <code>verifyAnchoredExport</code></td><td>consumption chains and anchored exports</td></tr>
       <tr><td><code>v2</code> / <code>v3</code> namespaces</td><td>the same surface for contract-major 2 (range selectors) and contract-major 3 (the ES256 suite); each major rejects the others’ bytes</td></tr>
       <tr><td><code>roleAttestation.verifyAttestation</code></td><td>a role attestation binding a subject key to <code>issuer</code> or <code>holder</code> within the attestor key’s window</td></tr>

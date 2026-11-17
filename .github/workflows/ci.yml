@@ -7,11 +7,10 @@ on:
     # skipped: pnpm test typechecks and runs their samples; LICENSE and NOTICE ship in the tarball the
     # package job installs. test/ci-paths.test.ts fails if a glob here matches a file a check reads.
     paths-ignore:
-      - "CHANGELOG.md"
       - ".github/ISSUE_TEMPLATE/**"
   pull_request:
 
-  # Nightly currency meter (latest-first, BAP ADR-0032 shape): paths-ignore
+  # Nightly currency meter (latest-first): paths-ignore
   # applies only to push/pull_request events, so a scheduled run executes the
   # full workflow (verify + dependency-currency) regardless of what last
   # touched the tree. Upstream drift reddens the badge AT the drift within a
@@ -64,6 +63,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Build versioned API reference (warnings are errors)
+        run: pnpm docs:api
+
       - name: Browser typecheck (src/ and the browser lane page, DOM + ES2022, no ambient types)
         run: pnpm typecheck:browser
 
@@ -85,37 +87,37 @@ jobs:
       - name: Permissiveness mutation-gate
         run: pnpm test:permissiveness
 
-      - name: Conformance — vendored v1 snapshot (283 + two-boundary census)
+      - name: Check conformance for vendored v1 snapshot (283 + two-boundary census)
         run: pnpm conformance
 
-      - name: Conformance — vendored v2 snapshot (268 + curated census)
+      - name: Check conformance for vendored v2 snapshot (268 + curated census)
         run: pnpm conformance:v2
 
-      - name: Conformance — vendored v3 snapshot (292 + curated census)
+      - name: Check conformance for vendored v3 snapshot (292 + curated census)
         run: pnpm conformance:v3
 
-      - name: Conformance — vendored role-attestation profile snapshot (40 + cross-profile)
+      - name: Check conformance for vendored role-attestation profile snapshot (40 + cross-profile)
         run: pnpm conformance:role-attestation
 
-      - name: Conformance — vendored content-assertion profile snapshot
+      - name: Check conformance for vendored content-assertion profile snapshot
         run: pnpm conformance:content-assertion
 
-      - name: Conformance — vendored strict Ed25519 snapshot (2410, additive to the corpora above)
+      - name: Check conformance for vendored strict Ed25519 snapshot (2410, additive to the corpora above)
         run: pnpm conformance:strict-ed25519
 
-      - name: Conformance — vendored local-loopback HTTP profile snapshot (44)
+      - name: Check conformance for vendored local-loopback HTTP profile snapshot (44)
         run: pnpm conformance:local-loopback-http
 
-      - name: Conformance — vendored producer-canonicality snapshot (75, erratum 3)
+      - name: Check conformance for vendored producer-canonicality snapshot (75, erratum 3)
         run: pnpm conformance:producer-canonicality
 
-      - name: Conformance — vendored selector-float-zero snapshot (161, erratum 6)
+      - name: Check conformance for vendored selector-float-zero snapshot (161, erratum 6)
         run: pnpm conformance:selector-float-zero
 
       - name: Unit + permissiveness under the portable backend (--conditions=bap-portable)
         run: pnpm test:portable
 
-      - name: Conformance — every corpus under the portable backend (verdict digests equal the node backend's)
+      - name: Check conformance for every corpus under the portable backend (verdict digests equal the node backend's)
         run: pnpm conformance:portable
 
   runtimes:
@@ -269,7 +271,7 @@ jobs:
         run: npm audit signatures
 
   dependency-currency:
-    # Latest-first dependency currency (BAP ADR 0032 shape). A property of the
+    # Verify latest-first dependency currency. A property of the
     # manifest + lockfile, so it is proven once per run, not once per OS lane.
     name: dependency currency (latest-first)
     runs-on: ubuntu-24.04

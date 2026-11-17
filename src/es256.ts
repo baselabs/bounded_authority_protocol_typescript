@@ -2,21 +2,11 @@ import { p256Key, p256Verify } from "#crypto";
 import type { BackendPublicKey } from "./crypto/types.js";
 import { assert, fail } from "./error.js";
 
-// ES256 verification through the crypto backend ("#crypto": node:crypto on Node, @noble elsewhere;
-// src/crypto/backend.ts) — the ECDSA-over-P-256-with-SHA-256 suite of contract-major 3
-// (spec/bap-v3.md §3, RFC 7518 §3.4). The suite's raw public-key form is the 65-byte uncompressed
-// SEC1 point 0x04||x||y (REQ3-KEY-uncompressed-sec1); compressed points are invalid. The decoded
-// coordinates MUST each be less than the field prime p and MUST form a point on the curve
-// (REQ3-KEY-point-on-curve) — pure arithmetic HERE, before the crypto backend, whose off-curve
-// behavior is backend-specific and never load-bearing. The wire signature is the RFC 7518 §3.4 raw
-// form — exactly 64 bytes, r||s, two fixed-width 32-byte unsigned big-endian integers
-// (REQ3-SIGNING-raw-rs) — and the verifier rejects r=0/s=0, r≥n, s≥n, and the HIGH-S half
-// s > (n−1)/2 (REQ3-SIGNING-range, REQ3-SIGNING-low-s) as invalid encodings BEFORE any backend
-// call. Both backends ACCEPT the malleable high-S counterpart (for a valid (r,s), (r, n−s) also
-// satisfies the verification equation): OpenSSL natively, the portable backend through its
-// lowS: false option. So the low-S profile gate is load-bearing:
-// remove it and a third party's re-spelling of an observed signature verifies. A backend rejection
-// OR exception returns exactly InvalidError (REQ3-SIGNING-backend-reject).
+// ES256 verification uses the selected crypto backend under spec/bap-v3.md and RFC 7518 section
+// 3.4. Before calling it, validate the 65-byte uncompressed SEC1 point, coordinate ranges and
+// curve equation. Require a 64-byte raw big-endian r || s signature with 0 < r < n and 0 < s <=
+// floor(n/2). Both backends can verify high-S counterparts, so the explicit low-S gate prevents
+// malleability. Backend rejection and exceptions map to InvalidError.
 
 // Census tracking: every key imported via importEcPublicKey is recorded here, so the conformance
 // runner can assert the verify-import census leg (every key a valid verification case declares was
@@ -43,13 +33,10 @@ function bytesToBigInt(bytes: Uint8Array): bigint {
   return v;
 }
 
-// The suite's canonical-signature rule (spec/bap-v3.md § 3.2): a raw 64-byte r || s has
-// 0 < r < n and 0 < s <= floor(n / 2). Every producer surface (compact assembly,
-// anchored-export encoding, erratum 3) refuses a signature that fails it; the producer never
-// normalizes — low-S is the signer's duty. es256VerifyStrict routes through it too, so one
-// function owns the rule everywhere except es256Verify, whose inline gates carry the named
-// diagnostic messages the portable nonvacuity test source-pins. Internal; not part of the
-// package API.
+// Every producer requires a 64-byte raw r || s with 0 < r < n and 0 < s <= floor(n/2).
+// Producers refuse noncanonical signatures without normalizing them. es256VerifyStrict shares
+// this rule; es256Verify keeps inline gates whose diagnostic messages are pinned by the
+// nonvacuity tests. This helper is internal. See spec/bap-v3.md section 3.2.
 export function canonicalSignature(signature: Uint8Array): boolean {
   if (!(signature instanceof Uint8Array) || signature.length !== 64) return false;
   const r = bytesToBigInt(signature.subarray(0, 32));
@@ -62,10 +49,9 @@ export function pointOnCurve(x: bigint, y: bigint): boolean {
   return (y * y - (x * x * x - 3n * x + B)) % P === 0n;
 }
 
-// Full pure-arithmetic validation of the suite's raw public-key form: exactly 65 bytes, the 0x04
-// uncompressed SEC1 prefix, both coordinates < p, and the point on the curve. Compressed (0x02/0x03)
-// and hybrid forms fail the prefix gate. Applied to every EC key entering the profile —
-// caller-supplied issuer and historical keys and the decoded proof-JWK point — before any backend call.
+// Validate every P-256 key with pure arithmetic before backend import: exactly 65 bytes, prefix
+// 0x04, coordinates below p and the curve equation satisfied. Compressed and hybrid points
+// reject. This applies to caller-supplied keys and decoded proof JWKs.
 export function validateEcPublicKey(rawKey: Uint8Array): void {
   assert(rawKey.length === 65, "es256: public key width must be 65 bytes");
   if (rawKey[0] !== 0x04) fail("es256: uncompressed SEC1 form required");
@@ -75,10 +61,9 @@ export function validateEcPublicKey(rawKey: Uint8Array): void {
   if (!pointOnCurve(x, y)) fail("es256: point not on the curve");
 }
 
-// Import a validated 65-byte SEC1 public key into the backend, recording the fingerprint for the
-// census only after the import succeeds. Returns the backend key. Throws InvalidError on a malformed
-// key. Callers run validateEcPublicKey first (the profile's arithmetic gates precede the backend);
-// the backend import validates again — defense in depth, never load-bearing.
+// Import a previously validated SEC1 key into the backend, recording its census fingerprint
+// only after success. Return the backend key or throw InvalidError. The pure arithmetic gates
+// precede this import; backend validation adds an independent check.
 export function importEcPublicKey(rawKey: Uint8Array, fingerprint: string): BackendPublicKey {
   assert(rawKey.length === 65, "es256: public key must be 65 bytes");
   try {
@@ -90,11 +75,9 @@ export function importEcPublicKey(rawKey: Uint8Array, fingerprint: string): Back
   }
 }
 
-// Verify an ES256 signature over the exact signing input. The 64-byte r||s integer-range and
-// low-S gates run BEFORE the backend (REQ3-BOUNDS-ordering: signature width and integer-range
-// checks, then the backend verification over the exact RFC 7515 signing input). DER is never a
-// wire spelling — the backend consumes the same raw r || s form.
-// Backend exceptions map to InvalidError (REQ3-SIGNING-backend-reject).
+// Verify the exact RFC 7515 signing input. Check raw 64-byte r || s width, integer ranges and
+// low-S before the backend. The backend consumes raw r || s; DER is invalid on the wire.
+// Backend exceptions map to InvalidError.
 export function es256Verify(
   message: Uint8Array,
   signature: Uint8Array,
@@ -113,17 +96,12 @@ export function es256Verify(
   }
 }
 
-// The ES256 sibling of verifyStrict (src/ed25519.ts): a synchronous verification that never throws, for
-// callers that hold raw bytes (for example a signer checking its own output before it assembles a
-// compact). Returns true only for a 65-byte uncompressed SEC1 key that passes validateEcPublicKey, a
-// 64-byte r || s signature with 0 < r < n and 0 < s <= (n - 1) / 2 (low-S, REQ3-SIGNING-low-s), and then
-// the backend's ECDSA P-256 / SHA-256 verification over the message. Any other input, including a
-// wrong-size or non-byte input, returns false. It records nothing in the census.
 /**
  * Verifies an ES256 signature: 65-byte uncompressed on-curve P-256 key, raw 64-byte `r || s` with
  * `0 < r < n` and low-S, then ECDSA P-256 / SHA-256. Returns `false` for any invalid input; never
  * throws.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns `true` when the strict key/scalar encodings and ECDSA P-256/SHA-256 equation verify the exact message; `false` otherwise. Never throws.
  */
 export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   // Total: an exotic input whose typed-array getters throw is refused, never thrown past the caller.

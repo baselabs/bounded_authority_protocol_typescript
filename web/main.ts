@@ -1,4 +1,4 @@
-// The bench — the verifier package's live page. The REAL code runs here:
+// The bench runs the verifier package directly in the browser:
 // this repository's verifier source (bundled) judges an envelope minted in
 // the browser by the published @bounded-authority-protocol/signer package.
 // No mocks, no server; the demo keys live only in this page.
@@ -124,7 +124,7 @@ function renderSeg(segs: string[], idx: number, name: string): void {
     const utf8 = new TextDecoder().decode(raw);
     try { body = JSON.stringify(JSON.parse(utf8), null, 2); } catch { body = utf8; }
   }
-  wireBody.innerHTML = `<span class="k">// ${currentBytes?.label ?? ""} — ${name} (${raw.length} bytes)\n</span>`;
+  wireBody.innerHTML = `<span class="k">// ${currentBytes?.label ?? ""}: ${name} (${raw.length} bytes)\n</span>`;
   wireBody.append(body);
 }
 
@@ -197,10 +197,10 @@ function accordion(title: string, chip: string | undefined, facts: unknown, open
 }
 
 
-// Raw-JSON code box for the FACTS area (owner-directed: no formatted view) —
+// The facts area displays raw JSON with the following byte representation:
 // defensively hex any string that still carries control/lossy characters.
 function sanitize(v: unknown): unknown {
-  // Byte arrays render as their base64url wire form — JSON.stringify on a
+  // Render byte arrays in their base64url wire form. JSON.stringify on a
   // Uint8Array explodes into {"0":123,"1":34,…} index objects otherwise.
   if (v instanceof Uint8Array) {
     return b64(v);
@@ -298,32 +298,32 @@ async function doMint(): Promise<void> {
   flash($("lane-mint"));
   bVerify.disabled = false;
   tamperBtns.forEach((b) => (b.disabled = false));
-  setVerdict("idle", "envelope minted — now judge it");
+  setVerdict("idle", "Envelope minted. Ready to verify.");
 }
 
 function verifyWith(grant: Uint8Array, proof: Uint8Array, exp: ReturnType<typeof expected>): void {
   const at = checkEnvelope(grant, proof, exp as never);
   if (at.ok) {
-    setVerdict("ok", "ENVELOPE OK — cryptographic facts returned");
+    setVerdict("ok", "ENVELOPE OK. Cryptographic facts returned.");
     $("facts-body").innerHTML = rawJsonBox(factFields(at.value));
     $("tamper-hint").className = "hint";
-    $("tamper-hint").textContent = "Now try to sneak one past — every button below produces a real, closed INVALID.";
+    $("tamper-hint").textContent = "Try a mutation below. Each button exercises a real closed failure.";
     return;
   }
   const why: Record<string, string> = {
-    payload: "request-digest binding — the proof commits to the digest of THIS request (and the grant allows staging only)",
-    operation: "operation match — the grant and proof bind one operation",
-    expiry: "time window — grants and proofs expire",
-    impostor: "holder binding — the grant names one holder key (jkt), and this proof was signed by another",
-    issuer: "issuer trust — your resource was told to trust a different issuer key",
+    payload: "Request-digest binding failed: the proof commits to the original request, and the grant selects staging.",
+    operation: "Operation binding failed: grant and proof must name the same operation.",
+    expiry: "Time check failed: grants and proofs have bounded validity.",
+    impostor: "Holder binding failed: the proof was signed by a key other than the grant’s named holder.",
+    issuer: "Issuer verification failed: the expected issuer key differs from the signing key.",
   };
-  setVerdict("fail", "VERIFICATION FAILED — <b>INVALID</b>");
+  setVerdict("fail", "VERIFICATION FAILED: <b>INVALID</b>");
   $("facts-body").innerHTML = rawJsonBox(at);
   const which = lastTamper ? why[lastTamper] : undefined;
   $("tamper-hint").className = "hint fail";
   $("tamper-hint").textContent = which
-    ? `${which} — and the verifier returned exactly {"ok":false}. No reason, no partial: no oracle for an attacker.`
-    : 'the verifier returned exactly {"ok":false} — no reason, no partial.';
+    ? `${which} The verifier returned exactly {"ok":false}, without a reason or partial result.`
+    : 'The verifier returned exactly {"ok":false}, without a reason or partial result.';
 }
 
 function doVerify(): void {
@@ -340,7 +340,7 @@ async function tamper(kind: string): Promise<void> {
   switch (kind) {
     case "payload":
       verifyWith(grantCompact, proofCompact, expected({ castArguments: deployArguments("production") }));
-      showWire("proof (byte-identical — the REQUEST changed)", proofCompact);
+      showWire("Unchanged proof; modified request", proofCompact);
       return;
     case "operation":
       verifyWith(grantCompact, proofCompact, expected({ operation: "deployments.rollback" }));
@@ -380,13 +380,13 @@ async function reset(): Promise<void> {
   $("trust-key").textContent = `${issuer.keyId} · jkt ${issuer.thumb.slice(0, 8)}…`;
   $("slot-grant").textContent = "";
   $("slot-proof").textContent = "";
-  $("decode-grant").textContent = "—";
-  $("decode-proof").textContent = "—";
+  $("decode-grant").textContent = "Not evaluated";
+  $("decode-proof").textContent = "Not evaluated";
   bVerify.disabled = true;
   tamperBtns.forEach((b) => (b.disabled = true));
-  $("facts-body").textContent = "—";
+  $("facts-body").textContent = "Not evaluated";
   $("tamper-hint").className = "hint";
-  $("tamper-hint").textContent = "Mint and verify first — then try to sneak one past.";
+  $("tamper-hint").textContent = "Mint and verify an envelope, then try a mutation.";
   segTabs.innerHTML = "";
   wireBody.textContent = "nothing selected yet";
   setVerdict("idle", "verify an envelope to see the fact sheet");

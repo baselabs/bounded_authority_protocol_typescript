@@ -30,7 +30,7 @@ function validUriAuthority(authority: string): boolean {
   const at = authority.indexOf("@");
   if (at !== -1 && /[\[\]]/.test(authority.slice(0, at))) return false;
   const hostport = at === -1 ? authority : authority.slice(at + 1);
-  if (hostport.includes("@")) return false; // a second @ lands in the host — invalid.
+  if (hostport.includes("@")) return false; // A second @ would be part of the host and is invalid.
   if (hostport.startsWith("[")) {
     const close = hostport.indexOf("]");
     if (close === -1) return false; // unterminated IPv6 literal.

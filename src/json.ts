@@ -1,39 +1,64 @@
 import { fail } from "./error.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// Tagged JSON algebra (spec/bap-v1.md § JSON algebra and decoding, L72-95).
-// Each JSON value is tagged so the integer/float distinction survives — selector semantic identity
-// (REQ1-SELECTOR-semantic-identity) and the typed request-digest projection both depend on it.
-//
-//   Null | Boolean(bool) | Integer(int) | Float(float) | String(utf8) | Array([Value]) | Object([(String, Value)])
-//
-// Objects retain source member order; duplicate names at any depth reject pre-map-conversion
-// (REQ1-JSON-no-duplicate). Input is one complete RFC 8259 value + only whitespace (REQ1-JSON-single-
-// value). UTF-8 mandatory; no Unicode normalization (REQ1-JSON-no-normalization). Number lexemes are
-// scanned raw before conversion (64-byte ceiling, exact decimal magnitude) — REQ1-JSON-raw-lexeme.
-//
-// PERMISSIVENESS CLOSURES (the load-bearing host-runtime discipline):
-//  - duplicate-reject: hand-rolled recursive scan with a per-object Set of seen names. NOT JSON.parse
-//    (which silently last-wins duplicates). [REQ1-JSON-no-duplicate]
-//  - null-prototype: decoded objects are Object.create(null), so a "__proto__" member is DATA, not a
-//    prototype mutation. [REQ1-SELECTOR-semantic-identity — ADR 0005:184-192 documents the collapse]
-//  - single-value: trailing bytes after the top-level value reject. [REQ1-JSON-single-value]
-//  - raw-lexeme: numbers scanned before conversion; magnitude + byte ceiling enforced on the lexeme.
-//    [REQ1-JSON-raw-lexeme]
-//  - int/float tag: integer vs float distinction preserved (1 ≠ 1.0). [tagged algebra]
+// Tagged JSON preserves integer/float identity for selector semantics and typed request
+// projection. Objects retain source member order in Maps. Reject duplicate names before
+// inserting them, including at nested depths. Decode exactly one complete RFC 8259 value with
+// optional trailing whitespace, require UTF-8 and perform no Unicode normalization. Scan raw
+// number lexemes before conversion to enforce the 64-byte and exact decimal-magnitude limits.
+// See spec/bap-v1.md#json.
 
+/**
+ * Bounded JSON retaining lexical integer and float tags. t selects the variant; v carries its value.
+ * Strings are strict UTF-8 bytes; object keys are decoded strings in a ReadonlyMap. Integers are safe
+ * integers, floats are finite binary64, and both have magnitude at most 2^53 - 1. Decoding rejects
+ * duplicate names and invalid Unicode without normalization.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ */
 export type Tagged =
-  | { readonly t: "null" }
-  | { readonly t: "bool"; readonly v: boolean }
-  | { readonly t: "int"; readonly v: number }
-  | { readonly t: "float"; readonly v: number }
-  | { readonly t: "string"; readonly v: Uint8Array }
-  | { readonly t: "array"; readonly v: Tagged[] }
-  | { readonly t: "object"; readonly v: ReadonlyMap<string, Tagged> };
+  | {
+    /** JSON null. This variant has no value field. */
+    readonly t: "null";
+  }
+  | {
+    /** JSON boolean. */
+    readonly t: "bool";
+    /** Exact boolean value. */
+    readonly v: boolean;
+  }
+  | {
+    /** Integer lexeme without a fraction or exponent. */
+    readonly t: "int";
+    /** Safe integer within the caller's integer_magnitude bound. */
+    readonly v: number;
+  }
+  | {
+    /** Number lexeme containing a fraction or exponent, even if numerically integral. */
+    readonly t: "float";
+    /** Finite binary64 value within float_magnitude; the float tag remains distinct from an int tag. */
+    readonly v: number;
+  }
+  | {
+    /** JSON string without Unicode normalization. */
+    readonly t: "string";
+    /** Strict UTF-8 content bytes, excluding JSON quotation marks and escapes. */
+    readonly v: Uint8Array;
+  }
+  | {
+    /** Ordered JSON array. */
+    readonly t: "array";
+    /** Elements in source order, subject to array_items, depth and total_nodes limits. */
+    readonly v: Tagged[];
+  }
+  | {
+    /** JSON object with unique decoded member names. */
+    readonly t: "object";
+    /** Decoded string names mapped to tagged values in source order; duplicate names reject. */
+    readonly v: ReadonlyMap<string, Tagged>;
+  };
 
-// Null-prototype object tag — markers are Object.create(null) instances, keyed by raw UTF-8 string.
-// We store members as a Map keyed by the decoded string (UTF-8 byte sequence); insertion order is
-// preserved (Map iteration order = insertion order in JS).
+// Object members live in an insertion-ordered Map keyed by decoded member names. Names such as
+// "__proto__" remain ordinary data and cannot mutate a prototype.
 
 const MAX_INT = 9007199254740991;
 const MAX_FLOAT = 9007199254740991;
@@ -55,7 +80,9 @@ interface DecodeCtx {
  * Decodes exactly one strict JSON value into the tagged algebra: UTF-8 required, duplicate member
  * names rejected, numbers tagged `int` or `float` by lexeme, every limit enforced. Throws
  * `InvalidError`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ * @returns One tagged JSON value retaining number tags and object member order.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function jsonDecode(src: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Tagged {
   const maxJsonBytes = resolve(bounds, "json_bytes" as MaximaKey);
@@ -177,7 +204,7 @@ function scanString(ctx: DecodeCtx, start: number): Uint8Array {
         case 0x6e: out.push(0x0a); break;
         case 0x72: out.push(0x0d); break;
         case 0x74: out.push(0x09); break;
-        case 0x75: { // \uXXXX — 4 hex digits; handle surrogate pairs.
+        case 0x75: { // Decode four hexadecimal digits, combining valid surrogate pairs.
           const hi = parseHex4(ctx);
           if (hi >= 0xd800 && hi <= 0xdbff) {
             // High surrogate; require \uXXXX low surrogate.
@@ -288,11 +315,10 @@ function parseNumber(ctx: DecodeCtx): Tagged {
   ctx.pos = lexemeEnd;
   const text = asciiStr(lexeme);
   if (isFloat) {
-    // REQ1-JSON-raw-lexeme: check the magnitude of the RAW lexeme by decimal arithmetic BEFORE
-    // Number() conversion. A lexeme like "9007199254740991.0001" rounds to the max binary64 value
-    // under Number(), so a post-conversion Math.abs(n) > MAX check accepts it — defeating the exact
-    // bound. The reference (json.ex magnitude_within?) compares the lexeme's significant digits
-    // against the maximum's digit string. Mirror that here.
+    // Compare raw decimal magnitude before Number conversion. For example,
+    // "9007199254740991.0001" rounds down to the maximum representable allowed integer, hiding
+    // a bound violation if checked after conversion. Compare significant decimal digits against
+    // the exact maximum instead.
     if (!lexemeMagnitudeWithin(text, MAX_FLOAT)) fail("json: float magnitude bound");
     const n = Number(text);
     if (!Number.isFinite(n)) fail("json: float not finite");
@@ -304,10 +330,9 @@ function parseNumber(ctx: DecodeCtx): Tagged {
   return { t: "int", v: n };
 }
 
-// Exact decimal magnitude check of a number lexeme against `maximum`, mirroring the reference
-// (json.ex:298-349 magnitude_within? / compare_boundary). Returns true if |value| <= maximum.
-// Compares the lexeme's significant digits by their effective integer position — NOT the float
-// value (which loses precision). Handles sign, fraction, and exponent exactly.
+// Check whether the exact absolute decimal value is at most maximum. Compare significant digits
+// by effective integer position, handling sign, fraction and exponent without binary64
+// rounding.
 function lexemeMagnitudeWithin(text: string, maximum: number): boolean {
   const unsigned = text[0] === "-" || text[0] === "+" ? text.slice(1) : text;
   // Split mantissa / exponent (sign already validated by the scanner).
@@ -442,15 +467,16 @@ function asciiStr(bytes: Uint8Array): string {
   return s;
 }
 
-// UTF-8 decode (TextDecoder is allowed in the library path — it is a pure transformation, not I/O).
-// ignoreBOM keeps a leading U+FEFF as the character it is: the TextDecoder default strips it, which
-// would make "\uFEFFx" compare equal to "x" while the reference rejects it. This is the one decoder for
-// string values, member names and JCS escaping.
+// Decode UTF-8 as a pure byte transformation. ignoreBOM preserves a leading U+FEFF instead of
+// stripping it, preventing "\uFEFFx" from collapsing to "x". String values, member names and
+// JCS escaping share this decoder.
 const DECODER = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const ENCODER = new TextEncoder();
 /**
  * Decodes UTF-8 bytes to a string. Throws `InvalidError` on invalid UTF-8.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ * @returns The decoded Unicode scalar string, retaining any leading U+FEFF.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function utf8Str(bytes: Uint8Array): string {
   try {
@@ -461,7 +487,8 @@ export function utf8Str(bytes: Uint8Array): string {
 }
 /**
  * Encodes a string as UTF-8 bytes.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ * @returns UTF-8 bytes using TextEncoder semantics, including replacement of unpaired UTF-16 surrogates. This helper does not validate protocol claims.
  */
 export function strUtf8(s: string): Uint8Array {
   return ENCODER.encode(s);

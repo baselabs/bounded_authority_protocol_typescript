@@ -1,9 +1,6 @@
-// Conformance core for the certified local-loopback HTTP application-proof profile
-// (bap-application-proof/local-loopback-http/1, ADR 0027). The verdict logic is the corpus block of
-// test/local-loopback-http.test.ts, unchanged in substance, moved here so every runtime lane runs it:
-// the index pin and exact file list, the URI cases, producer/assembly byte symmetry for both
-// certified proofs, and every proof case's three flags (decode_local, decode_standard,
-// envelope_local).
+// Run the certified local-loopback HTTP proof corpus in every runtime lane. Check
+// index digest, exact file set, URI verdicts, producer/assembly bytes and each proof
+// case's local-decode, standard-decode and local-envelope flags.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import { base64urlDecode } from "../../src/base64url.js";

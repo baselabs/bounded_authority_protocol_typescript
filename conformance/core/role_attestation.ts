@@ -1,22 +1,6 @@
-// Conformance runner for the bap-role-attestation/1 sibling profile (ADR 0036) of
-// @bounded-authority-protocol/verifier. Loads the vendored certified corpus snapshot
-// (conformance/corpus-role-attestation), recomputes EVERY verdict from scratch by calling the
-// profile's four surfaces (src/role_attestation.ts), and asserts agreement on all 40 cases.
-//
-// REQ-RA1-CONFORMANCE-certified-pin: the corpus index.json SHA-256 is asserted at startup, the
-// exact two-file set (profile.json + attestation-cases.json) is required, and profile identity,
-// revision, and case counts are checked BEFORE the per-file digests are trusted.
-//
-// Beyond the per-case decode+verify agreement, this runner proves: producer/assembly byte
-// symmetry against the certified valid compact (attestationSigningInput reproduces the exact
-// segments; assembleAttestationCompact reproduces the exact bytes), the kind discipline
-// (the v1 assembler rejects the attestation input), and cross-profile rejection in both
-// directions (attestation bytes rejected by the v1/v2/v3 surfaces; the corpus's live v1 grant
-// compact rejected by attestation decode).
-//
-// Derivation: this runner + the profile implementation are derived from the normative sources
-// alone (spec/bap-role-attestation-v1.md + the certified corpus — ADR 0014's no-derivation
-// bar); the corpus is the arbiter, the SDK is the implementation under test.
+// Check cross-profile rejection in both directions. The corpus sends a live v1
+// grant to attestation decode; these cases send attestations to each contract-major
+// decode and verification surface with well-formed contexts.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import {
@@ -37,8 +21,8 @@ const utf8 = (b: Uint8Array) => utf8Str(b);
 // The corpus integrity hash is @noble/hashes, independent of the package backend under test.
 const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toString(16).padStart(2, "0")).join("");
 
-// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation
-// discipline — no monorepo-relative path), byte-synced to the certified corpus.
+// Load the certified snapshot vendored beside this runner. Its digest and exact file
+// set bind the runner to published bytes without consulting a sibling checkout.
 const DIR = "corpus-role-attestation";
 
 // The certified index.json SHA-256, revision 1 (40 cases), hex
@@ -206,11 +190,9 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
     abort("round-trip facts disagree with decode");
   }
 
-  // ---- cross-profile rejection, both directions (REQ-RA1-CORE-cross-profile-reject) ----
-  // The corpus carries the v1-grant direction (cross-profile-grant-rejected, a live ba+cap
-  // grant compact asserted in the case loop above). Here: attestation bytes must be rejected
-  // by every contract-major surface — structurally (decode, context-free, so the typ gate is
-  // what fires) and at the verification surfaces with a well-formed context.
+  // Check cross-profile rejection in both directions. The corpus sends a live v1
+  // grant to attestation decode; these cases send attestations to each contract-major
+  // decode and verification surface with well-formed contexts.
   const wellFormedIssuer = { keyId: profile.attestor.key_id, publicKey: base64urlDecode(strUtf8(profile.attestor.public_key)) };
   const wellFormedGrantContext = {
     issuer: "https://issuer.example.test",
@@ -242,8 +224,8 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   ] };
 }
 
-// The INVALID sentinel discipline: every case above maps through the SDK's Result contract; a
-// thrown non-InvalidError anywhere is a runner/SDK bug and aborts (ADR 0014 Decision 6).
+// Only protocol rejection maps to INVALID. Unexpected thrown errors are runner or
+// SDK defects and abort rather than becoming conformance verdicts.
 export const core: Core = {
   corpus: "role-attestation",
   dir: DIR,

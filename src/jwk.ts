@@ -5,29 +5,32 @@ import { jcsEncode } from "./jcs.js";
 import { jsonDecode, strUtf8, utf8Str } from "./json.js";
 import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// RFC 7638 JWK thumbprint for OKP Ed25519 public keys (spec/bap-v1.md § Public verification contract).
-// The public OKP JWK has exactly three members — crv="Ed25519", kty="OKP", x=<base64url raw 32 bytes>
-// — in RFC 7638 lexicographic order (crv, kty, x). The thumbprint preimage is the JCS of that object;
-// the thumbprint is SHA-256 of the preimage (base64url); the raw thumbprint is the 32-byte digest.
-//
-// Key acceptance (rule S1, REQ1-KEY-ed25519-acceptable). Every public function that encodes, decodes or
-// hashes a key is FALLIBLE: a key that fails acceptablePublicKey (non-canonical, small-order, or off the
-// curve) is refused with the closed InvalidError (decode returns the closed error), so no weak key
-// reaches a thumbprint, a holder binding or a verify input. The one exception is thumbprintDigestUnchecked,
-// the raw hash-only path for censuses, generators and deny-list fingerprinting: it is never used on a
-// verify path, and a test pins its callers.
+// The public Ed25519 JWK has exactly crv="Ed25519", kty="OKP" and x encoding 32 raw bytes. Hash
+// its JCS encoding in crv, kty, x order for the 32-byte RFC 7638 thumbprint. Public helpers
+// reject noncanonical, small-order or off-curve keys under rule S1. The internal
+// thumbprintDigestUnchecked helper is reserved for census and deny-list fingerprints and never
+// participates in verification.
 
+/**
+ * The closed public Ed25519 JWK shape. No private d or extra members are accepted. Key helpers
+ * validate canonical, non-small-order, on-curve 32-byte keys before encoding or hashing.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#10-protected-headers
+ */
 export interface OkpPublic {
+  /** Exact JWK curve name required by the suite. */
   readonly crv: "Ed25519";
+  /** Exact public JWK key family required by the suite. */
   readonly kty: "OKP";
-  readonly x: string; // base64url of the 32 raw bytes
+  /** Canonical unpadded base64url of the 32-byte Ed25519 encoding (43 ASCII characters). */
+  readonly x: string;
 }
 
-// Encode a raw 32-byte Ed25519 public key as the canonical OKP JCS JSON bytes.
 /**
  * The canonical JSON bytes of the public OKP JWK `{crv, kty, x}` for a raw 32-byte Ed25519 key.
  * Throws `InvalidError` for a key that is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns Canonical UTF-8 JSON for the closed public JWK.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey.length === 32, "jwk.encode_public: public key width must be 32");
@@ -42,11 +45,11 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
   return jcsEncode({ t: "object", v: members }, bounds);
 }
 
-// Decode an OKP public JWK from bytes (the JSON text). Returns the raw 32-byte key.
 /**
  * Parses exactly a public OKP Ed25519 JWK (no other member, including a private `d`) and returns
  * the raw 32-byte key.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns The validated raw 32-byte Ed25519 public key in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed OKP shape.
@@ -75,7 +78,9 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
 /**
  * The public OKP JWK object of a raw 32-byte Ed25519 key. Throws `InvalidError` for a key that is
  * not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns The validated public OKP JWK object.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function jwkFromPublicKey(rawKey: Uint8Array): OkpPublic {
   assert(rawKey.length === 32, "jwk: public key width");
@@ -87,12 +92,12 @@ function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
   return { crv: "Ed25519", kty: "OKP", x: utf8Str(base64urlEncode(rawKey)) };
 }
 
-// RFC 7638 thumbprint preimage: the JCS bytes of {crv, kty, x} (lexicographic order). Fallible: the key
-// behind x must be acceptable.
 /**
  * The RFC 7638 thumbprint preimage: the canonical JSON of `{crv, kty, x}`. Throws `InvalidError`
  * for a key that is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns Canonical UTF-8 JSON of exactly the RFC 7638 required public JWK members.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
   // Each member is read exactly once into a local, those values are checked, and the preimage is
@@ -115,21 +120,23 @@ function preimageOf(jwk: OkpPublic): Uint8Array {
   return jcsEncode({ t: "object", v: members });
 }
 
-// Thumbprint as base64url SHA-256 of the preimage.
 /**
  * The RFC 7638 thumbprint of a public Ed25519 JWK, as unpadded base64url (the form a grant's
  * `holderThumbprint` takes). Throws `InvalidError` for a key that is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function thumbprint(jwk: OkpPublic): string {
   return utf8Str(base64urlEncode(sha256(thumbprintPreimage(jwk))));
 }
 
-// Raw 32-byte thumbprint.
 /**
  * The RFC 7638 thumbprint of a public Ed25519 JWK as 32 raw bytes. Throws `InvalidError` for a key
  * that is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
   return sha256(thumbprintPreimage(jwk));
@@ -156,11 +163,12 @@ export function readMembers(jwk: object, members: readonly string[]): Record<str
   }
 }
 
-// Raw 32-byte thumbprint directly from a raw 32-byte public key. Fallible, like every function above.
 /**
  * The raw 32-byte RFC 7638 thumbprint of a raw 32-byte Ed25519 key. Throws `InvalidError` for a
  * key that is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
+ * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint of the validated public key.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(jwkFromPublicKey(rawKey));

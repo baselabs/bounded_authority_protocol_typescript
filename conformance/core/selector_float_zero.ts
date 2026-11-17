@@ -33,9 +33,8 @@ const utf8 = (b: Uint8Array) => utf8Str(b);
 // The corpus integrity hash is @noble/hashes, independent of the package backend under test.
 const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toString(16).padStart(2, "0")).join("");
 
-// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation discipline —
-// no monorepo-relative path), byte-synced to the certified corpus of BAP erratum 6
-// (priv/conformance/selector-float-zero).
+// Load the certified snapshot vendored beside this runner. Its digest and exact file
+// set bind the runner to published bytes without consulting a sibling checkout.
 const DIR = "corpus-selector-float-zero";
 
 // The certified index.json SHA-256, revision 1 (161 cases), hex
@@ -223,8 +222,8 @@ function operationsOf(text: unknown, ctx: string): Array<{ name: string; selecto
 const INVALID = Symbol("invalid");
 type Outcome = Record<string, string> | typeof INVALID;
 
-// The SDK's Result contract maps every rejection to { ok: false }; a thrown InvalidError escaping a
-// Result surface is an SDK bug and aborts (ADR 0014 Decision 6).
+// A rejected Result is { ok: false }. Any thrown error escaping a Result surface
+// is an SDK defect and aborts this runner.
 function settle<T>(run: () => { ok: true; value: T } | { ok: false }, project: (value: T) => Record<string, string>): Outcome {
   let r: { ok: true; value: T } | { ok: false };
   try {

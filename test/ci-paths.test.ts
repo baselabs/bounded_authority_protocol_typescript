@@ -14,9 +14,7 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const UNREAD: Record<string, string> = {
-  "CHANGELOG.md": "release notes: no check, test, build or pack step reads them",
-};
+const UNREAD: Record<string, string> = {};
 
 export function ignoredGlobs(workflow: string): string[] {
   const doc = parse(workflow) as { on?: unknown };
@@ -94,7 +92,7 @@ test("every paths-ignore glob in ci.yml matches only tracked files no check read
   }
   const globs = ignoredGlobs(readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8"));
   assert.ok(globs.length > 0, "ci.yml declares no paths-ignore: the parser found nothing");
-  assert.ok(globs.some((g) => globToRegExp(g).test("CHANGELOG.md")), "known positive: CHANGELOG.md is skipped");
+  assert.ok(!globs.some((g) => globToRegExp(g).test("CHANGELOG.md")), "CHANGELOG.md is read by the documentation hygiene check");
   assert.deepEqual(violations(globs, TRACKED), []);
   assert.deepEqual(skippedReadFiles(readFileSync(join(REPO, ".github/workflows/ci.yml"), "utf8"), TRACKED), []);
 });

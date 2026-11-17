@@ -1,24 +1,6 @@
-// Producer-canonicality refusals (erratum 3, REQ1-SIGNING-ed25519-producer-canonical,
-// REQ2-SIGNING-ed25519-producer-canonical, REQ3-SIGNING-producer-canonical): every producer
-// surface — compact assembly for contract-majors 1, 2 and 3 and the three sibling profiles,
-// anchored-export encoding for majors 1, 2 and 3 — frames a signature and verifies none, and
-// MUST refuse a signature that no conforming signer emits, never rewriting accepted bytes.
-//
-// Ed25519 (majors 1 and 2, local loopback, role attestation, content assertion): S >= L, or R
-// non-canonical (y >= p, or the sign bit set on an x = 0 point), or R of small order.
-// ES256 (major 3): r or s outside 0 < r < n, 0 < s <= floor(n/2).
-//
-// The certified vectors live in the vendored bap-producer-canonicality/1 corpus
-// (conformance:producer-canonicality, 75 cases); this file is the rule matrix with independent
-// fixtures — one leg per refusal clause per suite, the exact-bound accepts with byte-equality,
-// a real-signature positive control per surface, and the export-encode gates over locally
-// built archives.
-//
-// Defect-injection record (at authoring, the battery's discipline): removing the
-// assemble_segments Ed25519 gate turned 7 tests here red and the corpus runner disagreed at
-// assemble-v1-grant-s-equals-l; removing the v3 assemble_compact ES256 gate turned 4 red
-// (corpus disagreement at assemble-v3-grant-r-zero); removing the v1 encodeAnchoredExport
-// canonical-signature gate turned the v1 export leg red. Each was restored and re-run green.
+// Producer tests cover compact assembly for all three majors and sibling profiles,
+// plus archive encoding for each major. Producers frame signatures without verifying
+// them. Real corpus fixtures exercise refusal clauses and exact-bound byte equality.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import nodeCrypto from "node:crypto";

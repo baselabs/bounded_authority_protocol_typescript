@@ -17,7 +17,8 @@ import { utf8Str, strUtf8 } from "./json.js";
  * The normal form of an HTTPS target URI (lowercase scheme and host, uppercase percent hex,
  * unreserved escapes decoded, dot segments removed, port 443 dropped). Rejects user information, a
  * query, a fragment, non-ASCII bytes and any other scheme.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#13-uri-normalization
+ * @returns Normalized HTTPS URI bytes in a success Result, without reading any request or network state. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   try {
@@ -31,7 +32,8 @@ export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
 /**
  * The normal form of a local-loopback target URI: `http`, host exactly `127.0.0.1` or `[::1]`,
  * port 1 to 65535 with `:80` dropped.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-local-loopback-http-v1.md#4-public-verification-contract
+ * @returns Normalized literal-loopback HTTP URI bytes in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function localLoopbackHttpUriNormalize(
   input: Uint8Array,

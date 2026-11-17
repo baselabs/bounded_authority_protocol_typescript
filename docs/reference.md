@@ -1,5 +1,9 @@
 # API reference
 
+The [generated API reference](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
+provides searchable declarations, signatures and field contracts, stamped with the package version.
+This page explains how to use those declarations with executable examples.
+
 This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0, whose
 exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the
 [changelog](../CHANGELOG.md) records every earlier change. The task guides show

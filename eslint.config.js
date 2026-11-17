@@ -1,12 +1,10 @@
-// ESLint config for @bounded-authority-protocol/verifier — the library-path purity gate (ADR 0014 Decision 8)
-// and, since 0.7.0, the browser-safety gate. test/guards.test.ts holds every rule below to a probe that
-// must trip it, linted against THIS file.
+// ESLint enforces library-path purity and browser safety. test/guards.test.ts proves each rule
+// rejects a targeted violation using this configuration.
 //
-// Purity (AGENTS rule 2): the verify path is pure and deterministic: no filesystem, network, clock,
-// RNG, env, or process access in src/. The conformance runner (conformance/) and tests (test/) are the
-// I/O carve-out (they load the corpus), mirroring the Elixir CLI carve-out (ADR 0005). A stray
-// Date.now() / fetch / fs / crypto.random* in src/ fails this gate. This is the TS analog of the Elixir
-// tools/architecture_gate.exs purity rules for lib/.
+// The verification path is pure and deterministic: src/ cannot access filesystems, networks,
+// clocks, random sources, environment variables or processes. Tests and conformance runners may
+// perform I/O to load their corpora. See the public protocol verification contract:
+// https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
 //
 // Browser safety: src/ runs in browsers, Deno, Bun and workers, so no Node built-in module (prefixed or
 // bare), no Node global (Buffer, process, require, ...) including through globalThis, no dynamic

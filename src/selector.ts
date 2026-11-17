@@ -14,19 +14,42 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
 // Semantic identity (REQ1-SELECTOR-semantic-identity) = JCS of the typed-projected form, so the
 // int/float distinction survives (REQ1-SELECTOR-no-tag-collapse).
 
-export type Selector =
-  | { readonly kind: "all" }
-  | { readonly kind: "equals"; readonly path: string[]; readonly value: Tagged }
-  | { readonly kind: "one_of"; readonly path: string[]; readonly values: Tagged[] };
+/**
+ * A validated closed selector. all always matches; equals and one_of compare tagged semantic identity.
+ * Paths traverse objects only; missing members refuse. Integer and float tags never collapse.
+ * Constraints alone make no authorization decision.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
+ */
+export type Selector = {
+    /** Unrestricted selector; other recognized wire members are inert. */
+    readonly kind: "all";
+  }
+  | {
+    /** Require exact tagged semantic equality at path. */
+    readonly kind: "equals";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Tagged equality candidate; object member order is irrelevant. */
+    readonly value: Tagged;
+  }
+  | {
+    /** Require membership in the tagged candidate set at path. */
+    readonly kind: "one_of";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Nonempty list of at most 256 tagged candidates, compared without collapsing integer and float tags. */
+    readonly values: Tagged[];
+  };
 
 const SELECTOR_KINDS = new Set(["all", "equals", "one_of"]);
 const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,values"]);
 
-// Validate + parse a selector from a decoded tagged object. Rejects unknown members, bad shapes.
 /**
  * Validates a decoded selector object for major 1 (`all`, `equals`, `one_of`). Throws
  * `InvalidError` otherwise.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
+ * @returns The validated selector with its closed discriminant and typed operands.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
@@ -134,17 +157,18 @@ export function floatZeroFree(v: Tagged): boolean {
   return everyFloat(v, (n) => n !== 0);
 }
 
-// Producers (REQ1/2/3-SIGNING-integral-float-selector): a selector value — `equals`, `one_of`,
-// `lte` or `gte` — holds no float-tagged integral number at any depth.
+// Producer selector values for equals, one_of, lte and gte must contain no float-tagged
+// integral number at any depth. See REQ1/REQ2/REQ3-SIGNING-integral-float-selector.
 export function integralFloatFree(v: Tagged): boolean {
   return everyFloat(v, (n) => !Number.isInteger(n));
 }
 
-// Semantic identity = JCS of the typed-projected form. Returns canonical bytes for comparison.
 /**
  * The canonical bytes selectors compare: the JCS of the typed projection. Member order does not
  * matter; integer and float tags do.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
+ * @returns RFC 8785 canonical UTF-8 bytes of the typed projection.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function semanticIdentity(value: Tagged): Uint8Array {
   return jcsEncode(typedProject(value));
@@ -160,11 +184,11 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
   return cur;
 }
 
-// Does this selector match the given cast_arguments? equals/one_of REQUIRE the path to exist
-// (REQ1-SELECTOR-path-required): missing path → no match (not an error).
 /**
  * Applies one parsed major-1 selector to the cast arguments. A missing path never matches.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
+ * @returns Whether the parsed selector matches. A missing path or a value/tag mismatch returns `false`.
+ * @throws InvalidError if computing tagged identity violates the bounded JSON contract.
  */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;

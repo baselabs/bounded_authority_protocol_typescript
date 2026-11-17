@@ -1,3 +1,11 @@
+/**
+ * Contract-major 2 uses Ed25519, v:2 payloads, BAP2 domain separators and inclusive same-tag numeric
+ * range selectors. Select this namespace explicitly; it rejects all other majors. Verification returns
+ * non-authorizing facts and closed failures. Shared chain and verification rules are incorporated from
+ * major 1.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @module v2
+ */
 import { isStringOrUri } from "./string_or_uri.js";
 import { fail, assert, type Result, trying } from "./error.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "./json.js";
@@ -16,7 +24,7 @@ import type { GrantFacts, EnvelopeFacts, GrantDecoded, ProofDecoded, KeyLocator 
 // The v2 verification façade (the v2 contract-major profile). Mirrors the v1 façade with
 // exactly three deltas: payloads carry v:2 (v1 bytes are rejected and vice versa), the
 // domain separators are BAP2-REQUEST\0 / BAP2-CHAIN\0 / BAP2-ARCHIVE\0EXPORT\0, and the
-// selector algebra admits the inclusive same-tag range kinds lte/gte (ADR 0028). Headers,
+// selector algebra admits the inclusive same-tag range kinds lte/gte (spec/bap-v2.md#selectors). Headers,
 // typs, claims, bounds, JCS, JWK, URI rules, and fact shapes are unchanged from v1 (modulo
 // version: 2). Each function returns Result<T> = Ok|Err (the {:ok,value}|{:error,:invalid}
 // mirror). No authorized/decision surface (rule 1). All claims revalidated at every public
@@ -31,18 +39,29 @@ const TRANSITION_TYP = "ba+key-transition";
 const VERSION = 2;
 const DOT = 0x2e;
 
-// BAP2-REQUEST\0 prefix for the request digest (the v2 domain separator; ADR 0028's
-// contract-major activation changes every BAP1- separator to its BAP2- form).
+/**
+ * Exact 13-byte ASCII domain separator `BAP2-REQUEST\0` for request hashing. Treat these bytes as
+ * immutable; mutation changes the wire contract.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export const REQUEST_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x32, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00, // "BAP2-REQUEST\0"
 ]);
 
-// BAP2-CHAIN\0 prefix for consumption-row hashing (the v2 form of ADR 0004 § Consumption rows).
+/**
+ * Exact 11-byte ASCII domain separator `BAP2-CHAIN\0` for consumption-row hashing. Treat these bytes
+ * as immutable; mutation changes the wire contract.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export const ROW_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x32, 0x2d, 0x43, 0x48, 0x41, 0x49, 0x4e, 0x00, // "BAP2-CHAIN\0"
 ]);
 
-// BAP2-ARCHIVE\0EXPORT\0 prefix (the v2 form of ADR 0004 § Anchored export; NOT framed).
+/**
+ * Exact 20-byte ASCII archive magic `BAP2-ARCHIVE\0EXPORT\0`. Both NUL bytes are included; this prefix
+ * is never length-framed. Treat these bytes as immutable; mutation changes the wire contract.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export const ARCHIVE_PREFIX = strUtf8("BAP2-ARCHIVE\0EXPORT\0");
 
 // The v2 request digest: the shared digest core under the BAP2-REQUEST\0 separator.
@@ -50,242 +69,637 @@ function computeRequestDigest(operation: string, castArguments: Tagged, b: Bound
   return digestWithPrefix(REQUEST_PREFIX, operation, castArguments, b);
 }
 
-// The all-zero 32-byte hash: sequence-1 predecessor + sequence-0 anchor chain hash (ADR 0004).
+// The all-zero 32-byte hash: sequence-1 predecessor + sequence-0 anchor chain hash (spec/bap-v1.md#chain).
 const DEFAULT_HASH = new Uint8Array(32);
 
 // --- dispatch struct types (match corpus input field names; the contract for each façade) ---
 
-export interface TrustedIssuer { readonly keyId: string; readonly publicKey: Uint8Array; } // raw 32
+/**
+ * An issuer key already trusted by the caller for this contract major. The key id binds a lookup
+ * result, but does not discover trust. No private key is accepted.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
+export interface TrustedIssuer {
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Already-trusted raw 32-byte Ed25519 public key, never a JWK or private key. */
+  readonly publicKey: Uint8Array;
+}
 
+/**
+ * Caller-owned issuer, audience and evaluation context for grant verification. Supply time from the
+ * verifying service, never from a presented claim. Malformed context fails closed.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface ExpectedGrant {
-  readonly issuer: string; readonly audience: string; readonly evaluationTime: number;
-  readonly clockSkew: number; readonly bounds?: Bounds;
+  /** Expected or verified issuer StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
+  readonly issuer: string;
+  /** Expected audience StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
+  readonly audience: string;
+  /** Host-supplied integer Unix seconds. Never derive this value from presenter-controlled claims. */
+  readonly evaluationTime: number;
+  /** Permitted skew in seconds, integer 0 to 60, further constrained by bounds. */
+  readonly clockSkew: number;
+  /** Optional tightened resource limits; omission uses the profile maxima. */
+  readonly bounds?: Bounds;
 }
 
+/**
+ * An already-trusted archive or attestor public key with the half-open validity interval [validFrom,
+ * validBefore). A null upper endpoint is unbounded. Verification never discovers or enrolls this key.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface HistoricalPublicKey {
-  readonly keyId: string; readonly publicKey: Uint8Array; // raw 32
-  readonly validFrom: number; readonly validBefore: number | null; // null = unbounded
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Already-trusted raw 32-byte Ed25519 public key, never a JWK or private key. */
+  readonly publicKey: Uint8Array;
+  /** Inclusive key-validity lower endpoint in integer Unix seconds. */
+  readonly validFrom: number;
+  /** Exclusive key-validity upper endpoint in integer Unix seconds; null means unbounded. */
+  readonly validBefore: number | null;
 }
 
+/**
+ * Independently retained expectations for one signed consumption-chain boundary. Matching an anchor
+ * proves a signature and key window; it establishes no trust or absence of deleted history.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ExpectedAnchor {
-  readonly anchorId: string; readonly anchoredAt: number; readonly chainId: string;
-  readonly sequence: number; readonly chainHash: Uint8Array; // raw 32
-  readonly keyId: string; readonly keyFingerprint: Uint8Array; // raw 32
+  /** Boundary-anchor StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly anchorId: string;
+  /** Anchor timestamp in integer Unix seconds, within the historical key window. */
+  readonly anchoredAt: number;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** Safe-integer boundary sequence: consumption rows start at 1; genesis anchors use 0. */
+  readonly sequence: number;
+  /** Raw 32-byte boundary chain-link hash; all zeros at sequence zero. */
+  readonly chainHash: Uint8Array;
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Raw 32-byte RFC 7638 thumbprint identifying the public key. */
+  readonly keyFingerprint: Uint8Array;
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
+/**
+ * Caller-retained identity, time and fingerprints for an archive-key handover. The old key signs the
+ * next key; both validity windows must contain effectiveAt.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ExpectedKeyTransition {
-  readonly transitionId: string; readonly chainId: string; readonly effectiveAt: number;
-  readonly currentKeyId: string; readonly currentKeyFingerprint: Uint8Array; // raw 32
-  readonly nextKeyId: string; readonly nextKeyFingerprint: Uint8Array; // raw 32
+  /** Transition StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly transitionId: string;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** Transition time in integer Unix seconds, within both key-validity windows. */
+  readonly effectiveAt: number;
+  /** Current signing-key kid, 1 to 128 permitted ASCII bytes. */
+  readonly currentKeyId: string;
+  /** Raw 32-byte RFC 7638 thumbprint of the transition-signing key. */
+  readonly currentKeyFingerprint: Uint8Array;
+  /** Successor-key kid, 1 to 128 permitted ASCII bytes. */
+  readonly nextKeyId: string;
+  /** Raw 32-byte RFC 7638 thumbprint of the successor key. */
+  readonly nextKeyFingerprint: Uint8Array;
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
+/**
+ * One consumption-chain row before canonical encoding. Its commitment is an opaque 32-byte
+ * caller-supplied digest. The verifier neither records execution nor interprets that commitment.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ConsumptionEntry {
-  readonly chainId: string; readonly sequence: number;
-  readonly previousHash: Uint8Array; readonly commitment: Uint8Array; // both raw 32
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** Safe-integer boundary sequence: consumption rows start at 1; genesis anchors use 0. */
+  readonly sequence: number;
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Opaque raw 32-byte consumption commitment supplied by the caller. */
+  readonly commitment: Uint8Array;
 }
 
+/**
+ * Canonical consumption rows and their claimed boundaries. checkChain revalidates every row and
+ * compares this range with independently supplied ExpectedChain values.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ChainInput {
-  readonly rows: Uint8Array[]; // raw canonical row bytes
-  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
-  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+  /** Ordered canonical UTF-8 JSON rows, at most 65,536 rows, each at most 4,096 bytes. */
+  readonly rows: Uint8Array[];
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** First row sequence, a positive safe integer. */
+  readonly firstSequence: number;
+  /** Last row sequence, equal to firstSequence + rowCount - 1. */
+  readonly lastSequence: number;
+  /** Contiguous row count, integer 1 to 65,536 before tightening. */
+  readonly rowCount: number;
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Raw 32-byte digest of the last row with the major-specific chain prefix. */
+  readonly lastHash: Uint8Array;
 }
 
+/**
+ * Independently retained boundaries of an exact contiguous chain range. Matching them does not prove
+ * global completeness, execution or absence of deletion.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ExpectedChain {
-  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
-  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** First row sequence, a positive safe integer. */
+  readonly firstSequence: number;
+  /** Last row sequence, equal to firstSequence + rowCount - 1. */
+  readonly lastSequence: number;
+  /** Contiguous row count, integer 1 to 65,536 before tightening. */
+  readonly rowCount: number;
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Raw 32-byte digest of the last row with the major-specific chain prefix. */
+  readonly lastHash: Uint8Array;
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
+/**
+ * Trusted inputs and server-derived request context for envelope verification. All bindings must
+ * match. Success yields non-authorizing facts; replay reservation, revocation and execution policy
+ * remain host responsibilities.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface ExpectedRequest {
+  /** Already-enrolled issuer kid and raw public key; never trust a presenter-supplied key. */
   readonly trustedIssuer: TrustedIssuer;
-  readonly issuer: string; readonly audience: string;
-  readonly method: string; readonly targetUri: string;
-  readonly invocationId: string; readonly operation: string;
+  /** Expected or verified issuer StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
+  readonly issuer: string;
+  /** Expected audience StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
+  readonly audience: string;
+  /** Uppercase HTTP method, 1 to 32 ASCII bytes, matched exactly. */
+  readonly method: string;
+  /** Already-normalized target of at most 8,192 ASCII bytes. This namespace requires HTTPS. */
+  readonly targetUri: string;
+  /** Lowercase RFC 4122 UUID for one logical invocation. Reserve it with issuer and grant id before execution. */
+  readonly invocationId: string;
+  /** Operation name, 1 to 128 printable ASCII bytes, naming exactly one grant operation. */
+  readonly operation: string;
+  /** Tagged arguments derived by the host from the request, bound through their exact typed digest projection. */
   readonly castArguments: Tagged;
-  readonly evaluationTime: number; readonly clockSkew: number; readonly proofMaxAge: number;
-  readonly nonce: { kind: "not_required" } | { kind: "required"; value: string };
+  /** Host-supplied integer Unix seconds. Never derive this value from presenter-controlled claims. */
+  readonly evaluationTime: number;
+  /** Permitted skew in seconds, integer 0 to 60, further constrained by bounds. */
+  readonly clockSkew: number;
+  /** Maximum proof age in seconds, integer 1 to 300, further constrained by bounds. */
+  readonly proofMaxAge: number;
+  /** Explicit policy: not_required requires absence; required requires exact equality. */
+  readonly nonce: {
+    /** Require an absent proof nonce. */
+    kind: "not_required";
+  } | {
+    /** Require exact nonce equality. */
+    kind: "required";
+    /** Expected nonce, 1 to 512 UTF-8 bytes. */
+    value: string;
+  };
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
-// A selector input to the v2 grant producer: either the bare "all" string or a tagged object.
-// lte/gte carry a numeric bound in `value` (integer- or float-tagged only; ADR 0028 §2).
-export type SelectorInput = "all" | { readonly kind: "all" }
-  | { readonly kind: "equals"; readonly path: string[]; readonly value: Tagged }
-  | { readonly kind: "one_of"; readonly path: string[]; readonly values: Tagged[] }
-  | { readonly kind: "lte"; readonly path: string[]; readonly value: Tagged }
-  | { readonly kind: "gte"; readonly path: string[]; readonly value: Tagged };
+/**
+ * A grant-producer selector. The bare string all and the object with kind all impose no restriction.
+ * Active paths traverse object members only. equals and one_of compare tagged semantic identity.
+ * Producers reject float-tagged integral values inside equality candidates because JCS would change
+ * their meaning. This major adds inclusive lte and gte numeric bounds. Both operands must share the
+ * int or float tag; non-numeric and cross-tag operands never match.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#selectors
+ */
+export type SelectorInput = "all" | {
+    /** Unrestricted selector; other recognized wire members are inert. */
+    readonly kind: "all";
+  }
+  | {
+    /** Require exact tagged semantic equality at path. */
+    readonly kind: "equals";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Tagged equality candidate; object member order is irrelevant. */
+    readonly value: Tagged;
+  }
+  | {
+    /** Require membership in the tagged candidate set at path. */
+    readonly kind: "one_of";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Nonempty list of at most 256 tagged candidates, compared without collapsing integer and float tags. */
+    readonly values: Tagged[];
+  }
+  | {
+    /** Require a same-tag numeric value at most the inclusive bound. */
+    readonly kind: "lte";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Integer- or float-tagged inclusive upper bound; cross-tag comparisons never match. */
+    readonly value: Tagged;
+  }
+  | {
+    /** Require a same-tag numeric value at least the inclusive bound. */
+    readonly kind: "gte";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Integer- or float-tagged inclusive lower bound; cross-tag comparisons never match. */
+    readonly value: Tagged;
+  };
 
+/**
+ * One named operation and its nonempty conjunction of selectors. Every selector must match the
+ * server-cast request arguments. Duplicate operation names are invalid.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface OperationInput {
+  /** Operation name, 1 to 128 printable ASCII bytes, unique within a grant. */
   readonly name: string;
+  /** Nonempty conjunction of at most 64 selectors; every selector must match. */
   readonly selectors: SelectorInput[];
 }
 
-// A grant producer input (the structured grant; grant_signing_input builds the JWS segments).
+/**
+ * Public fields for a canonical issuer-grant signing input. Construction validates the major-specific
+ * wire form but performs no signing, key custody or issuance-policy decision.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface GrantProducer {
-  readonly keyId: string; readonly issuer: string; readonly grantId: string;
-  readonly audiences: string[]; readonly issuedAt: number; readonly notBefore: number;
-  readonly expiresAt: number; readonly holderThumbprint: string; // base64url 32
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Expected or verified issuer StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
+  readonly issuer: string;
+  /** Grant StringOrURI identifier, 1 to 512 UTF-8 bytes, unique per issuer. */
+  readonly grantId: string;
+  /** Nonempty list of at most 64 distinct audience StringOrURI values, each at most 512 UTF-8 bytes. */
+  readonly audiences: string[];
+  /** Issue timestamp in integer Unix seconds, within the profile integer magnitude. */
+  readonly issuedAt: number;
+  /** Inclusive validity lower endpoint in integer Unix seconds. */
+  readonly notBefore: number;
+  /** Exclusive validity upper endpoint in integer Unix seconds. Grant checks separately apply allowed skew. */
+  readonly expiresAt: number;
+  /** Canonical unpadded base64url string of exactly 32 RFC 7638 thumbprint bytes (43 ASCII characters). */
+  readonly holderThumbprint: string;
+  /** Nonempty list of at most 64 distinct named operations and selectors. */
   readonly operations: OperationInput[];
 }
 
+/**
+ * Public fields for a holder proof binding one invocation and exact typed request arguments. The
+ * holder signs externally. Construction does not authenticate the supplied grant.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ */
 export interface ProofProducer {
-  readonly holderPublicKey: Uint8Array; // raw 32
-  readonly proofId: string; readonly method: string; readonly targetUri: string;
-  readonly issuedAt: number; readonly invocationId: string; readonly operation: string;
-  readonly grantCompact: Uint8Array; readonly castArguments: Tagged;
+  /** Raw 32-byte Ed25519 holder public key; the holder signs the proof externally. */
+  readonly holderPublicKey: Uint8Array;
+  /** Proof StringOrURI identifier, 1 to 512 UTF-8 bytes, unique per proof. */
+  readonly proofId: string;
+  /** Uppercase HTTP method, 1 to 32 ASCII bytes, matched exactly. */
+  readonly method: string;
+  /** Already-normalized target of at most 8,192 ASCII bytes. This namespace requires HTTPS. */
+  readonly targetUri: string;
+  /** Issue timestamp in integer Unix seconds, within the profile integer magnitude. */
+  readonly issuedAt: number;
+  /** Lowercase RFC 4122 UUID for one logical invocation. Reserve it with issuer and grant id before execution. */
+  readonly invocationId: string;
+  /** Operation name, 1 to 128 printable ASCII bytes, naming exactly one grant operation. */
+  readonly operation: string;
+  /** Exact ASCII grant compact hashed into ath. Construction checks framing, not its signature. */
+  readonly grantCompact: Uint8Array;
+  /** Typed arguments bound into the proof. The host independently derives and compares its expected arguments. */
+  readonly castArguments: Tagged;
+  /** Optional nonce, 1 to 512 UTF-8 bytes. Omit when none is required. */
   readonly nonce?: string;
 }
 
+/**
+ * Unsigned chain-boundary fields for external signing by an archive key. Sequence zero denotes the
+ * genesis boundary and requires an all-zero chain hash.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface BoundaryAnchorProducer {
-  readonly anchorId: string; readonly anchoredAt: number; readonly chainId: string;
-  readonly sequence: number; readonly chainHash: Uint8Array; // raw 32
-  readonly keyId: string; readonly publicKey: Uint8Array; // raw 32
+  /** Boundary-anchor StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly anchorId: string;
+  /** Anchor timestamp in integer Unix seconds, within the historical key window. */
+  readonly anchoredAt: number;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** Safe-integer boundary sequence: consumption rows start at 1; genesis anchors use 0. */
+  readonly sequence: number;
+  /** Raw 32-byte boundary chain-link hash; all zeros at sequence zero. */
+  readonly chainHash: Uint8Array;
+  /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
+  readonly keyId: string;
+  /** Already-trusted raw 32-byte Ed25519 public key, never a JWK or private key. */
+  readonly publicKey: Uint8Array;
 }
 
+/**
+ * Unsigned handover from the current archive public key to its successor. The current key signs
+ * externally. Construction does not enroll either key or evaluate trust.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface KeyTransitionProducer {
-  readonly transitionId: string; readonly chainId: string; readonly effectiveAt: number;
-  readonly currentKeyId: string; readonly currentPublicKey: Uint8Array; // raw 32
-  readonly nextKeyId: string; readonly nextPublicKey: Uint8Array; // raw 32
+  /** Transition StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly transitionId: string;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** Transition time in integer Unix seconds, within both key-validity windows. */
+  readonly effectiveAt: number;
+  /** Current signing-key kid, 1 to 128 permitted ASCII bytes. */
+  readonly currentKeyId: string;
+  /** Raw 32-byte Ed25519 current public key; this key signs the transition. */
+  readonly currentPublicKey: Uint8Array;
+  /** Successor-key kid, 1 to 128 permitted ASCII bytes. */
+  readonly nextKeyId: string;
+  /** Raw 32-byte Ed25519 successor public key. */
+  readonly nextPublicKey: Uint8Array;
 }
 
+/**
+ * Rows, signed boundary anchors and ordered signed key transitions to frame as an archive. Encoding
+ * checks canonical structures and consistency without verifying embedded signatures.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface AnchoredExportInput {
-  readonly rows: Uint8Array[]; // raw canonical row bytes
-  readonly startAnchor: Uint8Array; // start-anchor compact bytes (ASCII)
-  readonly endAnchor: Uint8Array; // end-anchor compact bytes (ASCII)
-  readonly transitions: Uint8Array[]; // transition compact bytes (ASCII), ordered
-  readonly chainId: string; readonly firstSequence: number; readonly lastSequence: number;
-  readonly rowCount: number; readonly previousHash: Uint8Array; readonly lastHash: Uint8Array; // raw 32
+  /** Ordered canonical UTF-8 JSON rows, at most 65,536 rows, each at most 4,096 bytes. */
+  readonly rows: Uint8Array[];
+  /** Signed ASCII boundary-anchor compact immediately before the first row. */
+  readonly startAnchor: Uint8Array;
+  /** Signed ASCII boundary-anchor compact at the last row. */
+  readonly endAnchor: Uint8Array;
+  /** Ordered signed transition compacts or matching expected contexts, at most 256 entries. */
+  readonly transitions: Uint8Array[];
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
+  readonly chainId: string;
+  /** First row sequence, a positive safe integer. */
+  readonly firstSequence: number;
+  /** Last row sequence, equal to firstSequence + rowCount - 1. */
+  readonly lastSequence: number;
+  /** Contiguous row count, integer 1 to 65,536 before tightening. */
+  readonly rowCount: number;
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Raw 32-byte digest of the last row with the major-specific chain prefix. */
+  readonly lastHash: Uint8Array;
 }
 
-// The encode-side export context (the reference's ExpectedExport): the caller's chain,
-// anchors, transitions, and bounds — the archive digest is an OUTPUT of encode, never an
-// expectation, and the stored-object version is out-of-band encode context. The v1 façade
-// merged this with the verify-side context; the v2 reference and corpus keep them split.
+/**
+ * Archive construction context: retained chain boundaries, anchors and ordered transitions. The digest
+ * is an encoding output. Verification additionally requires ExpectedAnchoredExport with a retained
+ * digest and object version.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ExpectedExport {
+  /** Independently retained expected contiguous-row boundaries. */
   readonly chain: ExpectedChain;
+  /** Independently retained expected anchor identity, timestamp, key and chain boundary. */
   readonly startAnchor: ExpectedAnchor;
+  /** Independently retained expected anchor identity, timestamp, key and chain boundary. */
   readonly endAnchor: ExpectedAnchor;
+  /** Ordered signed transition compacts or matching expected contexts, at most 256 entries. */
   readonly transitions: ExpectedKeyTransition[];
+  /** Optional tightened resource limits; omission uses the profile maxima. */
   readonly bounds?: Bounds;
 }
 
-// The verify-side export context (the reference's ExpectedAnchoredExport): the encode context
-// plus the mandatory archive digest and stored-object version.
+/**
+ * Archive verification expectations, adding a mandatory independently retained digest and
+ * stored-object version to the construction context. Both must match before acceptance.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ExpectedAnchoredExport extends ExpectedExport {
-  readonly digest: Uint8Array; // raw 32 (archive SHA-256)
+  /** Raw 32-byte SHA-256 digest of the exact complete archive bytes. */
+  readonly digest: Uint8Array;
+  /** Independently obtained storage version, 1 to 512 UTF-8 bytes. */
   readonly objectVersion: string;
 }
 
+/**
+ * An archived object supplied as arbitrary raw chunks and its storage version. Concatenation must
+ * equal the exact archive bytes. Verification reads no filesystem or object store.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ArchivedObject {
-  readonly chunks: Uint8Array[]; // base64url-decoded flat chunk list, concatenated = archive
-  readonly version: string; // the stored-object version (out-of-band context)
+  /** Raw chunks whose concatenation is the exact archive. Boundaries have no wire meaning. */
+  readonly chunks: Uint8Array[];
+  /** Independently obtained storage version, 1 to 512 UTF-8 bytes. */
+  readonly version: string;
 }
 
+/**
+ * Already-trusted archive keys in handover order. The first key verifies the start anchor, the last
+ * verifies the end anchor, and each transition advances one position. This is explicit trust input,
+ * not key discovery.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface HistoricalKeyChain {
-  readonly keys: HistoricalPublicKey[]; // ordered: keys[0]=start, last=end, transitions advance positionally
+  /** Ordered trusted historical public keys, one more than the number of transitions. */
+  readonly keys: HistoricalPublicKey[];
 }
 
 // --- the v2 facts (identical field sets to the v1 facts; the version literal is 2) ---
 // GrantFacts and EnvelopeFacts carry `version: number` and are shared with the v1 façade;
 // these literal-2 variants keep the diagnostic/export fact surfaces major-typed.
 
+/**
+ * Diagnostic facts for a contiguous, boundary-consistent consumption-row range. Hash consistency
+ * establishes neither trust, execution, global completeness nor absence of deletion.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface ChainFacts {
+  /** Wire contract-major number, not the npm package version. */
   readonly version: 2;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
+  /** First row sequence, a positive safe integer. */
   readonly firstSequence: number;
+  /** Last row sequence, equal to firstSequence + rowCount - 1. */
   readonly lastSequence: number;
+  /** Contiguous row count, integer 1 to 65,536 before tightening. */
   readonly rowCount: number;
-  readonly previousHash: Uint8Array; // raw 32
-  readonly lastHash: Uint8Array; // raw 32
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Raw 32-byte digest of the last row with the major-specific chain prefix. */
+  readonly lastHash: Uint8Array;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "boundary_consistent";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
 }
 
+/**
+ * Diagnostic facts after an anchor signature and historical key window match. The caller still owns
+ * trust selection; fingerprints identify keys without carrying raw key material.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface AnchorFacts {
+  /** Wire contract-major number, not the npm package version. */
   readonly version: 2;
+  /** Boundary-anchor StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly anchorId: string;
+  /** Anchor timestamp in integer Unix seconds, within the historical key window. */
   readonly anchoredAt: number;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
+  /** Safe-integer boundary sequence: consumption rows start at 1; genesis anchors use 0. */
   readonly sequence: number;
-  readonly chainHash: Uint8Array; // raw 32
-  readonly keyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte boundary chain-link hash; all zeros at sequence zero. */
+  readonly chainHash: Uint8Array;
+  /** Raw 32-byte RFC 7638 thumbprint identifying the public key. */
+  readonly keyFingerprint: Uint8Array;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "signature_and_window";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
 }
 
+/**
+ * Diagnostic facts after a signed handover and both historical key windows match. Authenticated
+ * succession does not establish operational trust or authorization.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface KeyTransitionFacts {
+  /** Wire contract-major number, not the npm package version. */
   readonly version: 2;
+  /** Transition StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly transitionId: string;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
+  /** Transition time in integer Unix seconds, within both key-validity windows. */
   readonly effectiveAt: number;
-  readonly currentKeyFingerprint: Uint8Array; // raw 32
-  readonly nextKeyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte RFC 7638 thumbprint of the transition-signing key. */
+  readonly currentKeyFingerprint: Uint8Array;
+  /** Raw 32-byte RFC 7638 thumbprint of the successor key. */
+  readonly nextKeyFingerprint: Uint8Array;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "authenticated_transition";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
 }
 
+/**
+ * Facts after archive framing, digest, storage version, anchors, transitions and every row match
+ * explicit expectations. Neither trust nor authorization is evaluated.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
 export interface AnchoredExportFacts {
+  /** Wire contract-major number, not the npm package version. */
   readonly version: 2;
+  /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly chainId: string;
+  /** First row sequence, a positive safe integer. */
   readonly firstSequence: number;
+  /** Last row sequence, equal to firstSequence + rowCount - 1. */
   readonly lastSequence: number;
+  /** Contiguous row count, integer 1 to 65,536 before tightening. */
   readonly rowCount: number;
-  readonly previousHash: Uint8Array; // raw 32
-  readonly lastHash: Uint8Array; // raw 32
-  readonly digest: Uint8Array; // raw 32 archive SHA-256
+  /** Raw 32-byte digest before this row or range; all zeros at genesis. */
+  readonly previousHash: Uint8Array;
+  /** Raw 32-byte digest of the last row with the major-specific chain prefix. */
+  readonly lastHash: Uint8Array;
+  /** Raw 32-byte SHA-256 digest of the exact complete archive bytes. */
+  readonly digest: Uint8Array;
+  /** Verified start boundary-anchor identifier. */
   readonly startAnchorId: string;
+  /** Start-anchor timestamp in integer Unix seconds. */
   readonly startAnchoredAt: number;
-  readonly startKeyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte RFC 7638 thumbprint of the start archive key. */
+  readonly startKeyFingerprint: Uint8Array;
+  /** Verified end boundary-anchor identifier. */
   readonly endAnchorId: string;
+  /** End-anchor timestamp in integer Unix seconds. */
   readonly endAnchoredAt: number;
-  readonly endKeyFingerprint: Uint8Array; // raw 32
+  /** Raw 32-byte RFC 7638 thumbprint of the end archive key. */
+  readonly endKeyFingerprint: Uint8Array;
+  /** Authenticated archive-key handover count, integer 0 to 256. */
   readonly transitionCount: number;
+  /** Independently obtained storage version, 1 to 512 UTF-8 bytes. */
   readonly objectVersion: string;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "anchored_export";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
+  /** Always not_evaluated. Pure verification makes no operational authorization decision. */
   readonly authorization: "not_evaluated";
 }
 
-// --- the v2 selector algebra (ADR 0028: per-request range kinds, contract-major) ---
-//
-// This façade's selector module. The v1 kind set {all, equals, one_of} extends to exactly
-// {all, equals, one_of, lte, gte} on the SAME three recognized member sets (ADR 0021): the
-// range kinds use {kind, path, value}. Operand domain is SAME-TAG numeric only — the
-// traversed value and the bound must both be integer-tagged or both float-tagged; a
-// cross-tag pair never matches, fail closed (ADR 0028 §2 extends
-// REQ1-SELECTOR-no-tag-collapse from identity to ordering: an integer 50 never satisfies a
-// float 50.0 bound and vice versa). Comparison is INCLUSIVE by numeric value on the finite
-// binary64 domain (non-finite floats cannot occur — the bounded decoder rejects them). A
-// non-numeric operand (string/boolean/null/array/object at the path, or a non-numeric bound)
-// never matches, and a non-numeric bound is rejected at decode. A missing path fails closed
-// exactly as equals/one_of. The v1 module (selector.ts) stays closed at its three kinds
-// (REQ1-SELECTOR-closed-set); admitting lte/gte in-place would flip an lte-bearing grant from
-// Err to Ok (REQ1-EVO-no-verdict-flip).
+// The range selector algebra adds exactly lte and gte to all, equals and one_of. Range
+// selectors have {kind, path, value}. Both operands must carry the same numeric tag;
+// integer/float pairs never match. Comparison is inclusive over finite binary64 values. Non-
+// numeric bounds reject at decode; non-numeric request values and missing paths fail to match.
+// The major-1 selector module remains closed to its three kinds. See spec/bap-v2.md#selectors.
 
-export type Selector =
-  | { readonly kind: "all" }
-  | { readonly kind: "equals"; readonly path: string[]; readonly value: Tagged }
-  | { readonly kind: "one_of"; readonly path: string[]; readonly values: Tagged[] }
-  | { readonly kind: "lte"; readonly path: string[]; readonly value: Tagged }
-  | { readonly kind: "gte"; readonly path: string[]; readonly value: Tagged };
+/**
+ * A validated closed selector. all always matches; equals and one_of compare tagged semantic identity.
+ * Paths traverse objects only; missing members refuse. Integer and float tags never collapse.
+ * Constraints alone make no authorization decision. This major adds inclusive lte and gte numeric
+ * bounds. Both operands must share the int or float tag; non-numeric and cross-tag operands never
+ * match.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#selectors
+ */
+export type Selector = {
+    /** Unrestricted selector; other recognized wire members are inert. */
+    readonly kind: "all";
+  }
+  | {
+    /** Require exact tagged semantic equality at path. */
+    readonly kind: "equals";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Tagged equality candidate; object member order is irrelevant. */
+    readonly value: Tagged;
+  }
+  | {
+    /** Require membership in the tagged candidate set at path. */
+    readonly kind: "one_of";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Nonempty list of at most 256 tagged candidates, compared without collapsing integer and float tags. */
+    readonly values: Tagged[];
+  }
+  | {
+    /** Require a same-tag numeric value at most the inclusive bound. */
+    readonly kind: "lte";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Integer- or float-tagged inclusive upper bound; cross-tag comparisons never match. */
+    readonly value: Tagged;
+  }
+  | {
+    /** Require a same-tag numeric value at least the inclusive bound. */
+    readonly kind: "gte";
+    /** Object-member path: 1 to 32 names of 1 to 128 UTF-8 bytes each; array indices are unsupported. */
+    readonly path: string[];
+    /** Integer- or float-tagged inclusive lower bound; cross-tag comparisons never match. */
+    readonly value: Tagged;
+  };
 
 const SELECTOR_KINDS = new Set(["all", "equals", "one_of", "lte", "gte"]);
 const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,values"]);
 
-// Numeric-tag domain: a range bound must be integer- or float-tagged at decode (the
-// reference's numeric_bound?/1 — a non-numeric bound is a decode rejection, not a no-match).
+// A range bound must carry an integer or float tag at decode. A non-numeric bound is invalid,
+// whereas a non-numeric request operand simply fails to match.
 function isNumericTag(v: Tagged): boolean {
   return v !== null && typeof v === "object" && (v.t === "int" || v.t === "float");
 }
 
-// Validate + parse a v2 selector from a decoded tagged object: the three ADR-0021 member
-// sets, the extended kind dispatch, and the numeric-bound gate on lte/gte.
 /**
  * Validates a decoded selector object for major 2 (`all`, `equals`, `one_of`, `lte`, `gte`).
  * Throws `InvalidError` otherwise.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#selectors
+ * @returns The validated selector with its closed discriminant and typed operands.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
@@ -295,7 +709,7 @@ export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Sel
   if (!SELECTOR_KINDS.has(kind)) fail("selector: kind closed set");
   const memberSet = [...obj.v.keys()].sort().join(",");
   if (!SELECTOR_MEMBER_SETS.has(memberSet)) fail("selector: member set");
-  // kind:"all" is recognized on any of the three member sets (ADR 0021; path/value(s) inert).
+  // kind:"all" is recognized on any of the three member sets (spec/bap-v1.md#selectors; path/value(s) inert).
   if (kind === "all") return { kind: "all" };
   if (kind === "equals") {
     if (obj.v.size !== 3) fail("selector: equals members");
@@ -344,7 +758,7 @@ function parseSelectorPath(pathV: Tagged | undefined, bounds: Bounds): string[] 
   return names;
 }
 
-// Same-tag INCLUSIVE comparison (ADR 0028 §2): each arm pairs identical tags, so a cross-tag
+// Same-tag INCLUSIVE comparison (spec/bap-v2.md#selectors §2): each arm pairs identical tags, so a cross-tag
 // or non-numeric operand pair falls through to false rather than comparing numerically.
 function rangeMatches(target: Tagged, bound: Tagged, kind: "lte" | "gte"): boolean {
   if (target.t === "int" && bound.t === "int") return kind === "lte" ? target.v <= bound.v : target.v >= bound.v;
@@ -362,14 +776,12 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
   return cur;
 }
 
-// Does this v2 selector match the cast_arguments? equals/one_of compare semantic identity
-// (JCS of the typed projection — the int/float distinction survives); lte/gte apply the
-// same-tag inclusive comparison to the traversed value. Missing path → no match
-// (REQ1-SELECTOR-path-required).
 /**
  * Applies one parsed major-2 selector to the cast arguments. `lte` and `gte` are inclusive and
  * match only a same-tag numeric value.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#selectors
+ * @returns Whether the parsed selector matches. A missing path or a value/tag mismatch returns `false`.
+ * @throws InvalidError if computing tagged identity violates the bounded JSON contract.
  */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;
@@ -405,7 +817,8 @@ function parseProofHeader(seg: CompactSegments, bounds: Bounds): { holderThumbpr
   requireStringLit(h, "typ", PROOF_TYP, "proof header typ");
   const jwkV = h.v.get("jwk")!;
   if (jwkV.t !== "object") fail("proof header: jwk object");
-  // Closed OKP members {crv, kty, x}; reject any extra member (incl. private d) — REQ1-HEADER-no-private-jwk.
+  // The OKP JWK has exactly {crv, kty, x}. Reject additional members, including private d,
+  // under REQ1-HEADER-no-private-jwk.
   requireObjectExact(jwkV, ["crv", "kty", "x"], "proof jwk");
   requireStringLit(jwkV, "crv", "Ed25519", "proof jwk crv");
   requireStringLit(jwkV, "kty", "OKP", "proof jwk kty");
@@ -523,7 +936,8 @@ function requireMethod(v: Tagged | undefined, key: string, bounds: Bounds): stri
   return s;
 }
 
-// Normalized HTTPS URI claim (≤ uri_bytes; must already equal Uri.normalize — checked by re-normalizing).
+// A URI claim must fit uri_bytes and already equal its normalized HTTPS form. Re-normalization
+// checks that equality.
 function requireNormalizedUri(v: Tagged | undefined, key: string, bounds: Bounds): string {
   if (!v || v.t !== "string") fail(`claim: ${key} uri string`);
   const b = v.v;
@@ -554,7 +968,7 @@ function validateGrantPayload(p: Tagged, bounds: Bounds): asserts p is Extract<T
     const sels = opObj.v.get("selectors")!;
     if (sels.t !== "array") fail("grant: selectors array");
     if (sels.v.length < 1 || sels.v.length > resolve(bounds, "selectors" as MaximaKey)) fail("grant: selectors count");
-    for (const s of sels.v) parseSelector(s, bounds); // validate each selector's closed shape (thread caller bounds — selector/2 in the reference enforces path_segments, one_of_values, selector value node bounds)
+    for (const s of sels.v) parseSelector(s, bounds); // Validate selector shape and path, value-count and node bounds with caller limits.
   }
 }
 
@@ -613,7 +1027,7 @@ function validateProofPayload(p: Tagged, bounds: Bounds): asserts p is Extract<T
   }
 }
 
-// Validate the closed anchor payload (ADR 0004 § Boundary anchors).
+// Validate the closed anchor payload (spec/bap-v1.md#chain § Boundary anchors).
 function validateAnchorPayload(p: Tagged, payloadBytes: Uint8Array, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["anchor_id", "anchored_at", "chain_hash", "chain_id", "key_fingerprint", "sequence", "v"], "anchor payload");
   const vV = p.v.get("v")!;
@@ -635,7 +1049,7 @@ function validateAnchorPayload(p: Tagged, payloadBytes: Uint8Array, bounds: Boun
   if (!bytesEqual(jcsEncode(p, bounds), payloadBytes)) fail("anchor payload: canonical");
 }
 
-// Validate the closed key-transition payload (ADR 0004 § Authenticated key transitions).
+// Validate the closed key-transition payload (spec/bap-v1.md#chain § Authenticated key transitions).
 function validateTransitionPayload(p: Tagged, payloadBytes: Uint8Array, bounds: Bounds): asserts p is Extract<Tagged, { t: "object" }> {
   requireObjectExact(p, ["chain_id", "effective_at", "from_key_fingerprint", "to_key_fingerprint", "to_key_id", "transition_id", "v"], "transition payload");
   const vV = p.v.get("v")!;
@@ -670,13 +1084,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 // --- the 17 façade functions ---
 
 
-// --- the closed-Result shape gate (ADR 0017 clauses 1-2) ---
-//
-// A wrong-typed caller value must return Err — never throw TypeError past trying() (JS property
-// derefs on null/undefined) and never be silently coerced (TextEncoder stringifies non-strings:
-// requestDigest(123) used to digest "123" and return Ok). Every façade gates its arguments' SHAPES
-// before the body runs. Struct params are gated non-null-object plus the fields the body derefs
-// before its own semantic gates; deeper field semantics stay with the bodies' existing type checks.
+// Validate argument shapes before entering the verification body. Wrong types return Err rather
+// than escaping as native TypeError or undergoing implicit string coercion. Structured
+// arguments must be non-null objects with every field the body dereferences. The body then
+// enforces field semantics. See spec/bap-v1.md#verification.
 
 type Shape = "bytes" | "str" | "int" | "object" | "tagged" | { seq: Shape } | { fields: Record<string, Shape> } | { opt: Shape };
 
@@ -691,8 +1102,8 @@ const SHAPE_EXPORT_INPUT: Shape = { fields: { rows: { seq: "bytes" }, startAncho
 const SHAPE_EXPECTED_CHAIN: Shape = { fields: { chainId: "str", firstSequence: "int", lastSequence: "int", rowCount: "int", previousHash: "bytes", lastHash: "bytes", bounds: SHAPE_BOUNDS_OPT } };
 const SHAPE_EXPECTED_ANCHOR: Shape = { fields: { anchorId: "str", anchoredAt: "int", chainId: "str", sequence: "int", chainHash: "bytes", keyId: "str", keyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
 const SHAPE_EXPECTED_TRANSITION: Shape = { fields: { transitionId: "str", chainId: "str", effectiveAt: "int", currentKeyId: "str", currentKeyFingerprint: "bytes", nextKeyId: "str", nextKeyFingerprint: "bytes", bounds: SHAPE_BOUNDS_OPT } };
-// The nested members are FULLY specified, not opaque "object" — a malformed nested struct (missing
-// field, wrong type) must reject at the gate, never reach a deref inside the hoist or body.
+// Describe every nested field in the shape gate. Missing or wrong-typed nested members must
+// reject before any dereference in the body.
 const SHAPE_EXPECTED_EXPORT: Shape = { fields: { chain: SHAPE_EXPECTED_CHAIN, startAnchor: SHAPE_EXPECTED_ANCHOR, endAnchor: SHAPE_EXPECTED_ANCHOR, transitions: { seq: SHAPE_EXPECTED_TRANSITION }, bounds: SHAPE_BOUNDS_OPT } };
 // The verify-side shape adds the two mandatory anchored members (digest + object_version).
 const SHAPE_EXPECTED_ANCHORED_EXPORT: Shape = { fields: { chain: SHAPE_EXPECTED_CHAIN, digest: "bytes", startAnchor: SHAPE_EXPECTED_ANCHOR, endAnchor: SHAPE_EXPECTED_ANCHOR, transitions: { seq: SHAPE_EXPECTED_TRANSITION }, objectVersion: "str", bounds: SHAPE_BOUNDS_OPT } };
@@ -712,30 +1123,28 @@ function shapeOk(value: unknown, shape: Shape): boolean {
   return true;
 }
 
-// Accepted margin: the gate walks caller sequences element-by-element BEFORE the bodies' count
-// ceilings run — inherent to entry-position gating; the per-element cost is a typeof check only,
-// and constructing an oversized caller list costs the caller more than the walk costs us.
+// The shape gate walks caller sequences before the body enforces count ceilings. Each element
+// requires only a type check, so this initial validation remains linear in the supplied
+// sequence length.
 function closedShape(args: unknown[], shapes: Shape[]): void {
   for (let i = 0; i < shapes.length; i++) {
     if (!shapeOk(args[i], shapes[i]!)) fail(`shape: argument ${i}`);
   }
 }
 
-// 1. untrusted_key_locator (spec/bap-v2.md § Untrusted key locator).
 /**
  * Reads only the `kid` of a major-2 grant's protected header, to select a trusted key. The result
  * is a lookup hint (`trust: "not_evaluated"`), never trust.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns An untrusted protected-header key identifier in a success Result; no signature or trust is evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
     closedShape([compact, bounds], ["bytes", SHAPE_BOUNDS_OPT]);
-    // The reference (v2.ex delegates to the v1 façade, v1.ex:21-34) decodes ONLY the protected
-    // segment — payload and signature are NOT decoded, interpreted, or independently size-checked.
-    // parseCompact decodes all three, so a compact with a valid protected grant header but
-    // non-canonical payload/signature bytes wrongly rejected. Mirror the reference: split into
-    // exactly 3 segments, decode protected only, validate the grant header + kid. (An invalid
-    // payload/signature does not affect the kid.)
+    // Key-location decoding inspects only the protected segment of exactly three compact
+    // segments. Payload and signature bytes are neither decoded nor independently size-checked.
+    // Full parseCompact validation would reject inputs whose untrusted header hint is still
+    // readable. The result remains an untrusted key identifier.
     const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("key_locator: compact bound");
     // Exactly 3 segments on '.' (a 2- or 4-segment input fails the closed shape).
@@ -743,17 +1152,15 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
     for (let i = 0; i < compact.length; i++) if (compact[i] === DOT) dots.push(i);
     if (dots.length !== 2) fail("key_locator: three segments");
     const d0 = dots[0]!;
-    // The reference (v1.ex:24, shared by the v2 façade) only requires exactly 3 segments and
-    // decodes the PROTECTED segment alone — payload and signature are bound to _ and never decoded
-    // or size-checked, so empty payload/signature segments are ACCEPTED (e.g. "<protected>.."
-    // yields kid=<protected's>). Only an empty PROTECTED segment (d0 === 0) is invalid (it must
-    // base64url-decode to a header). Do NOT reject empty payload/signature.
+    // Exactly three segments are required. Empty payload and signature segments are permitted
+    // here because key location decodes only the protected header. The protected segment must
+    // be nonempty and decode to a valid grant header.
     if (d0 === 0) fail("key_locator: empty protected segment");
     const protectedText = compact.subarray(0, d0);
     if (protectedText.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("key_locator: protected bound");
     const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
-    // Thread the caller-resolved bounds into the JSON decode (reference v1.ex:27 Json.decode,
-    // shared by the v2 façade (header_bytes, bounds) — depth/total_nodes limits honor bounds).
+    // Pass resolved caller bounds to protected-header JSON decoding so depth and total_nodes
+    // limits apply.
     const h = jsonDecode(protectedBytes, b);
     requireObjectExact(h, ["alg", "typ", "kid"], "grant header");
     requireStringLit(h, "alg", ALG, "grant header alg");
@@ -767,11 +1174,11 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
   });
 }
 
-// 2. decode_grant (REQ1-VERIFY-decode-not-evaluated).
 /**
  * Parses and validates a major-2 grant's structure and claims without checking its signature or
  * any context (`verification: "not_evaluated"`). For display and debugging, never for a decision.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Structurally validated grant claims with verification not_evaluated in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
   return trying(() => {
@@ -801,11 +1208,11 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
   });
 }
 
-// 3. decode_proof.
 /**
  * Parses and validates a standard (`dpop+jwt`) major-2 holder proof without checking its signature
  * or any context (`verification: "not_evaluated"`).
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Structurally validated proof claims with verification not_evaluated in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
   return trying(() => {
@@ -820,24 +1227,22 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
   });
 }
 
-// 4. verify_grant (REQ1-VERIFY-grant-exact, grant-times, no-iat-nbf-order).
 /**
  * Verifies a major-2 grant against the trusted issuer key and the expected issuer, audience and
  * time. Facts carry `authorization: "not_evaluated"`: verification is not authority.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Redacted GrantFacts in a success Result, with authorization not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
     closedShape([compact, trusted, expected], ["bytes", "object", "object"]);
-    // The reference pattern-matches %TrustedIssuer{} and returns {:error,:invalid} for any
-    // malformed context struct (runtime.ex:181,196). A null OR a struct missing publicKey/keyId
-    // must fail closed — not throw a native TypeError that escapes the Result contract. Validate
-    // the trusted issuer's shape before dereferencing its fields.
+    // Validate the trusted issuer structure before dereferencing publicKey or keyId. Null,
+    // missing fields and wrong types must return the closed error without a native TypeError.
     if (trusted === null || trusted === undefined) fail("verify_grant: trusted issuer required");
     if (!(trusted.publicKey instanceof Uint8Array) || trusted.publicKey.length !== 32) fail("verify_grant: issuer key width");
     if (typeof trusted.keyId !== "string") fail("verify_grant: issuer key id");
-    // The reference requires is_integer(evaluation_time) and is_integer(clock_skew) (>= 0) —
-    // runtime.ex:522-523. A range-only `< 0` check accepts fractional times.
+    // Evaluation time and clock skew must be integers, and skew must be nonnegative. A range-
+    // only check would admit fractional times.
     if (!Number.isInteger(expected.evaluationTime)) fail("verify_grant: integer evaluation time");
     // The reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:186) and threads it
     // into validate_expected_grant (clock_skew <= bounds.clock_skew) + every bound-sensitive check
@@ -876,12 +1281,12 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
   });
 }
 
-// 5. check_envelope (REQ1-VERIFY-envelope-binding).
 /**
  * Verifies a major-2 grant and its holder proof against one request: both signatures, issuer,
  * audience, time windows, holder binding, method, URI, invocation id, operation, request digest,
  * nonce and every selector of the operation.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Redacted EnvelopeFacts for the matched request in a success Result. Authorization remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
   return trying(() => {
@@ -893,9 +1298,8 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     if (t === null || t === undefined) fail("check_envelope: trusted issuer required");
     if (!(t.publicKey instanceof Uint8Array) || t.publicKey.length !== 32) fail("check_envelope: issuer key width");
     if (typeof t.keyId !== "string") fail("check_envelope: issuer key id");
-    // The reference requires is_integer(evaluation_time), is_integer(clock_skew) (>= 0), and
-    // proof_max_age > 0 (strictly positive) — runtime.ex:522-523,550-551. A range-only `< 0` check
-    // accepts fractional times and proofMaxAge=0. The signed-time boundary is exact.
+    // Evaluation time and clock skew must be integers; skew must be nonnegative and proofMaxAge
+    // strictly positive. A range-only check would admit fractional times or a zero proof age.
     if (!Number.isInteger(expected.evaluationTime)) fail("check_envelope: integer evaluation time");
     // The reference resolves Bounds.coerce(expected.bounds) once (runtime.ex:204) and threads it
     // into validate_expected_request (clock_skew, proof_max_age) + parse_grant + parse_proof +
@@ -946,9 +1350,9 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
     const hkey = importPublicKey(holderKey, utf8Str(base64urlEncode(holderThumbprint)));
     if (!ed25519Verify(pseg.signingInput, pseg.signature, hkey)) fail("check_envelope: proof signature");
     if (pp.t !== "object") fail("check_envelope: proof payload");
-    // ath = SHA-256(ASCII grant compact), gated by scan (shape+size, not canonicity) — mirrors
-    // CompactJws.hash (compact_jws.ex:60-66 scan then hash). The grant was already parsed above, so
-    // this scan is redundant for verify but matches the reference's hash gate exactly.
+    // Compute ath as SHA-256 of the ASCII grant compact after the structural size scan. The
+    // scan checks framing and bounds without imposing base64url canonicality. Verification has
+    // already parsed the grant, but uses the same hash gate as producers.
     scanCompact(grantCompact, b);
     const athRaw = sha256(grantCompact);
     const athB64 = utf8Str(base64urlEncode(athRaw));
@@ -1013,12 +1417,11 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
   });
 }
 
-// 6. request_digest (the façade; returns Ok<raw 32-byte digest> | Err — mirror the Elixir {:ok,
-// binary} | {:error,:invalid} and the other 15 façade functions).
 /**
  * The 32-byte request digest a proof carries as `ba_req`: SHA-256 over `BAP2-REQUEST\0` and the
  * JCS of `[operation, typed(castArguments)]`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ * @returns The raw 32-byte SHA-256 request digest in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -1027,12 +1430,22 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds?:
   });
 }
 
-// 7. encode_consumption_entry (ADR 0004 § Consumption rows). Returns canonical row bytes + hash.
-export interface EncodedConsumptionEntry { readonly bytes: Uint8Array; readonly hash: Uint8Array; }
+/**
+ * Successful row encoding: canonical UTF-8 JSON and its major-specific SHA-256 chain-link digest.
+ * Encoding is not an execution receipt.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
+export interface EncodedConsumptionEntry {
+  /** Complete canonical consumption-row UTF-8 JSON bytes. */
+  readonly bytes: Uint8Array;
+  /** Raw 32-byte SHA-256 of the major-specific row prefix followed by bytes. */
+  readonly hash: Uint8Array;
+}
 /**
  * Encodes one consumption row as canonical bytes and returns them with the row hash, SHA-256 over
  * `BAP2-CHAIN\0` and the bytes.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Canonical row bytes and their raw 32-byte chain-link hash in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds): Result<EncodedConsumptionEntry> {
   return trying(() => {
@@ -1073,11 +1486,11 @@ function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint
   return canonicalRowBytesFromId(strUtf8(chainId), sequence, previousHash, commitment, b);
 }
 
-// 8. check_chain (ADR 0004 § Consumption rows; REQ1-CHAIN-raw-rows-bounds).
 /**
  * Verifies a contiguous range of raw consumption rows against the expected chain id, sequences,
  * count, predecessor hash and head hash. Facts carry `trust: "not_evaluated"`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Boundary-consistent ChainFacts in a success Result, with trust not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
@@ -1146,11 +1559,11 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
   });
 }
 
-// 9. grant_signing_input (the deterministic producer; REQ1-SIGNING-deterministic-produce).
 /**
  * Builds the exact major-2 grant signing input. Sign the bytes `protectedSegment`, `.`,
  * `payloadSegment` with the issuer key, then call `assembleCompact`; the package never signs.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Canonical protected and payload base64url segments for the grant in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1191,10 +1604,9 @@ function buildGrantPayload(grant: GrantProducer, b: Bounds): Tagged {
     const nameBytes = strUtf8(op.name);
     if (nameBytes.length < 1 || nameBytes.length > resolve(b, "operation_bytes" as MaximaKey)) fail("grant_signing_input: operation name bytes");
     if (!/^[\x20-\x7e]+$/.test(op.name)) fail("grant_signing_input: operation name charset");
-    // The shape gate covers the scalar fields + per-operation name; selectors is a union (bare
-    // "all" string or selector objects) the walker cannot express, so gate the array here — a
-    // null/number selectors previously threw a native TypeError past the Result contract; item
-    // shapes fail closed in selectorToTagged.
+    // The scalar shape gate cannot express the selectors union of the bare "all" string and
+    // selector objects. Check the array here; selectorToTagged validates each item. Malformed
+    // selectors must return the closed Result error.
     if (!Array.isArray(op.selectors)) fail("grant_signing_input: selectors array");
     if (op.selectors.length < 1 || op.selectors.length > resolve(b, "selectors" as MaximaKey)) fail("grant_signing_input: selectors count");
     const sels: Tagged[] = op.selectors.map((s) => selectorToTagged(s, b));
@@ -1256,8 +1668,8 @@ function selectorToTagged(s: SelectorInput, b: Bounds): Tagged {
     ]);
     return { t: "object", v: members };
   }
-  // lte / gte: the bound must be numeric-tagged before it can be minted (mirrors the
-  // reference encode_selector numeric_bound? gate — the producer rejects pre-signing).
+  // An lte or gte bound must be numeric-tagged before signing. Reject non-numeric producer
+  // bounds under the same rule as decoding.
   if (typeof s === "object" && (s.kind === "lte" || s.kind === "gte")) {
     const path = validatePath(s.path, b);
     if (!isNumericTag(s.value)) fail("selector: numeric bound");
@@ -1327,11 +1739,11 @@ function checkNode(v: Tagged, depth: number, b: Bounds): void {
   }
 }
 
-// 10. proof_signing_input (REQ1-SIGNING-deterministic-produce).
 /**
  * Builds the exact major-2 holder-proof signing input for one invocation of a grant. Sign it with
  * the holder key, then call `assembleCompact`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Canonical protected and payload base64url segments for the holder proof in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1363,9 +1775,9 @@ export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result
       ["jwk", jwkToTagged(jwk)],
       ["typ", { t: "string", v: strUtf8(PROOF_TYP) }],
     ]);
-    // Producer ath: gate the grant compact by scan (shape+size, NOT base64url canonicity) before
-    // hashing it into `ath` — mirrors CompactJws.ath (compact_jws.ex:53-58 scan then hash). A
-    // caller-supplied non-compact grant must not be embedded as sha256(garbage) in the proof.
+    // Scan grant framing and size before hashing the compact into ath. This prevents a producer
+    // from embedding a digest of an arbitrary malformed string. The scan does not impose
+    // base64url canonicality.
     scanCompact(proof.grantCompact, b);
     const athRaw = sha256(proof.grantCompact);
     const baReqRaw = computeRequestDigest(proof.operation, proof.castArguments, b);
@@ -1398,39 +1810,29 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string }): Tagged {
   return { t: "object", v: members };
 }
 
-// 11. assemble_compact (REQ1-VERIFY-no-signer-callback; public /2 contract, spec/bap-v2.md § Public verification contract).
-// Mirrors runtime.ex:147-155 assemble_compact: assemble via the low-level assembler, then
-// validate_assembled_compact (runtime.ex:754-780) re-parses the composed compact per kind. The
-// signing-input gates (kind↔typ, segment bounds, base64url payload, compact_bytes) come from
-// CompactJws.assemble's valid_signing_input? (compact_jws.ex:36,80-101). The public contract
-// carries no caller bounds, so the profile maximum (MAXIMUM_BOUNDS) is used. A mislabeled kind
-// (typ ≠ kind), oversized segment, non-base64url payload, or malformed payload content fails
-// closed — the producer must not mint bytes its own consumer (verify) would reject.
 /**
  * Joins a signing input and a 64-byte signature into a compact JWS and re-parses the result. It
  * does not verify the signature.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v2.md#substitutions
+ * @returns Exact ASCII compact JWS bytes in a success Result; no signature verification is performed. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function assembleCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
     closedShape([input, signature, bounds], [{ fields: { kind: "str", protectedSegment: "bytes", payloadSegment: "bytes" } }, "bytes", SHAPE_BOUNDS_OPT]);
-    // ADR 0018 divergence closed (2026-08-18): the reference takes limits at assemble
-    // (runtime.ex:147-155 → CompactJws.assemble:34-48 — encoded segment bounds, signature
-    // width ≤ signature_bytes, compact_bytes, all against Bounds.coerce(limits)); the SDK
-    // previously hardcoded maximum. Absent bounds = maximum (backward compatible).
+    // Assembly applies caller-resolved encoded-segment, decoded-segment, signature-width and
+    // total compact-byte limits. Omitted bounds resolve to the protocol maximum.
     const b = coerceBounds(bounds ?? MAXIMUM_BOUNDS);
     if (input.protectedSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey) || input.payloadSegment.length > resolve(b, "encoded_segment_bytes" as MaximaKey)) fail("assemble_compact: segment bound");
-    // (signature_bytes needs no gate: it is a FIXED-WIDTH key rejected at boundsNew
-    // unless 64 — the reference's assemble-time check is subsumed.)
+    // The fixed signature_bytes bound is always 64; boundsNew rejects any other value. The
+    // signature coercion already enforces that width.
     const assembled = assembleSegments(input, signature);
     if (!assembled.ok) fail("assemble_compact: signing input");
     const compact = assembled.value;
     if (compact.length > resolve(b, "compact_bytes" as MaximaKey)) fail("assemble_compact: compact_bytes");
-    // Re-parse the composed compact per kind (validate_assembled_compact). parseCompact enforces the
-    // segment bounds + base64url decode; parseXxxHeader enforces kind↔typ; the payload validators
-    // enforce the full payload structure. The GRANT arm uses decodeGrant (the full decoder) because
-    // validateGrantPayload is structural-only — it does not validate iss/jti/aud/times/cnf, which
-    // decodeGrant extracts + validates (mirrors reference parse_grant → decode_grant_fields).
+    // Re-parse the assembled compact for its selected kind. Parsing enforces segment bounds and
+    // base64url canonicality; header and payload decoders enforce the full claim contract. The
+    // grant arm uses decodeGrant because its structural payload validator alone does not
+    // validate issuer, identifiers, audience, times or holder binding.
     const seg = parseCompact(compact, b);
     const payload = jsonDecode(seg.payloadBytes, b);
     switch (input.kind) {
@@ -1448,11 +1850,11 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
   });
 }
 
-// 12. boundary_anchor_signing_input (ADR 0004 § Boundary anchors).
 /**
  * Builds the signing input of a boundary anchor, which signs one point (sequence and chain hash)
  * of a consumption chain under an archive key.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Canonical protected and payload base64url segments for the boundary anchor in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1494,11 +1896,11 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
   });
 }
 
-// 13. key_transition_signing_input (ADR 0004 § Authenticated key transitions).
 /**
  * Builds the signing input of an authenticated key transition from the current archive key to the
  * next one; the current key signs it.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Canonical protected and payload base64url segments for the key transition in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1539,12 +1941,22 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
   });
 }
 
-// 14. encode_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-input-shape).
-export interface EncodedAnchoredExport { readonly archive: Uint8Array; readonly digest: Uint8Array; }
+/**
+ * Successful archive encoding: complete framed bytes and their SHA-256 digest. Encoding checks
+ * structure and consistency but verifies no signatures and grants no authority.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ */
+export interface EncodedAnchoredExport {
+  /** Complete binary archive including the unframed 20-byte magic prefix. */
+  readonly archive: Uint8Array;
+  /** Raw 32-byte SHA-256 digest of the exact complete archive bytes. */
+  readonly digest: Uint8Array;
+}
 /**
  * Checks rows, anchors and transitions, then frames them into an anchored-export archive. Returns
  * the archive bytes and their SHA-256 digest.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Framed archive bytes and their raw 32-byte SHA-256 digest in a success Result, without signature verification. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
   return trying(() => {
@@ -1556,12 +1968,9 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
     // tightening via expected.bounds takes effect (matches verify_anchored_export).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     validateExportInputs(input, expected, b);
-    // Row chain re-check (anchored_export_codec.ex:37-39 — ConsumptionChain.check): the rows must
-    // verify against the expected boundaries BEFORE framing, under the caller's OUTER bounds (the
-    // reference threads the outer bounds into the row walk, %{expected.chain | bounds: bounds}) —
-    // and the chain's nested bounds, when present, must coerce-equal the outer
-    // (anchored_export_codec.ex:352-354). resolving only the chain's own bounds let a tightened
-    // outer wrong-ACCEPT rows the reference rejects.
+    // Check rows against the expected chain boundaries before framing, using the outer caller
+    // bounds. Any nested chain bounds must resolve to those same limits. Accepting a wider
+    // nested bound would bypass a tightened outer limit.
     requireBoundsEqual(expected.chain.bounds, b, "encode_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "encode_anchored_export: start anchor bounds");
     requireBoundsEqual(expected.endAnchor.bounds, b, "encode_anchored_export: end anchor bounds");
@@ -1581,17 +1990,16 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
       parseAndMatchAnchor(input.endAnchor, expected.endAnchor, "end", b),
       ...input.transitions.map((t, i) => parseAndMatchTransition(t, expected.transitions[i]!, i, b)),
     ];
-    // Erratum 3 (REQ2-SIGNING-ed25519-producer-canonical): encoding is a producer surface — it
-    // frames these signatures and verifies none — so it refuses any framed signature that fails
-    // the keyless part of rule S1, never rewriting its bytes (anchored_export_codec.ex:88-94).
+    // Export encoding enforces the keyless Ed25519 rule S1 on every framed signature. It checks
+    // canonical R, excludes small-order R and requires S < L. It neither verifies signatures
+    // nor rewrites accepted bytes. See erratum 3.
     for (const signature of framedSignatures) {
       if (!signatureGate(signature)) fail("encode_anchored_export: signature canonicality");
     }
     const headerBytes = buildArchiveHeader(input, expected.chain, b);
-    // Build the framed chunk list, then validate count + bytes BEFORE materializing the joined
-    // archive (mirrors reference validate_chunks on the chunk list, anchored_export_codec.ex:69 — not
-    // on a concatenated binary, so an over-bound input rejects before the allocation). Loop-build
-    // avoids spreading the chunk list past V8's ~65534 call-arg ceiling (archive_chunks ≤ 65796).
+    // Validate the framed chunk count and total bytes before joining the archive. Build the
+    // list with loops: the maximum 65,796 chunks can exceed V8 call-argument limits if spread
+    // into a function call.
     const parts: Uint8Array[] = [ARCHIVE_PREFIX, frame(headerBytes), frame(input.startAnchor)];
     for (const t of input.transitions) parts.push(frame(t));
     for (const r of input.rows) parts.push(frame(r));
@@ -1607,17 +2015,12 @@ export function encodeAnchoredExport(input: AnchoredExportInput, expected: Expec
   });
 }
 
-// Gated parse + full 7-field match of an anchor compact against its expected values
-// (reference BoundaryAnchorCodec.parse + anchor_matches?, anchored_export_codec.ex:40-42/:485-492).
-// Encode never verifies a signature (a producer, not an authority) — it mirrors the
-// reference's structural gates (width, canonical form) and the signed-field match.
-// Returns the decoded signature: encode_anchored_export gates every framed signature's
-// canonicality after the matches (erratum 3).
+// Parse an anchor and match all seven signed fields against expected values. Encoding checks
+// structure and canonical form without verifying signatures. Return the decoded signature for
+// the export encoder to check producer canonicality after the field matches.
 function parseAndMatchAnchor(compact: Uint8Array, expected: ExpectedAnchor, which: "start" | "end", b: Bounds): Uint8Array {
-  // The reference codec bounds every anchor compact at anchor_bytes (boundary_anchor_codec.ex:82,
-  // from the encode with-chain:40-42) — stricter than parseCompact's whole-input compact_bytes
-  // ceiling; check it BEFORE the parse (the producer minted archives its own verifier rejects at
-  // the frame read).
+  // Enforce anchor_bytes before parsing an anchor compact. This bound is stricter than the
+  // general compact_bytes ceiling and keeps producers within the archive decoder contract.
   if (compact.length > resolve(b, "anchor_bytes" as MaximaKey)) fail(`encode_anchored_export: ${which} anchor anchor_bytes`);
   const seg = parseCompact(compact, b);
   const { kid } = parseAnchorHeader(seg, b);
@@ -1706,7 +2109,8 @@ function buildArchiveHeader(input: AnchoredExportInput, chain: ExpectedChain, b:
   return headerBytes;
 }
 
-// UINT32_BE(len) || bytes — the archive framing (ADR 0004 § Anchored export).
+// Frame each archive entry as a four-byte unsigned big-endian byte length followed by its
+// bytes. See spec/bap-v1.md#chain.
 function frame(bytes: Uint8Array): Uint8Array {
   if (bytes.length === 0) fail("archive: zero-length frame");
   const out = new Uint8Array(4 + bytes.length);
@@ -1719,11 +2123,11 @@ function frame(bytes: Uint8Array): Uint8Array {
   return out;
 }
 
-// 15. verify_historical_anchor (ADR 0004 § Boundary anchors; spec/bap-v2.md § Historical anchor).
 /**
  * Verifies a boundary anchor under one historical key, including `validFrom <= anchoredAt <
  * validBefore`. Facts carry `trust: "not_evaluated"`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Redacted AnchorFacts in a success Result after signature and key-window checks; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
@@ -1732,10 +2136,8 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
     // Thread expected.bounds (resolved once) through every bound-sensitive check, as the reference
     // does (boundary_anchor_codec.ex parses the compact + payload under bounds).
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-    // Key-window endpoints magnitude-bounded under the resolved bounds
-    // (context_validation.ex valid_time? — the Rust round-4 parity fix; without
-    // this the SDKs diverge: an in-window anchored_at with a bounded
-    // valid_before of 2^62 verified in TS and rejected in Rust/reference).
+    // Check both key-window endpoints against integer_magnitude under the resolved bounds. An
+    // in-window signed timestamp does not make an oversized key-window endpoint valid.
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     // Number.isInteger: fractional/NaN endpoints fail closed.
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail("verify_historical_anchor: valid_from magnitude");
@@ -1777,11 +2179,11 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
   });
 }
 
-// 16. verify_key_transition (ADR 0004 § Authenticated key transitions).
 /**
  * Verifies that `oldKey` signed a handover to `newKey`, with the effective time inside both keys'
  * validity windows. Facts carry `trust: "not_evaluated"`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Redacted KeyTransitionFacts in a success Result after both key-window checks and the old-key signature; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPublicKey, newKey: HistoricalPublicKey, expected: ExpectedKeyTransition): Result<KeyTransitionFacts> {
   return trying(() => {
@@ -1790,7 +2192,8 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
     if (bytesEqual(oldKey.publicKey, newKey.publicKey)) fail("verify_key_transition: distinct keys");
     // Thread expected.bounds (resolved once) through every bound-sensitive check.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-    // Key-window endpoints magnitude-bounded (both keys — the Rust parity).
+    // Check both key-window endpoints against integer_magnitude under the resolved bounds. An
+    // in-window signed timestamp does not make an oversized key-window endpoint valid.
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(oldKey.validFrom) || !Number.isInteger(newKey.validFrom) || Math.abs(oldKey.validFrom) > mag || Math.abs(newKey.validFrom) > mag) fail("verify_key_transition: valid_from magnitude");
     if ((oldKey.validBefore !== null && (!Number.isInteger(oldKey.validBefore) || Math.abs(oldKey.validBefore) > mag)) || (newKey.validBefore !== null && (!Number.isInteger(newKey.validBefore) || Math.abs(newKey.validBefore) > mag))) fail("verify_key_transition: valid_before magnitude");
@@ -1833,11 +2236,11 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
   });
 }
 
-// 17. verify_anchored_export (ADR 0004 § Anchored export; REQ1-EXPORT-complete-scan).
 /**
  * Verifies a stored anchored-export archive (in any chunking) under the ordered archive keys:
  * digest, object version, framing, both anchors, every transition and every row.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @returns Redacted AnchoredExportFacts in a success Result; authorization remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedAnchoredExport): Result<AnchoredExportFacts> {
   return trying(() => {
@@ -1863,14 +2266,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
         if (k.validBefore !== null && k.validBefore <= k.validFrom) fail("verify_anchored_export: key valid_before ordering");
       }
     }
-    // ADR 0017 clause-3 hoist: expected-struct well-formedness BEFORE the digest
-    // (2026-08-18, exception 2 closed). The reference validates chain + both anchors +
-    // transitions (ContextValidation.expected_chain/expected_anchor/expected_transition via
-    // validate_expected_export, anchored_export_codec.ex:88-98/:345-371) before key shapes,
-    // chunks, and hash_chunks; the SDK previously ran these gates only post-digest
-    // (verdict-invariant by subsumption — the WORK ordering is the contract; the Python
-    // battery's sha256-call-count leg carries the behavioral proof, this ordering is
-    // pinned structurally by the TS battery).
+    // Validate the expected chain, anchors and transitions before key shapes, archive chunks
+    // and hashing. This ordering rejects malformed context before doing digest work; it is part
+    // of the verification contract even when final verdicts would coincide.
     const bpre = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     const mpre = resolve(bpre, "integer_magnitude" as MaximaKey);
     const preIdentifier = (v: unknown, label: string): void => {
@@ -1922,11 +2320,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     // reads), and every row check. The inner anchors/transitions carry their own bounds (used by
     // their own compact parsers). A caller tightening via expected.bounds now takes effect.
     const b = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-    // The reference (anchored_export_codec.ex:352-354,:404-406) pins every nested bounds to the
-    // top-level resolved bounds via `{:ok, ^bounds} <- Bounds.coerce(x.bounds)` — a nested value
-    // that differs (or defaults to maximum when the top is tightened) is REJECTED. The SDK
-    // previously preferred the outer bounds and silently discarded the nested value; pin them
-    // explicitly so a mismatch fails closed, matching the reference.
+    // Every nested bounds value must resolve to the same limits as the top-level bounds. An
+    // absent nested value resolves to maximum and therefore rejects when the top level is
+    // tightened. Never discard a conflicting nested bounds value.
     requireBoundsEqual(expected.chain.bounds, b, "verify_anchored_export: chain bounds");
     requireBoundsEqual(expected.startAnchor.bounds, b, "verify_anchored_export: start anchor bounds");
     requireBoundsEqual(expected.endAnchor.bounds, b, "verify_anchored_export: end anchor bounds");
@@ -1941,12 +2337,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     if (typeof archived.version !== "string" || archived.version.length === 0 || archived.version.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(archived.version) || typeof expected.objectVersion !== "string" || expected.objectVersion.length === 0 || expected.objectVersion.length > resolve(b, "object_version_bytes" as MaximaKey) || !isWellFormed(expected.objectVersion) || new TextEncoder().encode(archived.version).length > resolve(b, "object_version_bytes" as MaximaKey) || new TextEncoder().encode(expected.objectVersion).length > resolve(b, "object_version_bytes" as MaximaKey)) fail("verify_anchored_export: version shape");
     if (archived.version !== expected.objectVersion) fail("verify_anchored_export: object version");
     validateChunks(archived.chunks, b);
-    // Stream the digest over the chunks WITHOUT materializing/spreading them (reference
-    // hash_chunks, anchored_export_codec.ex:705-714 — incremental SHA-256 per chunk, no concat).
-    // sha256Concat feeds the chunk list as an array, never spread, so a list of up to
-    // archive_chunks (65796) entries cannot hit V8's ~65534 call-arg ceiling. An
-    // inauthentic/oversized archive is rejected at the digest compare before the parse materializes
-    // the bytes.
+    // Hash the chunks incrementally without joining or spreading them. sha256Concat accepts the
+    // array directly, including the maximum 65,796 chunks. Reject a mismatched archive digest
+    // before parsing materializes the archive bytes.
     const digest = sha256Concat(archived.chunks);
     if (!bytesEqual(digest, expected.digest)) fail("verify_anchored_export: digest");
     // Materialize for parsing ONLY after the digest matches (caller-legitimate, bounded archive).
@@ -1990,11 +2383,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
     for (let i = 0; i < parsed.transitions.length; i++) {
       verifyTransitionCompact(parsed.transitions[i]!, keyChain.keys[i]!, keyChain.keys[i + 1]!, expected.transitions[i]!, `verify_anchored_export transition ${i}`, b);
     }
-    // Chronology over the ACTUAL anchored times (anchored_export_codec.ex:138-154 verify_transitions
-    // + chronological_end?): each transition's effective_at must be strictly greater than the
-    // previous anchor/transition time, and the end anchor's anchored_at must be >= the last
-    // transition's effective_at (>= the start anchor's anchored_at for the no-transition case —
-    // covered by validateKeyPath's chronological_end on the start anchor).
+    // Each transition effective_at must strictly follow the preceding anchor or transition
+    // time. The end anchor anchored_at must be at least the last transition time, or the start
+    // anchor time when there are no transitions.
     let transitionTime = expected.startAnchor.anchoredAt;
     for (let i = 0; i < expected.transitions.length; i++) {
       const t = expected.transitions[i]!;
@@ -2056,8 +2447,8 @@ function verifyAnchorCompact(compact: Uint8Array, key: HistoricalPublicKey, expe
   // export passes its own resolved bounds, prefer it over the nested anchor's bounds so the
   // top-level tightening takes effect.
   const b = bounds ?? coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
-  // Key-window endpoints: integral + magnitude-bounded (the standalone path's gates — the archive
-  // path skipped them).
+  // Key-window endpoints must be integral and magnitude-bounded on the archive path as well as
+  // the standalone path.
   {
     const mag = resolve(b, "integer_magnitude" as MaximaKey);
     if (!Number.isInteger(key.validFrom) || Math.abs(key.validFrom) > mag) fail(`${ctx}: valid_from magnitude`);
@@ -2135,7 +2526,7 @@ function verifyTransitionCompact(compact: Uint8Array, currentKey: HistoricalPubl
   if (!ed25519Verify(seg.signingInput, seg.signature, pk)) fail(`${ctx}: signature`);
 }
 
-// Parse the archive byte stream into its frames (ADR 0004 § Anchored export).
+// Parse the archive byte stream into its frames (spec/bap-v1.md#chain § Anchored export).
 interface ParsedArchive {
   readonly headerBytes: Uint8Array;
   readonly start: Uint8Array;
@@ -2215,7 +2606,7 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
   for (let i = 0; i < transitions.length; i++) {
     const t = transitions[i]!;
     if (t.currentKeyId !== currentKeyId || !bytesEqual(t.currentKeyFingerprint, currentFp)) fail(`key path: transition ${i} current key`);
-    // strictly_after?(effective_at, previous_time) — strictly increasing (anchored_export_codec.ex:559,722).
+    // Require each transition effective_at to strictly increase over the previous signed time.
     if (!(t.effectiveAt > previousTime)) fail(`key path: transition ${i} chronology`);
     // No cycle: next_key_fingerprint must not be in seen (anchored_export_codec.ex:560,716-720).
     for (const s of seen) {
@@ -2228,7 +2619,7 @@ function validateKeyPath(start: ExpectedAnchor, transitions: ExpectedKeyTransiti
   }
   // The end anchor must close on the last transition's next key (anchored_export_codec.ex:535-536).
   if (end.keyId !== currentKeyId || !bytesEqual(end.keyFingerprint, currentFp)) fail("key path: end key");
-  // chronological_end?(end.anchored_at, previous_time) — >= the last transition's effective_at.
+  // Require the end anchor time to be at least the last transition time.
   if (!(end.anchoredAt >= previousTime)) fail("key path: end chronological");
 }
 
@@ -2252,21 +2643,14 @@ function validateChunks(chunks: Uint8Array[], bounds: Bounds): void {
   }
 }
 
-// The reference pins nested expected.bounds to the top-level resolved bounds
-// (anchored_export_codec.ex:352-354 `{:ok, ^bounds} <- Bounds.coerce(x.bounds)`). When a nested
-// bounds is present, it must coerce cleanly AND resolve to the same value as `top` for every limit
-// — otherwise a caller could tighten the top level while a nested struct widens or drifts silently.
-// Absent nested bounds is the documented default-to-maximum case (the caller omits the field),
-// which the reference also pins: Bounds.coerce(%{}) == maximum, so pin to top only when top !=
-// maximum (a tightened top rejects the default-maximum nested). When top IS maximum, an absent
-// nested bounds is accepted (both resolve to maximum).
+// Nested bounds must coerce successfully and resolve to the same effective limits as top. An
+// omitted nested value resolves to maximum, so it is valid only when the top level also has
+// maximum effective limits. This prevents nested context from bypassing tightened limits.
 function requireBoundsEqual(nested: Bounds | undefined, top: Bounds, ctx: string): void {
   if (nested === undefined) {
-    // Absent nested bounds: valid only if the top coerces EQUAL to maximum (no tightening).
-    // Identity overrides (an explicit override whose value equals the maximum — boundsNew documents
-    // them as "identity no-op") merge to the full maximum struct in the reference (bounds.ex
-    // merge), so the pin's struct equality accepts: gate on EFFECTIVE tightening, not override-map
-    // size.
+    // Absent nested bounds are valid only when the effective top-level limits equal maximum.
+    // Identity overrides equal to the maximum are no-ops; compare effective values rather than
+    // override-map size.
     for (const [mk, v] of top.overrides) {
       if (v !== MAXIMA[mk]) fail(`${ctx}: nested bounds absent under tightened top`);
     }

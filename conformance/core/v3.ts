@@ -1,18 +1,7 @@
-// Conformance runner for the v3 contract-major profile of @bounded-authority-protocol/verifier. Mirrors
-// conformance/run.ts (the v1 runner) and conformance/run_v3.ts: loads the vendored v3 corpus
-// snapshot, recomputes EVERY verdict from scratch by calling the v3 façade (src/v3.ts), and
-// asserts agreement on all 292 cases. Asserts the index.json SHA-256 at startup (ADR 0014 D4:
-// the SDK binds to the exact corpus it was certified against). Runs the key census
-// (curated == index two-way; discovery ⊆ declared; verify-import ⊇ expected-verify keys).
-//
-// This is the independent conformance proof: the SDK is the implementation under test, the corpus
-// is the arbiter. A disagreement aborts nonzero with the case id + the expected/actual verdict.
-//
-// Derivation: the v3 profile is the frozen v1 profile incorporated with the spec/bap-v3.md §2
-// substitutions (v:3 payloads, BAP3-* domain separators, alg ES256, the EC P-256 suite: raw
-// 65-byte SEC1 keys, the {crv,kty,x,y} proof JWK with RFC 7638 thumbprint, low-S raw r||s
-// signatures) plus the v2 §4 selector algebra; the v3 façade mirrors the v2 façade with exactly
-// those deltas, and this runner exercises it against the certified v3 corpus.
+// Recompute each v3 verdict through src/v3.ts against the independent vendored
+// corpus. Validate the index digest and run the two-boundary census. Disagreement
+// aborts with the case ID and expected and actual verdicts. The normative spec and
+// corpus define the contract; the SDK is the implementation under test.
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as v3 from "../../src/v3.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "../../src/json.js";
@@ -31,13 +20,12 @@ const utf8 = (b: Uint8Array) => utf8Str(b);
 const b64d = (s: string): Uint8Array => base64urlDecode(strUtf8(s));
 const b64e = (b: Uint8Array): string => utf8(base64urlEncode(b));
 
-// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation
-// discipline — no monorepo-relative path), byte-synced to the certified corpus by the
-// monorepo corpus-sync gate.
+// Load the certified snapshot vendored beside this runner. Its digest and exact file
+// set bind the runner to published bytes without consulting a sibling checkout.
 const DIR = "corpus-v3";
 
-// The INVALID sentinel: any genuine protocol rejection maps to this; a thrown non-InvalidError is a
-// runner/SDK bug and MUST abort (the InvalidError whitelist discipline, ADR 0014 Decision 6).
+// Only protocol rejection maps to INVALID. Unexpected thrown errors are runner or
+// SDK defects and abort rather than becoming conformance verdicts.
 const INVALID = Symbol("invalid");
 type Verdict = Record<string, unknown> | typeof INVALID;
 
@@ -46,7 +34,7 @@ function runThunk<T>(fn: () => T): T | typeof INVALID {
     return fn();
   } catch (e) {
     if (e instanceof InvalidError) return INVALID;
-    throw e; // a bug — not a verdict
+    throw e; // Unexpected errors abort the runner.
   }
 }
 
@@ -66,20 +54,14 @@ interface CorpusCase {
 }
 interface Raws extends Map<string, Uint8Array> {}
 
-// The certified index.json SHA-256 (base64url of the SHA-256 digest). ADR 0014 D4: the SDK binds to
-// the exact corpus it was certified against; a mismatched vendored corpus fails closed rather than
-// drifting silently. The v3 corpus pin (hex
-// a5c8075e7534345c3bb6611d0b40292904bcfa3af0702e07ae014fa66926433c — the repaired revision:
-// the signing-input cases were re-keyed to v3 EC shapes and their verdicts re-derived) —
-// rotate every pin with scripts/regen_corpus_digests.exs in the same change.
+// Pin the certified index.json SHA-256 in base64url form. Snapshot changes fail
+// closed until a reviewed corpus rotation updates this pin and related runners.
 const CERTIFIED_INDEX_SHA = "pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw";
 
 function loadCorpus(source: CorpusSource): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
   const indexRaw = source.read(`${DIR}/index.json`);
   const index = JSON.parse(utf8(indexRaw));
-  // ADR 0014 D4: assert the index.json SHA-256 matches the certified snapshot. (The SDK tracks the
-  // published corpus; a mismatched vendored corpus fails closed rather than drifting silently.) In
-  // dev mode the in-repo corpus IS the certified snapshot, so this asserts self-consistency.
+  // Require the published snapshot digest before trusting per-file checksums.
   const indexSha = b64e(sha256(indexRaw));
   if (indexSha !== CERTIFIED_INDEX_SHA) {
     abort(`index.json SHA mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA}`);
@@ -99,8 +81,8 @@ function loadCorpus(source: CorpusSource): { index: Record<string, unknown>; cas
       raws.set(entry.path, new Uint8Array(bytes));
       continue;
     }
-    // The revision sidecar occupies the one reserved non-case JSON path: verify its SHA (it has
-    // no agreement backstop) and its closed shape, then carry nothing — it declares zero cases.
+    // The revision sidecar declares no cases. Validate its digest and closed shape
+    // directly because no per-case agreement check can detect its corruption.
     if (entry.path === "revision.json") {
       const bytes = source.read(`${DIR}/${entry.path}`);
       if (!entry.sha256_base64url || b64e(sha256(bytes)) !== entry.sha256_base64url) {
@@ -643,9 +625,8 @@ function dispatchEncodeAnchoredExport(input: Record<string, unknown>): Verdict {
   return { digest: b64e(r.value.digest), byte_count: r.value.archive.length };
 }
 
-// The corpus splits the export contexts (mirroring the reference): encode cases carry
-// expected {chain, start_anchor, end_anchor, transitions, bounds} — the digest is an encode
-// OUTPUT; verify cases add the mandatory digest + object_version.
+// Encode contexts supply chain, anchors, transitions and bounds; the digest is an
+// output. Verification also requires the expected digest and object version.
 function buildExportExpected(input: Record<string, unknown>): v3.ExpectedExport {
   const expected = (input.expected ?? {}) as Record<string, unknown>;
   const chain = (expected.chain ?? {}) as Record<string, unknown>;
@@ -729,7 +710,7 @@ function exactPublicJwk(value: Tagged): ReturnType<typeof jwkFromPublicKey> {
   const yRaw = b64d(utf8(y.v));
   if (xRaw.length !== 32) fail("jwk: x width");
   if (yRaw.length !== 32) fail("jwk: y width");
-  // Coordinate < p + on-curve (REQ3-KEY-point-on-curve) — same pure-arithmetic gates as the suite.
+  // Apply the suite's pure range and on-curve gates (REQ3-KEY-point-on-curve).
   const raw = new Uint8Array(65);
   raw[0] = 0x04;
   raw.set(xRaw, 1);
@@ -785,16 +766,10 @@ function canonicalJson(v: unknown): string {
   return String(v);
 }
 
-// ---- census (the v3 legs: curated == index, two-way; discovery ⊆ declared; verify-import) ----
-// Mirrors the v2 runner's census shape (the Python v2 runner is the precedent): the v3 DECLARED
-// census (11 entries) is an input to the index from the curated generator
-// (conformance/generators/curated-inputs-v3.json `public_key_fingerprints` — facts the generator
-// directory ships that are NOT derivable from case bytes), and three curated keys emit no case:
-// the case-byte discovery is a strict subset (8 of 11). The two-way equality leg is therefore
-// curated == index (both directions), with the case-byte walk kept as the fail-closed subset leg
-// (an UNDECLARED key in a case input still aborts), and the verify-import boundary leg unchanged
-// from v1/v2 (every key a valid verification case declares must be imported at the ES256 verify
-// boundary). Fingerprints are RFC 7638 thumbprints of the EC JWK member set (spec/bap-v3.md §3.1).
+// The curated 11-key declaration must equal the index in both directions. Case bytes
+// discover only 8 of those keys and must remain a subset. Every key from a valid
+// verification case must reach the ES256 boundary. The complete declaration cannot
+// be reconstructed from case bytes alone.
 
 const CURATED_CENSUS_PATH = "curated-inputs-v3.json";
 
@@ -857,11 +832,9 @@ function runCensus(source: CorpusSource, index: Record<string, unknown>, cases: 
   if (undeclared.length > 0) {
     abort(`census: case inputs carry undeclared keys\n  undeclared=[${undeclared.join(",")}]`);
   }
-  // Verify-import set: keys actually fed to ES256 verify (tracked in es256.ts). This is a
-  // SUBSET of discovery (every verified key was also in case data); the load-bearing check is that
-  // every key a VALID verification-surface case declares was actually imported (the runner verified
-  // it, not just discovered it). Producer-case keys that never reach verify are in discovery but not
-  // here — that is correct (they are not verified, only encoded).
+  // Actual verification imports must be discovered keys and include every key from
+  // a valid verification case. Producer-only keys need no verification import because
+  // those operations only encode bytes.
   const verifyImport = [..._importedFingerprints()].sort();
   const expectedVerify = new Set<string>();
   for (const c of cases) {

@@ -1,12 +1,8 @@
 #!/usr/bin/env tsx
-// Standalone two-boundary key census for @bounded-authority-protocol/verifier (BAP-09 T5). Runs ONLY the
-// census (no verdict recompute): loads the corpus, dispatches every case so the verify surfaces
-// import their keys at the Ed25519 boundary, then asserts discovery == verify-import ⊇ expected-
-// verify-keys == index public_key_fingerprints (ADR 0005 § Census evolution; ADR 0014 Decision 9).
-//
-// This is the V4-hole guard as a standalone gate: a verify-surface case whose key is never actually
-// fed to Ed25519 verify aborts here, catching a runner that certifies a verdict it did not compute.
-// The census itself lives in the v1 core (conformance/core/v1.ts), which aborts on any census break.
+// The standalone census dispatches cases to collect actual verification imports.
+// Discovery must equal index fingerprints, and every key from a valid verification
+// case must appear at the Ed25519 boundary. The v1 core owns these checks. Merely
+// discovering a key cannot certify that its signature was verified.
 import { core } from "./core/v1.js";
 import { CoreAbort } from "./core/types.js";
 import { fsSource } from "./node_source.js";

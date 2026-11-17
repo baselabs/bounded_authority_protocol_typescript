@@ -1,4 +1,4 @@
-# GitHub Pages — the verifier bench. Static bundle built from this
+# GitHub Pages publishes the verifier bench and versioned API reference from this
 # repository's verifier source plus the published signer package (demo
 # issuance only); no backend, no secrets, deploy-only permissions.
 name: Pages
@@ -6,7 +6,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["web/**", "package.json", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
+    paths: ["web/**", "src/**", "docs/**", "README.md", "typedoc.json", "tsconfig*.json", "package.json", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
 
       # The bench page's npm badge is a hand-maintained literal (the site build
-      # templates only the asset cache-buster), and it drifted once — the 0.2.2
+      # templates only the asset cache-buster). It drifted once when the 0.2.2
       # badge shipped on the 0.3.0-bumping deploy. Nothing else compares the two,
       # so this lane does, before it can publish a stale version claim.
       - name: Bench badge must match package.json version
@@ -51,6 +51,9 @@ jobs:
 
       - name: Build the bundle
         run: pnpm build:site
+
+      - name: Build versioned API reference under /api/ (warnings are errors)
+        run: pnpm docs:api
 
       - name: Scan the bench bundle (no unresolved globals, eval or Function constructor)
         run: node tools/browser-guard.mjs --scan site-dist/app.js

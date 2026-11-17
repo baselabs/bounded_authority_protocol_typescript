@@ -1,23 +1,8 @@
-// Conformance runner for the bap-producer-canonicality/1 corpus (erratum 3) of
-// @bounded-authority-protocol/verifier. Loads the vendored certified corpus snapshot
-// (conformance/corpus-producer-canonicality), drives every case through the package's PRODUCER
-// surfaces — compact assembly for contract-majors 1, 2 and 3 and the three sibling profiles,
-// anchored-export encoding for majors 1, 2 and 3 — and asserts the certified verdict on all 75
-// cases: a refused signature is the closed error, an accepted signature's bytes are emitted
-// unchanged (byte-equality against the certified compact for every accepted case).
-//
-// REQ1/2/3-SIGNING-*-producer-canonical: the producer surfaces frame a signature and verify
-// none; they refuse a signature that no conforming signer emits (Ed25519: S >= L, or R
-// non-canonical or of small order; ES256: r or s outside 0 < r < n, 0 < s <= floor(n/2)) and
-// never rewrite accepted bytes. Every BAP verifier already rejected these signatures, so no
-// verification verdict changes anywhere in this corpus or the existing ones.
-//
-// Corpus integrity discipline (the family pin rule): the index.json SHA-256 is asserted at
-// startup, the exact six-file set is required, and profile identity, revision and per-family
-// case counts are checked BEFORE the per-file digests are trusted.
-//
-// Derivation: the corpus is the arbiter (BAP package 0.9.0, erratum 3); the SDK is the
-// implementation under test.
+// Run all 75 producer-canonicality cases through compact and archive assembly for
+// all three majors and sibling profiles. Producers frame signatures without crypto
+// verification and preserve accepted bytes. Ed25519 requires canonical R and S below
+// L; ES256 requires in-range r and low-S s. Validate index and file hashes, exact file
+// set, profile identity, revision and family counts before evaluating cases.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as v1 from "../../src/v1.js";
@@ -36,9 +21,8 @@ const utf8 = (b: Uint8Array) => utf8Str(b);
 // The corpus integrity hash is @noble/hashes, independent of the package backend under test.
 const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toString(16).padStart(2, "0")).join("");
 
-// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation
-// discipline — no monorepo-relative path), byte-synced to the certified corpus in BAP package
-// 0.9.0 (the erratum-3 release).
+// Load the certified snapshot vendored beside this runner. Its digest and exact file
+// set bind the runner to published bytes without consulting a sibling checkout.
 const DIR = "corpus-producer-canonicality";
 
 // The certified index.json SHA-256, revision 1 (75 cases), hex
@@ -315,8 +299,8 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   ] };
 }
 
-// The INVALID sentinel discipline: every case above maps through the SDK's Result contract; a
-// thrown non-InvalidError anywhere is a runner/SDK bug and aborts (ADR 0014 Decision 6).
+// Only protocol rejection maps to INVALID. Unexpected thrown errors are runner or
+// SDK defects and abort rather than becoming conformance verdicts.
 export const core: Core = {
   corpus: "producer-canonicality",
   dir: DIR,

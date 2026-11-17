@@ -72,8 +72,7 @@ test("local loopback HTTP URI profile accepts only exact loopback literals", () 
 });
 
 test("certified local-loopback corpus drives TypeScript verdicts", () => {
-  // Vendored snapshot (graduation discipline — no monorepo-relative path), byte-synced
-  // to the certified monorepo artifact by the authoring surface.
+  // Use the vendored certified snapshot. Its bytes must match the published corpus.
   const root = new URL("../conformance/corpus-local-loopback-http/", import.meta.url);
   const readJson = (name: string): unknown => JSON.parse(readFileSync(new URL(name, root), "utf8"));
   const indexBytes = readFileSync(new URL("index.json", root));

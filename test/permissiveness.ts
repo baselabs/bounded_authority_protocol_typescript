@@ -1,38 +1,16 @@
-// T5 permissiveness mutation-gate — the per-language falsifier the frozen corpus cannot be
-// (ADR 0005:240-246; ADR 0014 Decision 6/7). The corpus has no parser-layer permissiveness cases
-// (host parsers are not in its input algebra), so each closure below is proven red-capable IN THE
-// LANGUAGE WHOSE HOST RUNTIME IT TARGETS: construct the host-specific permissive defect the closure
-// defeats, assert the SDK REJECTS it.
-//
-// DEFECT-INJECTION BATTERY (8 items — the ADR 0005:240-246 "prove red-when-removed" half). Each
-// item below was defect-injected at authoring: the named closure/gate was mechanically removed or
-// broken, the named test/gate went RED, and the change was reverted. The record:
-//   1. duplicate-reject (REQ1-JSON-no-duplicate): remove `if (members.has(...)) fail(...)` in json.ts
-//      → "duplicate member at depth 3" goes RED.
-//   2. __proto__ null-prototype (REQ1-SELECTOR-semantic-identity): add `if (name === "__proto__")
-//      continue` to json.ts (simulate prototype absorption) → "__proto__ member preserved" + "does
-//      not collapse identity" go RED.
-//   3. raw-lexeme 64-byte ceiling (REQ1-JSON-raw-lexeme): remove the lexeme.length check in json.ts
-//      → "66-byte number lexeme" goes RED (the 66-byte tiny-float value 1e-64 passes magnitude but
-//      fails ONLY the lexeme ceiling — a genuinely falsifiable case, not magnitude-redundant).
-//   4. single-value/trailing (REQ1-JSON-single-value): remove the `ctx.pos !== src.length` check in
-//      json.ts → "trailing bytes" + "two top-level values" go RED.
-//   5. int/float tag distinction: collapse the float tag to integer in digest.ts typedProject →
-//      "integer 1 and float 1.0 distinct identity" + "equals selector distinguishes" go RED.
-//   6. census two-boundary (ADR 0014 D9): make importPublicKey in ed25519.ts NOT register the
-//      fingerprint → the conformance/core/v1.ts census aborts ("declared by a valid verification case but
-//      never imported at the Ed25519 verify boundary").
-//   7. purity lint (ADR 0014 D8): inject `Date.now()` into a src/ module → eslint no-restricted-
-//      syntax fails ("Date.now() forbidden in the verify path").
-//   8. license check (ADR 0014 D8): add a non-allowlisted runtime dep to package.json →
-//      tools/license-check.mjs fails ("not in the allowlist").
-//
-// Closures (design § Invariant conformance):
-//  1. REQ1-JSON-no-duplicate  — hand-rolled duplicate-rejecting decoder (NOT JSON.parse).
-//  2. REQ1-SELECTOR-semantic-identity / __proto__ — null-prototype containers (Map storage).
-//  3. REQ1-JSON-raw-lexeme — number magnitude + 64-byte ceiling scanned on the raw lexeme.
-//  4. REQ1-JSON-single-value — trailing bytes after the top-level value reject.
-//  5. int/float tag distinction — 1 ≠ 1.0 in selector semantic identity.
+// Language-specific permissiveness tests complement the independent corpus. Each constructs
+// host-runtime defects and requires the SDK to reject them. The authoring mutation battery
+// removed each corresponding guard and observed its named test fail:
+// 1. Removing duplicate detection admits a duplicate member at depth 3.
+// 2. Dropping __proto__ members collapses distinct selector identities.
+// 3. Removing the 64-byte lexeme ceiling admits the 66-byte spelling of 1e-64. Its finite
+//    value satisfies the magnitude bound, isolating the lexeme check.
+// 4. Removing full-input consumption admits trailing bytes and two top-level values.
+// 5. Collapsing integer and float tags makes 1 and 1.0 share selector identity.
+// 6. Disabling key-import registration breaks the two-boundary census.
+// 7. Adding Date.now() to verification fails the purity lint.
+// 8. Adding a runtime dependency outside the allowlist fails the license check.
+// The decoder uses Maps to retain member data and checks raw lexemes before conversion.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import nodeCrypto from "node:crypto";
@@ -66,10 +44,8 @@ function rejects(label: string, fn: () => unknown): void {
   });
 }
 
-// 1. REQ1-JSON-no-duplicate — the host defect: JSON.parse silently last-wins duplicates. The SDK's
-// hand-rolled decoder rejects at EVERY depth. (The corpus catches depth-1 duplicates via json/decode
-// invalid_duplicate; this closure's distinct value is depth≥3 + the guarantee that no host-parser
-// fallback exists anywhere in the SDK path.)
+// Duplicate detection must reject at every depth. JSON.parse keeps the last repeated
+// value; these depth-3 cases isolate the SDK decoder beyond the depth-1 corpus case.
 rejects("duplicate member at depth 3 (JSON.parse would last-wins)", () =>
   dec('{"a":{"b":{"c":1,"c":2}}}'));
 test("permissiveness: distinct members accepted (duplicate closure intact)", () => {
@@ -77,10 +53,8 @@ test("permissiveness: distinct members accepted (duplicate closure intact)", () 
   assert.equal(v.t, "object");
 });
 
-// 2. REQ1-SELECTOR-semantic-identity / __proto__ — the host defect: on a plain object,
-// {"__proto__": v} invokes the prototype setter, so the member VANISHES from the object and two
-// structurally different objects canonicalize identically (the ADR 0005:184-192 collapse). The SDK
-// decodes into null-prototype containers (a Map), so __proto__ is DATA.
+// Maps preserve __proto__ as member data. Plain-object assignment can invoke its
+// prototype setter, erase the member and collapse two distinct selector identities.
 test("permissiveness: __proto__ member preserved as data (null-prototype container)", () => {
   const v = dec('{"__proto__":{"evil":1},"ok":2}') as Extract<Tagged, { t: "object" }>;
   assert.equal(v.t, "object");
@@ -95,24 +69,20 @@ test("permissiveness: __proto__ selector value does not collapse identity", () =
   assert.notEqual(toHex(semanticIdentity(a)), toHex(semanticIdentity(b)));
 });
 
-// 3. REQ1-JSON-raw-lexeme — the host defect: Number() rounds a long lexeme to a finite value, so a
-// magnitude check AFTER conversion accepts it. The SDK scans the raw lexeme (64-byte ceiling) BEFORE
-// conversion. The 66-byte tiny-float below has value 1e-64 (finite, within magnitude) — it is
-// rejected ONLY by the lexeme ceiling, which is what makes this case a genuine falsifier (removing
-// the ceiling → this test goes RED; the magnitude check alone cannot catch it).
+// The 66-byte spelling below represents finite 1e-64 and satisfies the magnitude bound.
+// Only the raw 64-byte lexeme ceiling rejects it, isolating that parser guard.
 rejects("66-byte number lexeme (Number rounds to a finite within-magnitude float)", () =>
   dec("0." + "0".repeat(63) + "1"));
 rejects("integer magnitude over bound (2^53)", () =>
   dec("9007199254740992")); // MAXIMA.integer_magnitude + 1
 
-// 4. REQ1-JSON-single-value — the host defect: JSON.parse accepts trailing data after the top-level
-// value in some configurations. The SDK rejects any byte after the single value (whitespace-only).
+// Full-input consumption permits whitespace after one value and rejects further values
+// or non-whitespace bytes.
 rejects("trailing bytes after the top-level value", () => dec('{} junk'));
 rejects("two top-level values", () => dec('1 2'));
 
-// 5. int/float tag distinction — the host defect: JSON.parse collapses `1` and `1.0` to the same JS
-// number, so a selector identity comparison that used the raw number would treat them as equal. The
-// SDK's tagged algebra preserves the distinction; the typed projection wraps them differently.
+// JSON.parse collapses 1 and 1.0 into one JavaScript number. Tagged projection must
+// preserve their distinct selector identities.
 test("permissiveness: integer 1 and float 1.0 have distinct semantic identity", () => {
   const intOne = dec("1");
   const floatOne = dec("1.0");
@@ -147,17 +117,14 @@ test("permissiveness: jcs astral codepoint emits 4-byte UTF-8", () => {
   assert.deepEqual(Array.from(out), [0x22, 0xf0, 0x90, 0x80, 0x80, 0x22]);
 });
 
-// === BAP-09 cross-vendor remediation — fail-closed + reference-parity closures (defect-injected) ===
-// Each closure below was verified divergent against the RUNNING Elixir reference, fixed to match the
-// reference verdict, then proven red-capable by mechanically removing/breaking the fix and watching
-// the named test go RED. The reference verdict is the contract (AGENTS rule 7); RFC 8785 is cited
-// only where the reference agrees with it.
+// These fail-closed parser and URI cases pin normative rejection rules. The authoring
+// mutation run removed each guard and observed its named test fail.
 
 // Cross-vendor #14: malformed UTF-8 in an object member name must fail closed (InvalidError), not
 // throw a non-InvalidError TypeError via the fatal TextDecoder. Defect: revert parseObject to the
 // bare `utf8Str(nameBytes)` (no DECODER.decode try/catch) → this throws TypeError.
 test("permissiveness: malformed UTF-8 member name fails closed (cross-vendor #14)", () => {
-  // {"<0xFF>":1} — a member name with an invalid UTF-8 lead byte.
+  // The member name begins with the invalid UTF-8 byte 0xFF.
   const input = new Uint8Array([0x7b, 0x22, 0xff, 0x22, 0x3a, 0x31, 0x7d]);
   assert.throws(() => jsonDecode(input), InvalidError);
   // Control: a valid name still decodes.
@@ -182,9 +149,8 @@ test("permissiveness: float raw-lexeme magnitude controls (cross-vendor #7)", ()
 // Cross-vendor #6: structurally-invalid IPv6 literals must be rejected, not normalized. Defect:
 // revert ipv6Kind to the regex-only branch → [:::] normalizes to Ok.
 test("permissiveness: malformed IPv6 literal rejected (cross-vendor #6)", () => {
-  // Cross-vendor re-review Finding 1: a non-tail IPv4-style group (https://[1.2.3.4:5::6]/) must
-  // reject — the reference's ipv6_groups_length checks non-last groups as hex-only. The prior fix
-  // accepted it.
+  // Dotted IPv4 text is legal only in the final IPv6 group. The non-tail group here
+  // must fail the hexadecimal-group parser.
   const bad = ["https://[:::]/", "https://[1:2:3:4:5:6:7:8:9]/", "https://[1::2::3]/", "https://[gggg]/", "https://[1.2.3.4:5::6]/"];
   for (const u of bad) {
     assert.equal(uriNormalize(strUtf8(u)).ok, false, `${u} should be invalid`);
@@ -206,11 +172,9 @@ test("permissiveness: jcs DEL emits raw byte matching reference (cross-vendor #8
   assert.deepEqual(Array.from(jcsEncode(v)), [34, 120, 127, 121, 34]); // "x<raw DEL>y"
 });
 
-// Cross-vendor #9: the JCS encoder MUST enforce per-node resource bounds DURING encode (mirrors
-// jcs.ex:27-101 encode_value), not only the final jcs_bytes total. A 257-item array (array_items
-// bound 256), a depth-33 nested array (depth bound 32), and an 8193-byte string (string_bytes bound
-// 8192) must all reject — the reference rejects each. Defect: revert emit to the boundless recurse
-// (no level/nodes/length checks) → all three encode successfully.
+// JCS encoding must enforce per-node limits during traversal. A 257-item array, depth-33
+// array and 8193-byte string exceed their respective limits of 256, 32 and 8192. Removing
+// traversal checks admits these cases even when final output size remains acceptable.
 test("permissiveness: jcs enforces per-node bounds at encode (cross-vendor #9)", () => {
   const int = (n: number): Tagged => ({ t: "int", v: n });
   // 257-item array (over array_items=256).
@@ -231,19 +195,18 @@ test("permissiveness: jcs enforces per-node bounds at encode (cross-vendor #9)",
   assert.ok(jcsEncode({ t: "string", v: new Uint8Array(8192) }) instanceof Uint8Array);
 });
 
-// === FIX-C cross-vendor remediation — v1 façade closed-boundary (defect-injected) ===
+// The v1 public boundary returns closed Results for malformed caller inputs.
 
-// Cross-vendor #13: untrustedKeyLocator MUST decode ONLY the protected segment — the reference
-// (v1.ex:21-34) splits on '.' and never decodes payload/signature. A compact with a valid grant
-// header but garbage payload+signature must return the kid (Ok), not reject. Defect: revert to
-// parseCompact (decodes all 3) → the garbage-payload case returns Err.
+// The untrusted key locator reads only the protected segment. Garbage payload and
+// signature bytes must not prevent header discovery. Full compact parsing would
+// incorrectly reject these header-only inputs.
 test("permissiveness: untrusted key locator decodes only protected segment (cross-vendor #13)", () => {
   const protectedB64 = "eyJhbGciOiJFZERTQSIsImtpZCI6ImsxIiwidHlwIjoiYmErY2FwIn0";
   // Garbage payload + signature (non-base64url bytes).
   const r = untrustedKeyLocator(strUtf8(`${protectedB64}.!!.!!!`));
   assert.equal(r.ok, true);
   if (r.ok) assert.equal(r.value.keyId, "k1");
-  // Valid-base64 non-JSON payload + signature — reference also returns Ok.
+  // The ignored payload has a valid base64url spelling but does not contain JSON.
   assert.equal(untrustedKeyLocator(strUtf8(`${protectedB64}.YWFh.YmJi`)).ok, true);
   // 2- and 4-segment inputs reject (reference requires exactly 3).
   assert.equal(untrustedKeyLocator(strUtf8(`${protectedB64}.!!`)).ok, false);
@@ -275,8 +238,8 @@ test("permissiveness: checkEnvelope rejects fractional/zero temporal context (cr
     castArguments: { t: "null" as const, v: null }, nonce: "not_required" as const,
   };
   const call = (overrides: Partial<ExpectedRequest>) => checkEnvelope(junk, junk, { ...base, ...overrides } as ExpectedRequest);
-  // All must return Err (the guard rejects); the integer control also returns Err only because the
-  // junk compact fails at grant parse — the load-bearing assertion is no throw + Err on each.
+  // All malformed arguments must return Err without throwing. The integer control also
+  // returns Err because its junk compact fails grant parsing.
   assert.equal(call({ evaluationTime: 150.5, clockSkew: 0, proofMaxAge: 300 }).ok, false);
   assert.equal(call({ evaluationTime: 150, clockSkew: 10.5, proofMaxAge: 300 }).ok, false);
   assert.equal(call({ evaluationTime: 150, clockSkew: 0, proofMaxAge: 0 }).ok, false);
@@ -289,16 +252,9 @@ function toHex(b: Uint8Array): string {
   return s;
 }
 
-// === BAP-09 #2/#3/#15/#16/#17/#18 cross-vendor remediation — chain/archive verify + encode paths ===
-// Each closure was verified divergent against the RUNNING Elixir reference (the verification agents
-// confirmed precise behaviors), fixed to match the reference verdict, then proven red-capable by
-// mechanically reverting the named fix and watching the test go RED. The reference bytes are the
-// contract (AGENTS rule 7).
-//
-// The SDK is verify-only (public keys; AGENTS rule 6), so to build red-capable deny cases for the
-// archive path we mint throwaway Ed25519 keys via node:crypto, sign anchors/transitions through the
-// SDK's own producers, assemble archives via encodeAnchoredExport, and then mutate one variable per
-// finding. The producer/encode tests (#16, #17) need no signatures.
+// Chain and archive tests generate real Ed25519 keys and signatures, then mutate one
+// variable per case. Malformed paths use hand-framed archives so encode-time guards
+// cannot hide missing verification-time chronology or cycle checks.
 
 // Unwrap a Result<Uint8Array> from the low-level assembler in test helpers (failure is a test-setup
 // bug). Uses assembleSegments (not the validating façade) so permissiveness cases can build compacts
@@ -337,13 +293,10 @@ function signedAnchorCompact(
 
 const Z32 = new Uint8Array(32); // the all-zero 32-byte hash (genesis chain_hash / predecessor)
 
-// A self-contained archive builder parameterized by the key path. Produces signed anchors +
-// transitions, encodes rows via encodeConsumptionEntry, and assembles the archive. Returns the pieces
-// verifyAnchoredExport needs. `keys` drives the rollover: 1 key = no transitions, N keys = N-1
-// transitions. By default effective_at increases strictly (1500, 2000, ...); pass `effectiveAts` to
-// override (used by the #2 non-monotone test). The builder intentionally does NOT validate the
-// path — it signs whatever effective_at sequence is requested, so a malformed path can be assembled
-// and then offered to verifyAnchoredExport to prove the chronology/cycle gate fires.
+// Build an archive with a chosen key path: N keys yield N-1 transitions. effective_at
+// normally increases as 1500, 2000 and onward; effectiveAts can supply malformed chronology.
+// Rows use encodeConsumptionEntry. Invalid paths are hand-framed, allowing verification
+// to reject them independently of the encoder.
 function buildArchive(
   keys: { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject }[],
   opts: { effectiveAts?: number[]; endAnchoredAt?: number } = {},
@@ -415,8 +368,7 @@ function buildArchive(
     anchorId: "urn:example:anchor:end", anchoredAt: endAnchoredAt, chainId, sequence: 1,
     chainHash: lastHash, keyId: `k${keys.length - 1}`, keyFingerprint: thumbprintOf(endKey.publicKey),
   };
-  // encodeAnchoredExport validates inputs (incl. the key path) — for the malformed-path archives
-  // (#2 non-monotone / cycle), bypass encode-time validation by hand-assembling the frames.
+  // Hand-frame malformed paths so the encoder cannot intercept these verification cases.
   let archive: Uint8Array;
   let digest: Uint8Array;
   if (opts.effectiveAts === undefined) {
@@ -447,8 +399,7 @@ function buildValidArchive(keys: { publicKey: Uint8Array; privateKey: nodeCrypto
   return buildArchive(keys);
 }
 
-// Hand-assemble the archive byte stream (mirrors encodeAnchoredExport's framing) WITHOUT the
-// encode-time key-path validation — used to build malformed-path archives for the #2 tests.
+// Frame archive bytes without encode-time path validation for malformed-path tests.
 function handFrameArchive(input: AnchoredExportInput): Uint8Array {
   const headerMembers = new Map<string, Tagged>([
     ["chain_id", { t: "string", v: strUtf8(input.chainId) }],
@@ -566,9 +517,8 @@ test("permissiveness: checkChain rejects noncanonical row bytes + sequence zero 
   assert.equal(checkChain(seqZeroChain, seqZeroChain).ok, false, "sequence-0 row must reject");
 });
 
-// Cross-vendor #17: encode_anchored_export MUST validate inputs before framing — at minimum the
-// transition count <= key_transitions bound (256). The SDK previously accepted 257 transitions,
-// producing bytes its own parser would reject. Defect: revert the bound check → encode returns Ok.
+// Encoding must enforce the 256-transition ceiling before framing. Removing the check
+// admits a 257-transition archive that its decoder would reject.
 test("permissiveness: encodeAnchoredExport rejects transition count over bound (#17)", () => {
   const zeroPrev = Z32.slice();
   const rowEntry: ConsumptionEntry = {
@@ -679,11 +629,8 @@ test("permissiveness: verifyAnchoredExport rejects bad chunk lists (#18)", () =>
   // Empty chunk in the list.
   const withEmpty = { chunks: [built.archive, new Uint8Array(0)], version: "v1" };
   assert.equal(verifyAnchoredExport(withEmpty, built.keyChain, built.expected).ok, false, "empty chunk must reject");
-  // Too many chunks: archive_chunks bound is 65796 and the reference accepts UP TO 65796 inclusive
-  // (validate_chunks guard `count < archive_chunks` on the recursive clause, start 0). The count guard
-  // itself fires only at 65797 (> archive_chunks). At exactly 65796 one-byte chunks the count guard
-  // PASSES (65796 > 65796 is false), so a rejection there is the digest check, not the count guard —
-  // vacuous w.r.t. the closure it claims to prove. Feed 65797 so the count guard is the falsifier.
+  // The archive_chunks limit is inclusive at 65796. Use 65797 chunks to isolate this
+  // count guard; exactly 65796 would fail only the later digest check.
   const tooMany = { chunks: Array.from({ length: 65797 }, () => new Uint8Array(1)), version: "v1" };
   assert.equal(verifyAnchoredExport(tooMany, built.keyChain, built.expected).ok, false, "chunk count over bound must reject");
   // Control: a single-chunk split of the valid archive still verifies.
@@ -724,20 +671,9 @@ test("permissiveness: verifyAnchoredExport rejects fingerprint cycle A→B→A (
   assert.equal(verifyAnchoredExport({ chunks: [cyclic.archive], version: "v1" }, cyclic.keyChain, cyclic.expected).ok, false, "fingerprint cycle A→B→A must reject");
 });
 
-// === BAP-09 #10/#11 cross-vendor remediation — caller-supplied bounds threaded through verify/decode ===
-// The reference resolves Bounds.coerce(expected.bounds) once per entry point and threads the result
-// into EVERY bound-sensitive check (runtime.ex:186,204; consumption_chain.ex check_chain;
-// anchored_export_codec.ex:84-185): valid_key_id?(kid, bounds.kid_bytes), Json.decode(bytes, bounds),
-// valid_identifier?(iss/grant_id, bounds), decode_audiences(aud, bounds), operations(ops, bounds),
-// validate_chunks / parse_archive frame reads, etc. The SDK previously passed bounds ONLY to
-// parseCompact/parse_compact and hardcoded MAXIMUM_BOUNDS in every subsequent validator, so a caller
-// tightening had no effect. Each test below proves a tightening now rejects at the named gate. Defect:
-// revert the threading (any helper back to MAXIMUM_BOUNDS, or the bounds param removed) → the named
-// deny goes GREEN (Err→Ok regression), proving the test is red-capable.
-//
-// The falsifiable case: a grant whose kid is 13 bytes ("issuer-123456") is valid at MAX (kid_bytes
-// 128), but MUST be rejected under boundsNew({kid_bytes: 5}) via valid_key_id? (the reference's
-// decode_grant(grant, %{kid_bytes: 5}) rejects it). Each test drives one entry point.
+// Every bound-sensitive check must use caller Bounds, including identifiers, JSON,
+// selectors and archive frames. A 13-byte kid satisfies the 128-byte maximum but fails
+// a 5-byte caller limit. Replacing a threaded bound with the maximum admits the case.
 
 // The falsifiable case: a grant whose kid is 13 bytes ("issuer-123456") is valid at MAX (kid_bytes
 // 128), but MUST be rejected under boundsNew({kid_bytes: 5}) via valid_key_id? (the reference's
@@ -910,8 +846,7 @@ test("permissiveness: forged widening Bounds rejected at every entry point (F2)"
 test("permissiveness: jcsEncode rejects non-integer int-tag value (F3)", () => {
   // Control: a valid integer int-tag encodes.
   assert.equal(jcsEncode({ t: "int", v: 2 }).length > 0, true, "control: integer int-tag encodes");
-  // A non-integer int-tag must reject (fail closed), not emit "1.5". Wrap in try — jcsEncode throws
-  // InvalidError on fail().
+  // An int tag carrying 1.5 must reject. jcsEncode signals the failure with InvalidError.
   let threw = false;
   try { jcsEncode({ t: "int", v: 1.5 } as unknown as Tagged); } catch { threw = true; }
   assert.equal(threw, true, "{t:'int', v:1.5} must fail closed (non-integer int-tag)");
@@ -932,13 +867,12 @@ test("permissiveness: jcsEncode rejects invalid-UTF-8 string (closed-result, not
   assert.equal(threwTypeError, false, "must NOT escape as TypeError (closed-result contract)");
 });
 
-// Cross-vendor (key-locator empty segments): the reference (v1.ex:24) accepts empty payload/signature
-// segments — it decodes ONLY the protected segment. The SDK must match (accept), not over-reject.
-// Defect: re-add the `d1 === d0 + 1 || d1 === compact.length - 1` empty-segment rejection → RED.
+// The header-only locator accepts empty payload and signature segments. Reintroducing
+// full-compact empty-segment rejection makes this locator test fail.
 test("permissiveness: untrustedKeyLocator accepts empty payload/signature segments (reference parity)", () => {
   _resetCensus();
   const g = signedGrant();
-  // Build "<protected>.." — valid protected header, empty payload + signature.
+  // Use a valid protected header followed by two empty segments.
   const compactStr = new TextDecoder().decode(g.compact);
   const protectedSeg = compactStr.split(".")[0]!;
   const emptyPs = new TextEncoder().encode(protectedSeg + "..");
@@ -973,7 +907,7 @@ test("permissiveness: malformed trusted issuer fails closed (verifyGrant + check
     issuer: "https://issuer.example.test", audience: "https://resource.example.test",
     evaluationTime: 1500, clockSkew: 60,
   };
-  // {} — missing publicKey/keyId: must return Err, not throw.
+  // Missing publicKey and keyId must return Err without throwing.
   const r = verifyGrant(g.compact, {} as unknown as TrustedIssuer, eg);
   assert.equal(r.ok, false, "malformed trusted issuer {} must fail closed (verifyGrant)");
   const er: ExpectedRequest = {
@@ -1011,31 +945,17 @@ test("permissiveness: checkChain rejects genesis chain.previousHash != expected.
   };
   // Control: matching previousHash verifies.
   assert.equal(checkChain(chain, expected).ok, true, "control: genesis chain with matching previousHash verifies");
-  // Forged: chain.previousHash != expected.previousHash (both zero is the genesis requirement, but the
-  // input must still equal expected — forge the input to a different value).
+  // Forge a nonzero previousHash while the expected genesis hash remains zero. The input
+  // must satisfy both the expected binding and the genesis rule.
   const forgedChain: ChainInput = { ...chain, previousHash: sha256(strUtf8("forged")) };
   assert.equal(checkChain(forgedChain, expected).ok, false,
     "genesis chain.previousHash != expected.previousHash must reject (F4)");
 });
-// ---------------------------------------------------------------------------
-// The closed-Result family sweep, TS half (ADR 0017 clauses 1-2; the 2026-08-18
-// alignment-audit §1 defect, swept across the whole façade surface).
-//
-// The Python half's sibling sweep found the escape family total on the Python side; the TS
-// probe (2026-08-18) found the JS-specific variants: (a) TextEncoder COERCES non-string
-// operations — requestDigest(123/true/null/{}) silently digested "123"/"true"/"null"/
-// "[object Object]" and returned Ok (a clause-2 silent-coercion breach, worse than an
-// escape); (b) null/undefined arguments hit property derefs (entry.previousHash.length,
-// expected.evaluationTime, compact.length) and throw TypeError PAST trying() — the #22
-// guard class, but only verifyGrant.trusted ever got it. The fix is the closedShape gate on
-// all 17 façades (v1.ts): every caller-supplied argument is shape-checked (bytes = real
-// Uint8Array, struct = non-null object with the consumed fields' shapes, str = typeof
-// string) BEFORE the body runs.
-//
-// RED-CAPABILITY: every "must be Err" case below was Ok (the coercions) or a thrown
-// TypeError (the null derefs) at the pre-fix tree — this section IS the red run.
-// Remove the closedShape gate from any single façade → exactly that façade's cases go RED.
-// ----------------------------------------------------------------------------
+// All 17 v1 operations must shape-check caller inputs before dereferencing or coercion.
+// Bytes must be Uint8Array, structures must contain consumed fields and strings must
+// be strings. Otherwise null dereferences throw TypeError or TextEncoder silently
+// converts non-string inputs. Removing one closedShape guard at a time made that
+// operation's malformed-input tests fail in the authoring mutation run.
 
 import * as v1 from "../src/v1.js";
 import {
@@ -1223,27 +1143,19 @@ test("null/undefined arguments must fail closed, not throw TypeError", () => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// The pre-digest expected-struct validation hoist (ADR 0017 clause 3 / exception 2,
-// closed 2026-08-18). The reference validates the expected struct (chain + BOTH anchors'
-// identity/binding well-formedness + transitions) BEFORE validate_chunks/hash_chunks
-// (anchored_export_codec.ex:88-104 → ContextValidation); the SDK ran only the static
-// bindings pre-digest. VERDICT-INVARIANT by subsumption (post-digest equality rejects
-// every malformed expected) — the observable is the WORK. ESM bindings are immutable in
-// node:test, so the sha256-call-count channel (used by the Python leg, which carries the
-// behavioral proof for the inter-SDK clause) is unavailable here; the order pin below is
-// STRUCTURAL: the hoisted gate block must precede the digest call in v1.ts. Mutation
-// (revert the hoist): the marker comment disappears → this leg goes RED.
-// ----------------------------------------------------------------------------
+// Expected chain, anchor and transition structures must be validated before hashing.
+// Later equality checks can produce the same rejection verdict, so this structural pin
+// checks the actual validation statement against the digest call. It does not measure
+// hash work or use an immutable ESM binding as a fake counter.
 
 import { readFileSync } from "node:fs";
 
 test("expected-struct well-formedness gates sit BEFORE the archive digest (structural order pin)", () => {
   const src = readFileSync(new URL("../src/v1.ts", import.meta.url), "utf8");
-  const hoist = src.indexOf("ADR 0017 clause-3 hoist: expected-struct well-formedness BEFORE the digest");
+  const hoist = src.indexOf("const bpre = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);");
   const digest = src.indexOf("const digest = sha256Concat(archived.chunks)");
-  assert.ok(hoist > 0, "the clause-3 hoist marker is missing from v1.ts — the expected-struct gates were dropped or moved");
-  assert.ok(digest > 0, "the digest call site moved — update this pin deliberately");
+  assert.ok(hoist > 0, "the pre-digest context validation statement must exist in v1.ts");
+  assert.ok(digest > 0, "the archive digest call must exist in v1.ts");
   assert.ok(hoist < digest, "the expected-struct well-formedness gates must run BEFORE the archive digest (reference ordering)");
 });
 
@@ -1269,17 +1181,9 @@ test("verifyAnchoredExport malformed-expected verdict matrix (hoist regression p
   void f;
 });
 
-// ---------------------------------------------------------------------------
-// The assembleCompact caller-bounds threading (ADR 0018's named divergence,
-// closed 2026-08-18). The reference takes limits at assemble (runtime.ex:147-155 →
-// CompactJws.assemble:34-48 — encoded segment bounds, signature width ≤ signature_bytes,
-// compact_bytes, and the kind re-parse, all against Bounds.coerce(limits)); the SDK
-// hardcoded maximum. Maintainer direction 2026-08-18: thread caller-tightenable bounds.
-//
-// RED-CAPABILITY: pre-fix, the third argument was silently IGNORED by JS — every
-// tightened case below returned Ok (the red run); with the parameter present but
-// unthreaded, the same cases return Ok again.
-// ---------------------------------------------------------------------------
+// assembleCompact must apply caller limits to encoded segments, the full compact and
+// its kind-specific re-parse. These cases fail if the third argument is ignored or
+// a helper replaces caller Bounds with the maximum.
 
 test("assembleCompact threads caller bounds", () => {
   const f = sweepFixtures();
@@ -1294,8 +1198,7 @@ test("assembleCompact threads caller bounds", () => {
     false,
     "tightened compact_bytes must reject the assembly",
   );
-  // (signature_bytes is a FIXED-WIDTH bound — untightenable by design; no leg can
-  // exercise it below 64.)
+  // signature_bytes is a fixed 64-byte width and cannot be tightened.
   assert.equal(
     assembleCompact(f.gsi, sig, boundsNew({ encoded_segment_bytes: f.gsi.protectedSegment.length - 1 })).ok,
     false,
@@ -1308,12 +1211,8 @@ test("assembleCompact threads caller bounds", () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// The round-12..14 pre-digest export gates — verdict-matrix regression pins (the
-// TS half of the 2026-08-18 pin-debt payment). The red-capable WORK form of these
-// pins lives in the Python battery (verdict-subsumed gates; ESM gives TS no
-// sha256-count channel — the established convention from the exception-2 hoist).
-// ---------------------------------------------------------------------------
+// These verdict cases reject malformed export contexts. The structural ordering pin
+// complements them; verdict equality alone cannot establish hashing work.
 
 test("round-12..14 pre-digest export gates: verdict matrix", () => {
   const built = buildArchive([freshKey(), freshKey()]);
@@ -1339,14 +1238,9 @@ test("round-12..14 pre-digest export gates: verdict matrix", () => {
   void z;
 });
 
-// ---------------------------------------------------------------------------
-// Cross-vendor review round 18 (codex, blocking): the TS shape gate's NESTED
-// "object" specs let a malformed ExpectedExport through (e.g. chain missing
-// previousHash, empty anchor objects), and the clause-3 hoist then derefs the
-// missing fields — a TypeError escape past trying(). RED-CAPABILITY: pre-fix this
-// leg THREW TypeError; the fix deepens the nested shape specs so the gate
-// rejects the malformed struct before any deref.
-// ---------------------------------------------------------------------------
+// Nested expected-export shapes must include every field later read. An object-only
+// check admits missing chain hashes and anchor fields, allowing TypeError to escape.
+// These cases require closed rejection before dereferencing.
 
 test("shape gate rejects malformed nested expected-export structs (no deref escapes)", () => {
   const built = buildArchive([freshKey(), freshKey()]);
@@ -1366,7 +1260,7 @@ test("shape gate rejects malformed nested expected-export structs (no deref esca
       assert.fail(`${label}: threw ${(e as object).constructor.name} past the closed Result — the nested shape spec is too shallow`);
     }
     assert.equal((r as { ok: boolean }).ok, false, `${label}: must be Err`);
-    // The encode path shares the spec — same guarantee.
+    // Encoding shares the nested-shape contract.
     let re: unknown;
     try {
       re = encodeAnchoredExport(built.input, expected as never);
@@ -1377,31 +1271,11 @@ test("shape gate rejects malformed nested expected-export structs (no deref esca
   }
 });
 
-// ---------------------------------------------------------------------------
-// The v2 range-selector kinds (ADR 0028) — red-capable mutation entries. The v2 façade
-// (src/v2.ts) extends the selector algebra to {all, equals, one_of, lte, gte} with SAME-TAG
-// INCLUSIVE numeric comparison; the v1 algebra above stays closed at its three kinds.
-//
-// DEFECT-INJECTION BATTERY (4 items — same discipline as the authoring battery at the top).
-// Each entry was defect-injected at authoring: the named mutation was made locally, the named
-// test (and the named conformance case) went RED, and the change was reverted. The record:
-//   a. inclusive boundary: mutate rangeMatches in src/v2.ts `<=` → `<` (and `>=` → `>`) →
-//      "v2 lte/gte are inclusive at the boundary" goes RED (both the direct selector match and
-//      the full envelope at amount == bound); the corpus boundary cases
-//      check-envelope-v2-valid-lte-boundary-equal, check-envelope-v2-valid-gte-boundary-equal,
-//      and check-envelope-v2-valid-interval-endpoint-low/-high go red under `pnpm conformance:v2`.
-//   b. same-tag domain: remove the tag pairing in rangeMatches (compare numerically across
-//      tags) → "v2 cross-tag range operands never match" goes RED; the corpus case
-//      check-envelope-v2-invalid-selector-cross-tag-float-bound flips invalid→valid (red).
-//   c. decode dispatch: swap the lte/gte arms in the v2 parseSelector dispatch → "v2 range-kind
-//      decode dispatch is distinct" goes RED; the corpus cases
-//      check-envelope-v2-invalid-selector-lte-exceeded / check-envelope-v2-invalid-selector-gte-unmet
-//      flip accept/reject (red).
-//   d. cross-major gate: widen the v check in the v2 payload validators to accept v:1 → "v2
-//      rejects v1 bytes cross-major" goes RED; the corpus cases
-//      verify-grant-v2-invalid-cross-major-v1-bytes and
-//      check-envelope-v2-invalid-cross-major-v1-grant / -proof flip (red).
-// ----------------------------------------------------------------------------
+// v2 adds inclusive, same-tag lte/gte comparisons while v1 keeps its three closed kinds.
+// The authoring mutation battery changed inclusive comparisons to strict ones, admitted
+// cross-tag operands, swapped decode dispatch and allowed v:1 at the v2 boundary. Each
+// named test and the corresponding independent corpus cases failed. Real signatures
+// also exercise selector boundary equality through the full envelope.
 
 import * as v2 from "../src/v2.js";
 import { parseSelector as parseSelectorV1, selectorMatches as selectorMatchesV1 } from "../src/selector.js";
@@ -1467,9 +1341,8 @@ test("permissiveness: v2 range-kind decode dispatch is distinct (mutation c)", (
   assert.equal(badProducer.ok, false, "the producer must reject a non-numeric bound");
 });
 
-// (d) CROSS-MAJOR: v2 rejects v1 bytes and v1 rejects v2 bytes (the v payload gate). Widening
-// the v2 gate to accept v:1 flips exactly this. Also pins that the v1 selector algebra stays
-// CLOSED at {all, equals, one_of} — an lte-bearing grant is Err on v1 (REQ1-EVO-no-verdict-flip).
+// Both majors reject the other's bytes. v1 also keeps its selector kinds closed to
+// all, equals and one_of independently of the payload-version gate.
 test("permissiveness: v2 rejects v1 bytes cross-major; v1 stays closed to the range kinds (mutation d)", () => {
   const issuer = freshKey();
   const holder = freshKey();
@@ -1479,15 +1352,14 @@ test("permissiveness: v2 rejects v1 bytes cross-major; v1 stays closed to the ra
     audiences: ["https://resource.example.test"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
     holderThumbprint: new TextDecoder().decode(base64urlEncode(holderFp)),
   };
-  // A v1 grant (payload v:1, "all" selector — v1-legal bytes) must be Err on the v2 façade.
+  // A v:1 grant with an all selector is legal v1 input and must reject on v2.
   const firstMajorSi = v1.grantSigningInput({ ...baseGrant, operations: [{ name: "read", selectors: ["all"] }] });
   if (!firstMajorSi.ok) throw new Error("v1 grant signing input failed");
   const firstMajorCompact = mustAssemble(firstMajorSi.value, new Uint8Array(nodeCrypto.sign(null,
     Buffer.from(`${new TextDecoder().decode(firstMajorSi.value.protectedSegment)}.${new TextDecoder().decode(firstMajorSi.value.payloadSegment)}`),
     issuer.privateKey)));
   assert.equal(v2.decodeGrant(firstMajorCompact).ok, false, "v2 must reject a v:1 grant payload");
-  // A v2 grant (payload v:2, lte selector) must be Err on the v1 façade — twice over: the kind
-  // closed set and the version gate.
+  // A v:2 grant with lte violates both the v1 version gate and its selector closed set.
   const secondMajorSi = v2.grantSigningInput({ ...baseGrant, operations: [{ name: "read", selectors: [{ kind: "lte", path: ["amount"], value: { t: "int", v: 100 } }] }] });
   if (!secondMajorSi.ok) throw new Error("v2 grant signing input failed");
   const secondMajorCompact = mustAssemble(secondMajorSi.value, new Uint8Array(nodeCrypto.sign(null,
@@ -1504,8 +1376,8 @@ test("permissiveness: v2 rejects v1 bytes cross-major; v1 stays closed to the ra
   assert.equal(v2.decodeGrant(secondMajorCompact).ok, true, "control: the v2 façade accepts its own bytes");
 });
 
-// Supporting pins: the v2 domain separators are the BAP2- forms — the request digest over
-// identical arguments differs from v1's, and the row/archive prefixes are the BAP2 bytes.
+// v2 uses BAP2 separators. Identical arguments must produce request and row hashes
+// distinct from v1, and prefix bytes must match the exact BAP2 forms.
 test("permissiveness: v2 domain separators are the BAP2 forms (not v1's BAP1 prefixes)", () => {
   const args: Tagged = { t: "object", v: new Map<string, Tagged>([["n", { t: "int", v: 1 }]]) };
   const d1 = v1.requestDigest("read", args);
@@ -1528,9 +1400,8 @@ test("permissiveness: v2 domain separators are the BAP2 forms (not v1's BAP1 pre
     "the BAP1-CHAIN and BAP2-CHAIN row prefixes must produce distinct row hashes");
 });
 
-// The full-envelope leg of (a): a boundary-equal amount must VERIFY end-to-end through
-// checkEnvelope — the signed-artifact form of the inclusive comparison (mirrors the corpus
-// boundary cases).
+// The signed envelope verifies an amount exactly equal to the inclusive lte bound,
+// complementing the direct selector comparison with real keys and signatures.
 test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a, signed)", () => {
   _resetCensus();
   const issuer = freshKey();
@@ -1573,18 +1444,10 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
   assert.equal(over.ok, false, "amount 5001 > the lte bound must reject (the proof's ba_req also mismatches)");
 });
 
-// (e) ASSEMBLY REVALIDATION: assembleCompact must re-parse the composed compact per kind — a
-// well-formed signing input whose payload violates the profile must NOT assemble, exactly as
-// the reference's validate_assembled_compact (v2/runtime.ex). Defect injections, each
-// red-proven at authoring (2026-09-14, the 0.2.0 register item):
-//   e1. remove the decodeGrant call in assembleCompact's grant arm → the {"aud":"a"} grant leg
-//       goes RED (the forged payload then assembles).
-//   e2. remove the canonical check in validateAnchorPayload / validateTransitionPayload
-//       (bytesEqual(jcsEncode(p), payloadBytes)) → the whitespace leg goes RED.
-//   e3. remove the genesis binding in validateAnchorPayload (sequence 0 ⇒ all-zero chain hash)
-//       → the sequence-0/non-zero-hash leg goes RED.
-// Corpus compacts come from the vendored v2 snapshot (the same fixtures the conformance
-// runner certifies), so the header/kind pairing is real; only the payload is forged.
+// Assembly re-parses each compact under its artifact kind. The authoring mutations
+// removed grant decoding, canonical payload checks and anchor genesis binding. The
+// malformed-member, whitespace and nonzero-genesis-hash tests respectively failed.
+// Certified v2 headers keep the artifact kind valid while each payload is forged.
 {
   const readCase = (file: string, id: string): { compact: string } => {
     const doc = JSON.parse(readFileSync(new URL(`../conformance/corpus-v2/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: { compact: string } }> };
@@ -1616,9 +1479,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
   });
 
   test("permissiveness: v2 assembly revalidation — canonical payload (mutation e2)", () => {
-    // The identical closed member set with one inserted whitespace byte decodes and passes the
-    // member-set/genesis checks but is not the JCS encoding — anchor/transition payloads are
-    // canonical-bound.
+    // Whitespace retains the members and genesis values but changes canonical bytes.
     const nonCanon = (c: string) => {
       const payloadJson = decodeUtf8(base64urlDecode(strUtf8(seg(c)[1]!)));
       return new TextEncoder().encode("{ " + payloadJson.slice(1));
@@ -1642,57 +1503,21 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
   });
 }
 
-// ---------------------------------------------------------------------------
-// The v3 ES256 suite (contract-major 3, ADR 0035) — red-capable mutation entries. The v3 façade
-// (src/v3.ts) is the v2 façade under the spec/bap-v3.md §2 substitutions: v:3 payloads, BAP3-*
-// separators, alg ES256, raw 65-byte SEC1 keys, the {crv,kty,x,y} proof JWK, and the low-S raw
-// r||s signature form over NIST P-256 (src/es256.ts + src/ec_jwk.ts).
-//
-// DEFECT-INJECTION BATTERY (7 items — same discipline as the batteries above; each injection was
-// made locally, the named test (and, where named, the corpus case) went RED, and the change was
-// reverted; observations recorded here):
-//   a. low-S gate: remove the `if (s > HALF_N) fail(...)` rejection in src/es256.ts es256Verify →
-//      "v3 rejects the high-S malleable counterpart Node's backend accepts" goes RED — the
-//      corpus fixture verify-grant-v3-invalid-signature-high-s is a VALID signature re-spelled
-//      (r, n−s), so Node's backend alone returns true and the envelope verifies (the corpus case
-//      also flips invalid→valid under `pnpm conformance:v3`).
-//   b. r/s integer range: remove the `r === 0n || r >= N` / `s === 0n || s >= N` rejections in
-//      es256Verify → the encoding-level legs go RED. OBSERVED while proving: OpenSSL also
-//      rejects zero/≥n r/s itself, so the final-verdict legs (the corpus cases
-//      verify-grant-v3-invalid-signature-zero-r / -zero-s / -r-at-n / -s-at-n through the façade)
-//      stay green without the gates — the independently red-capable pin is the ORDERING the spec
-//      mandates (REQ3-SIGNING-range: reject as invalid encodings BEFORE any backend call): with
-//      the gates present es256Verify throws InvalidError at the gate; with them removed it
-//      returns the backend's `false` instead, and the throws-leg goes RED. (Contrast (a): the
-//      high-S form is ACCEPTED by OpenSSL, so the low-S gate is verdict-load-bearing.)
-//   c. EC JWK member set: widen parseProofHeader's requireObjectExact to admit a 5th member →
-//      "proof JWK rejects an extra member" goes RED.
-//   d. coordinate width/canonicality: drop the 32-byte x/y width gates → the width leg goes RED
-//      via the x=256 point falsifier below, which IS on the curve as assembled — only the
-//      fixed-width RFC 7518 §6.2.1.2 spelling gate rejects it. OBSERVED while proving: the
-//      corpus's own short-coordinate fixture (a 3-byte x) is SUBSUMED by the off-curve
-//      arithmetic (its doctored value is not a valid coordinate, so it rejects with or without
-//      the width gate), and the padded-coordinate fixture is OVER-DETERMINED — with the
-//      base64url alphabet gate removed its 44-char spelling decodes to 33 bytes and dies at the
-//      width gate, and vice versa (both gates are the v1-certified shared REQ1-B64-* closure +
-//      the v3 width gate; single-gate removal never flips it).
-//   e. coordinate range + on-curve: remove validateEcPublicKey's pure arithmetic (the x<p/y<p
-//      range gate and the curve-equation check) → THREE legs go RED: the off-curve JWK decodes
-//      (the corpus case jwk-decode-public-invalid-off-curve flips — that surface never reaches a
-//      crypto backend, so the arithmetic is the only gate), the x=p/√b falsifier decodes (that
-//      pair SATISFIES y² = x³−3x+b mod p because x=p≡0 makes the right side b and y=√b — only the
-//      x<p gate rejects it), and the proof-header off-curve leg.
-//   f. cross-major v gate: OBSERVED while proving — v1/v2 artifact bytes reject at the ES256
-//      `alg` gate BEFORE the payload v gate (defense in depth), so the corpus-fixture legs stay
-//      green with the v gate widened. The independently red-capable pin is the same-header
-//      falsifier: a v3 grant whose payload carries v:1 / v:2 under the ES256 header — widen the
-//      v check in v3's payload validators to accept them and the v-swap legs go RED (the corpus
-//      cases verify-grant-v3-invalid-cross-major-v1-bytes / -v2-bytes carry the alg dimension and
-//      stay red through that gate).
-//   g. census verify-import: make importEcPublicKey in src/es256.ts NOT register the fingerprint
-//      → the conformance/core/v3.ts census aborts ("declared by a valid verification case but never
-//      imported at the ES256 verify boundary").
-// ---------------------------------------------------------------------------
+// v3 applies the normative ES256 substitutions: v:3, BAP3 separators, raw 65-byte SEC1
+// keys, closed {crv,kty,x,y} JWKs and low-S P1363 signatures. The authoring mutations
+// isolated seven guards:
+// a. Removing low-S rejection admits a valid high-S counterpart accepted by Node.
+// b. Removing r/s range checks changes InvalidError into backend false. OpenSSL also
+//    rejects these scalars, so final verdicts cannot isolate the required ordering.
+// c. Admitting a fifth JWK member makes the closed-member test fail.
+// d. Removing coordinate widths admits an on-curve x=256 short-coordinate fixture.
+//    The corpus's off-curve short-coordinate case is subsumed by curve validation;
+//    its padded spelling violates both base64url and width guards.
+// e. Removing point arithmetic admits off-curve points and x=p, y=sqrt(b). The latter
+//    satisfies the equation modulo p and isolates strict coordinate range checking.
+// f. Widening v admits v:1/v:2 under an ES256 header. Ordinary v1/v2 compacts also
+//    fail the algorithm guard and cannot isolate payload version.
+// g. Disabling fingerprint registration breaks the EC verification-import census.
 import * as v3 from "../src/v3.js";
 import { validateEcPublicKey, es256Verify, importEcPublicKey } from "../src/es256.js";
 import { publicKeyThumbprintRaw as ecPublicKeyThumbprintRaw } from "../src/ec_jwk.js";
@@ -1713,8 +1538,8 @@ function freshEcKey(): { publicKey: Uint8Array; privateKey: nodeCrypto.KeyObject
   return { publicKey: raw, privateKey };
 }
 
-// Sign with the raw P1363 r||s spelling and normalize to low-S (the profile's producer rule:
-// s ← n − s when high — Node's ECDSA output is not guaranteed low-S).
+// Sign P1363 r||s and replace high s with n-s. Node can emit either equivalent form;
+// the profile requires low-S.
 function signP1363(message: Uint8Array, privateKey: nodeCrypto.KeyObject): Uint8Array {
   const sig = new Uint8Array(nodeCrypto.sign("sha256", Buffer.from(message), { key: privateKey, dsaEncoding: "ieee-p1363" }));
   const s = BigInt("0x" + Buffer.from(sig.subarray(32)).toString("hex"));
@@ -1751,21 +1576,18 @@ function readV3Case(file: string, id: string): Record<string, unknown> {
   });
 
   test("permissiveness: v3 rejects the high-S malleable counterpart Node's backend accepts (mutation a)", () => {
-    // (r, n−s) also satisfies the ECDSA verification equation; Node verifies it — only the
-    // profile's low-S gate rejects. Removing that gate flips this exact leg (and the corpus case).
+    // Node accepts the mathematically equivalent (r, n-s) form. Only the low-S guard
+    // prevents that alternate encoding from verifying.
     assert.equal(tryVerify(readV3Case("grant-verify/verify.json", "verify-grant-v3-invalid-signature-high-s")), false,
       "the high-S re-spelling of a valid signature must be invalid");
   });
 
   test("permissiveness: v3 rejects zero r / zero s / r = n / s = n as invalid encodings before the backend (mutation b)", () => {
-    // Through the façade (verdict level — green with or without the gates, since OpenSSL
-    // rejects these too; kept as the corpus-mirroring pin):
+    // OpenSSL rejects these scalar values even without the profile's range guard.
     for (const id of ["verify-grant-v3-invalid-signature-zero-r", "verify-grant-v3-invalid-signature-zero-s", "verify-grant-v3-invalid-signature-r-at-n", "verify-grant-v3-invalid-signature-s-at-n"]) {
       assert.equal(tryVerify(readV3Case("grant-verify/verify.json", id)), false, `${id} must be invalid`);
     }
-    // At the suite boundary (the red-capable ordering pin): the range rejections fire as
-    // InvalidError BEFORE any backend call — with the gates removed these return the backend's
-    // `false` instead of throwing, and this block goes RED.
+    // The range guard must throw InvalidError before the backend returns false.
     const issuer = freshEcKey();
     const key = importEcPublicKey(issuer.publicKey, "census-red-proof-key");
     const message = strUtf8("ordering pin");
@@ -1794,8 +1616,7 @@ function readV3Case(file: string, id: string): Record<string, unknown> {
   });
 }
 
-// (c) the proof-JWK member set: the corpus's valid proof with one extra member (private d) added
-// to the protected header's jwk object — decodes fine as JSON, must fail the closed member set.
+// A fifth proof-JWK member is valid JSON but violates the closed member set.
 test("permissiveness: v3 proof JWK rejects an extra member (mutation c)", () => {
   const compact = readV3Case("proof-decode/decode.json", "proof-decode-v3-valid").compact as string;
   const segs = compact.split(".");
@@ -1806,12 +1627,8 @@ test("permissiveness: v3 proof JWK rejects an extra member (mutation c)", () => 
   assert.equal(r.ok, false, "a 5-member EC JWK (carrying private d) must fail the closed member set");
 });
 
-// (d) coordinate width/canonicality through the jwk.decode_public surface. The corpus fixtures
-// (a 3-byte x; a padded x) plus the constructed width-only falsifier: x = 256 is a VALID
-// P-256 coordinate (with y = 0x2cd2…e4c5), and its 31-byte big-endian spelling carries the
-// integer 1 — assembled into the 65-byte raw form (0x04 || x || pad || y) the point lands
-// exactly on (256, y), passing every arithmetic gate. Only the exactly-32-bytes width gate of
-// the RFC 7518 §6.2.1.2 fixed-width spelling rejects it.
+// Use the on-curve point with x=256 and spell x with fewer than 32 bytes. Its SEC1
+// point is valid, isolating the fixed-width coordinate guard.
 test("permissiveness: v3 JWK coordinates must be canonical unpadded base64url of exactly 32 bytes (mutation d)", () => {
   const short = readV3Case("jwk/jwk.json", "jwk-decode-public-invalid-short-coordinate").text as string;
   assert.equal(v3.jwkDecodePublic(strUtf8(short)).ok, false, "a short coordinate must reject");
@@ -1823,9 +1640,8 @@ test("permissiveness: v3 JWK coordinates must be canonical unpadded base64url of
     "a 31-byte x spelling whose assembled point (256, y) is on the curve must reject on width alone");
 });
 
-// (e) coordinate range + on-curve. The x=p/√b falsifier is the load-bearing independent check for
-// the x<p gate: x=p makes the curve equation's right side b (x≡0 mod p), and y=√b satisfies
-// y²=b — so the pair PASSES the curve equation; only the coordinate-range gate rejects it.
+// At x=p, y=sqrt(b), the curve equation holds modulo p. Only the strict x<p guard
+// rejects this pair.
 {
   const SQRT_B = 0x66485c780e2f83d72433bd5d84a06bb6541c2af31dae871728bf856a174f93f4n;
   const hexBytes = (v: bigint, n: number): Uint8Array => {
@@ -1858,8 +1674,7 @@ test("permissiveness: v3 JWK coordinates must be canonical unpadded base64url of
   });
 
   test("permissiveness: v3 rejects an off-curve proof JWK (mutation e, header path)", () => {
-    // The corpus's valid proof header with x doctored by one character (the corpus's own
-    // off-curve delta) — parseProofHeader must reject before any backend call.
+    // The modified point is off-curve; header parsing must reject before crypto.
     const compact = readV3Case("proof-decode/decode.json", "proof-decode-v3-valid").compact as string;
     const segs = compact.split(".");
     const headerText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[0]!)));
@@ -1890,8 +1705,7 @@ test("permissiveness: v3 rejects v1 and v2 bytes; v1 and v2 reject v3 bytes (mut
   assert.equal(decodeGrant(strUtf8(v3Grant)).ok, false, "v1 must reject a v:3 payload");
   assert.equal(v2.decodeGrant(strUtf8(v3Grant)).ok, false, "v2 must reject a v:3 payload");
   assert.equal(v3.decodeGrant(strUtf8(v3Grant)).ok, true, "control: the v3 façade accepts its own bytes");
-  // The v gate's own falsifiers: the SAME v3 grant with only the payload `v` swapped to 1/2 —
-  // the header stays ES256/correct, so only the v claim gate can reject.
+  // Keep the ES256 header and change only payload v, isolating the version gate.
   for (const other of [1, 2]) {
     const segs = v3Grant.split(".");
     const payloadText = new TextDecoder().decode(base64urlDecode(strUtf8(segs[1]!)));
@@ -1903,8 +1717,7 @@ test("permissiveness: v3 rejects v1 and v2 bytes; v1 and v2 reject v3 bytes (mut
   }
 });
 
-// The full-suite leg: a fresh P-256 issuer/holder pair through the v3 producers and
-// checkEnvelope at the inclusive range boundary — the ES256 form of the v2 envelope pin.
+// The ES256 signed envelope must verify at the inclusive selector boundary.
 test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES256 suite", () => {
   const issuer = freshEcKey();
   const holder = freshEcKey();
@@ -1946,52 +1759,17 @@ test("permissiveness: v3 envelope verifies at the inclusive boundary over the ES
   assert.equal(over.ok, false, "amount 5001 > the lte bound must reject");
 });
 
-// --- role-attestation profile (bap-role-attestation/1, ADR 0036) — the named-check closure
-// battery. Each closure below was defect-injected at authoring: the named check in
-// src/role_attestation.ts was mechanically removed or relaxed, exactly one named test went
-// RED, and the change was reverted. The record (injection → reddened test):
-//   RA-1. attestor window-endpoint magnitude (2^53-1, both signs) + integer: delete the two
-//         magnitude checks in validateExpected → "attestor window endpoints" REDs. (The
-//         Python/Go legs shipped without this once and were repaired 2026-09-22; the
-//         verifyHistoricalAnchor parity is load-bearing, not decorative.)
-//   RA-2. non-integer / over-magnitude now: drop the now check in validateExpected → "now"
-//         REDs. A fractional now inside the window would otherwise VERIFY — the half-open
-//         comparison alone cannot see the fraction.
-//   RA-3. self-attestation material (thumbprint equality): remove the material fail → the
-//         WIRE-carried material leg REDs (the fixture puts the attestor key on the wire with a
-//         matching expected binding, so only this check can reject).
-//   RA-4. self-attestation key-id equality: remove the key-id fail → the WIRE-carried key-id
-//         leg REDs (same discipline).
-//   RA-5. containment nbf >= valid_from: remove the nbf containment fail → REDs.
-//   RA-6. containment exp <= valid_before: remove the exp containment fail → REDs.
-//   RA-7. now in the half-open [nbf, exp): relax the upper bound to now <= exp → REDs.
-//   RA-8. header kid == attestor key id: remove the kid binding fail → REDs.
-//   RA-9. subject binding raw-byte equality: remove the subject bytesEqual fail → REDs.
-//   RA-10. role closed set: drop the ROLES membership check at decode → REDs.
-//   RA-11. canonical payload bytes: remove the payload canonical check → REDs.
-//   RA-12. signature gate: skip ed25519Verify → REDs.
-//   RA-13. v integer-tag distinction: NOT independently red-capable (adjudicated by injection —
-//         relaxing the tag check changed no verdict): JCS re-encodes Number 1.0 to "1", so any
-//         float lexeme for v is non-canonical and RA-11's canonical gate subsumes it on the
-//         wire; the tag check is the semantic gate, byte-level redundant behind canonical. The
-//         behavioral float-lexeme assertion stays (corpus: v-float-lexeme). This adjudication
-//         is scoped to v — whose only float-valued legal value is 1 — and does NOT generalize
-//         to the window members: see RA-15.
-//   RA-14. protected-header canonical bytes (cross-vendor review B1): remove the header
-//         canonical check in parseAttestationHeader → "protected header must equal its JCS
-//         re-encoding" REDs (the falsifier re-orders the header and signs those exact bytes,
-//         so the signature gate passes; the corpus carries only the payload-order case).
-//   RA-15. nbf/exp integer tags (cross-vendor review B2): relax requireInt to accept a float
-//         tag → "nbf and exp must carry integer tags" REDs. Unlike v, a float window endpoint
-//         (1000.5) is byte-identical under JCS re-encoding — canonical — so the RA-14/RA-11
-//         canonical gates do NOT subsume this closure; without it, fractional window
-//         endpoints enter the window arithmetic and verify.
+// The role-attestation mutation battery covers endpoint magnitude and integer tags,
+// integer evaluation time, self-attestation by material and key ID, nbf/exp containment,
+// the half-open now window, kid and subject bindings, closed roles, canonical payload
+// bytes and signature verification. Removing each guard made its named test fail.
 //
-// Specificity note (cross-vendor review n3, corrected in the repair pass): "exactly one named
-// test" is measured within this battery's run — the injection driver executes
-// test/permissiveness.ts alone, where each removal/relaxation reddens exactly the named test
-// above. The unit suite carries behavioral legs for the closures it shares with this battery
-// and reddens correspondingly for THOSE; RA-14 and RA-15 live only here.
+// The v:1 integer-tag gate is subsumed by canonical payload checking: JCS encodes 1.0
+// as 1. This does not apply to fractional window endpoints such as 1000.5, whose JCS
+// spelling is canonical and whose integer-tag guard has a discriminating signed fixture.
+// Header canonicality is isolated by reordering members and signing those exact bytes.
+// Mutation specificity is measured in this file; overlapping unit tests can also fail
+// when shared guards are removed.
 import * as roleAttestation from "../src/role_attestation.js";
 import { decodeAttestation as raDecode, verifyAttestation as raVerify } from "../src/role_attestation.js";
 
@@ -2038,11 +1816,9 @@ test("permissiveness: attestation now must be an integer within magnitude (fract
   assert.equal(raVerify(f.compact, { ...f.expected, now: 0.5 }).ok, false);
 });
 
-// RA-3 + RA-4: self-attestation — each leg rejects ON ITS OWN. The discriminating fixtures put
-// the self-attested material ON THE WIRE (via the producer) with an expected context whose
-// subject binding MATCHES it, so the subject-binding gate passes and only the self-attestation
-// check can reject — overriding only the expected context (the earlier shape of these legs)
-// shadows behind the binding gate and proves nothing.
+// Put the forbidden self-attestation material or key ID on the wire and supply a
+// matching expected binding. Each guard must reject independently; changing only the
+// expected context would exercise an unrelated binding check.
 function raSigned(
   f: ReturnType<typeof raFixture>,
   producer: { subjectKeyId: string; subjectPublicKey: Uint8Array },
@@ -2061,9 +1837,8 @@ function raSigned(
 }
 test("permissiveness: self-attestation rejected on material alone and on key id alone", () => {
   const f = raFixture();
-  // Context-only override of both fields at once: rejects at the subject-binding gate (the
-  // wire still carries the subject key) — a sanity leg, not a discriminating proof. The
-  // wire-carried legs below are the proofs (cross-vendor review n2).
+  // This expected-only mismatch rejects at subject binding. The wire-carried fixture
+  // above isolates the self-attestation guard.
   assert.equal(
     raVerify(f.compact, { ...f.expected, subjectKeyId: "attestor-1", subjectPublicKey: f.attestor.publicKey }).ok,
     false,
@@ -2130,8 +1905,8 @@ test("permissiveness: attestation role closed set, canonical payload bytes, and 
   if (auditor === payloadText) throw new Error("fixture payload carries no role member");
   assert.equal(raDecode(raWireCompact(auditor, f)).ok, false, "role outside {issuer, holder}");
 
-  // RA-11: non-canonical member order — the SAME members, re-ordered (the trailing ",\"v\":1}"
-  // moves to the front), so no duplicate-member gate can shadow the canonical gate.
+  // Move the existing v member to the front without duplicating it. Only canonical
+  // ordering changes, so duplicate detection cannot mask this guard.
   const nonCanonical = payloadText
     .replace('{"exp":', '{"v":1,"exp":')
     .replace(',"v":1}', "}");
@@ -2139,19 +1914,16 @@ test("permissiveness: attestation role closed set, canonical payload bytes, and 
   assert.equal(nonCanonical.split('"v":').length - 1, 1, "the reorder must not duplicate v");
   assert.equal(raDecode(raWireCompact(nonCanonical, f)).ok, false, "payload must equal its JCS re-encoding");
 
-  // RA-13: the float lexeme 1.0 for v (JSON.parse would collapse it to an integer).
-  // Adjudication (defect-injection observed): this closure is NOT independently red-capable —
-  // JCS re-encodes Number 1.0 to "1", so ANY float lexeme for v is non-canonical and the
-  // RA-11 canonical gate subsumes it on the wire; the v tag check is the semantic gate and
-  // byte-level redundant behind canonical. The behavioral assertion stays (the corpus's
-  // v-float-lexeme case carries it); the load-bearing mutation entry for this family is RA-11.
+  // A float spelling 1.0 for v is non-canonical because JCS re-encodes it as 1. The
+  // canonical check subsumes the semantic tag guard at the wire boundary. This assertion
+  // retains corpus behavior without claiming isolated mutation coverage for that tag.
   const floatV = payloadText.replace('"v":1}', '"v":1.0}');
   if (floatV === payloadText) throw new Error("fixture payload carries no v member");
   assert.equal(raDecode(raWireCompact(floatV, f)).ok, false, "float-encoded v must reject");
 });
 
-// RA-12: the signature gate — flip a meaningful byte in the MIDDLE of the signature segment
-// (the final chars are canonical-base64url-constrained; a middle char flips freely).
+// Flip a middle signature byte while preserving base64url spelling and width.
+// Final-character padding constraints do not apply at this position.
 test("permissiveness: attestation signature gate rejects a tampered signature", () => {
   const f = raFixture();
   const chars = new TextDecoder().decode(f.compact).split("");
@@ -2162,12 +1934,8 @@ test("permissiveness: attestation signature gate rejects a tampered signature", 
   assert.equal(raVerify(tampered, f.expected).ok, false, "the signature must verify under the attestor key");
 });
 
-// RA-14 (cross-vendor review B1): the PROTECTED-HEADER canonical gate. Spec §2
-// REQ-RA1-CLAIM-canonical — "both segments" — and the corpus carries only the payload-order
-// case, so without this leg the header gate's removal survives every gate green and a
-// non-canonical-header attestation VERIFIES. The falsifier re-orders the header members
-// (same members, same values, JCS-illegal order) and signs THOSE exact bytes, so the
-// signature gate passes and only the canonical gate can reject.
+// REQ-RA1-CLAIM-canonical covers both segments. Reorder protected members and sign
+// those exact bytes, isolating header canonicality from signature verification.
 test("permissiveness: attestation protected header must equal its JCS re-encoding", () => {
   const f = raFixture();
   const segs = new TextDecoder().decode(f.compact).split(".");
@@ -2184,12 +1952,9 @@ test("permissiveness: attestation protected header must equal its JCS re-encodin
   assert.equal(raVerify(nonCanonicalHeader, f.expected).ok, false, "and must never verify");
 });
 
-// RA-15 (cross-vendor review B2): the integer-tag closure for nbf/exp. REQ-RA1-CLAIM-
-// closed-required forbids float-encoded numerics on EVERY member, and — unlike v (RA-13) —
-// the canonical gate does NOT subsume this: JCS re-encodes 1000.5 to the byte-identical
-// 1000.5, so a float window endpoint is canonical and only the int tag rejects it. Without
-// this leg, relaxing requireInt lets fractional window endpoints enter the window arithmetic
-// and VERIFY.
+// REQ-RA1-CLAIM-closed-required forbids float tags for nbf and exp. A fractional
+// endpoint such as 1000.5 is canonical JCS, so these signed cases isolate integer-tag
+// validation from canonicality and window comparisons.
 test("permissiveness: nbf and exp must carry integer tags (float endpoints are canonical, not caught by RA-14/RA-11)", () => {
   const f = raFixture();
   const segs = new TextDecoder().decode(f.compact).split(".");

@@ -22,7 +22,9 @@ function classifyByte(byte: number): number {
 /**
  * Decodes canonical unpadded base64url (no padding, whitespace or non-zero trailing bits),
  * optionally capped at `maxDecodedBytes`. Throws `InvalidError` otherwise.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#9-base64url
+ * @returns Decoded bytes, at most maxDecodedBytes when supplied.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Uint8Array {
   const len = input.length;
@@ -75,7 +77,8 @@ export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Ui
 
 /**
  * Encodes bytes as unpadded base64url, returned as ASCII bytes.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#9-base64url
+ * @returns Canonical unpadded base64url ASCII bytes, including an empty result for empty input. Every byte value is encodable; this helper imposes no protocol size limit.
  */
 export function base64urlEncode(input: Uint8Array): Uint8Array {
   const len = input.length;

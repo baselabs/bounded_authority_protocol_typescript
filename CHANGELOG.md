@@ -2,7 +2,25 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## [2.0.0] — 2026-11-10
+## [Unreleased]
+
+### Fixed
+
+- HTTP integration replay reservations last through grant expiry plus allowed clock skew.
+  A fresh proof for an already accepted invocation cannot execute again after the earlier
+  proof ages out. The regression runs the guide's actual store with real signatures.
+
+### Documentation
+
+- Every public declaration has TSDoc, including field units, byte widths and public spec links.
+  TypeDoc 0.28.20 builds the package-versioned API reference from the package exports map.
+  CI treats documentation warnings as errors; Pages includes the reference under `/api/`.
+- OAuth positioning describes delegated authorization and how BAP binds authority to exact
+  request bytes. Verification facts remain separate from authorization policy.
+- Public documentation and source comments are self-contained, use published normative
+  references and follow US English prose conventions. Hygiene checks cover these surfaces.
+
+## [2.0.0] (2026-11-10)
 
 **Adopter summary.** 2.0.0 is the protocol's erratum 6, the selector float-zero
 soundness repair, and nothing else: no export, type, error shape or other verdict changes, and no
@@ -28,7 +46,7 @@ now refuse.
 
 - The vendored certified selector-float-zero corpus snapshot
   (`conformance/corpus-selector-float-zero`, profile `bap-selector-float-zero/1`, revision 1,
-  161 cases — 78 grant decode, 48 grant signing input, 35 envelope, across contract-majors 1, 2
+  161 cases comprising 78 grant decode, 48 grant signing input and 35 envelope cases across contract-majors 1, 2
   and 3; index SHA-256 `97fd7a99cdbf3acc0a78f5ba1c6556e23a63e0ad66f533e31fd69f82dc5f3003` pinned
   at load, byte-identical to the protocol repository's `priv/conformance/selector-float-zero`)
   plus `conformance/run_selector_float_zero.ts` (`pnpm conformance:selector-float-zero`) and the
@@ -50,8 +68,7 @@ now refuse.
   reject it. `lte`/`gte` bounds and the inert members of `all` are unchanged, range comparison
   keeps `-0.0` equal to `0.0`, and integer `0`/`-0` and non-zero integral floats such as `10.0`
   still decode.
-- **Breaking:** `grantSigningInput` of each major refuses any selector value — `equals`,
-  `one_of`, and the major-2 and major-3 `lte`/`gte` bounds — holding a float-tagged integral
+- **Breaking:** `grantSigningInput` of each major refuses any selector value holding a float-tagged integral
   number at any depth (`0.0`, `10.0`, `-3.0`, `{ t: "float", v: 3 }`;
   `REQ1/REQ2/REQ3-SIGNING-integral-float-selector`). Use an integer, or a float with a fractional
   part.
@@ -98,19 +115,18 @@ now refuse.
   refused it since 0.8.0), and the Handle errors example passes `evaluationTime` in seconds rather
   than `Date.now()` milliseconds.
 
-## [1.0.0] — 2026-10-29
+## [1.0.0] (2026-10-29)
 
-The stability release: from here, SemVer's ordinary rules apply — a breaking change to the public
-API or to verdicts costs a major version, and `^1.0.0` ranges carry every later minor and patch.
+The stability release: from here, SemVer requires a major version for a breaking change to the public
+API or verdicts. The `^1.0.0` range carries every later minor and patch.
 No verification verdict changes; the source is 0.8.0's.
 
 ### Changed
 
 - **Breaking:** deep imports are closed. The `"exports"` map no longer carries the `"./*"`
   passthrough, so any path under `dist/` (for example
-  `@bounded-authority-protocol/verifier/dist/src/v3.js`) now refuses on every runtime — Node
-  spells it `ERR_PACKAGE_PATH_NOT_EXPORTED`; Deno and Bun report the module as not found —
-  exactly as the crypto backends already did.
+  `@bounded-authority-protocol/verifier/dist/src/v3.js`) now refuses on every runtime, as the crypto backends already did.
+  Node reports `ERR_PACKAGE_PATH_NOT_EXPORTED`; Deno and Bun report the module as not found.
   The public API is the package root (plus `./package.json`); import `v2`, `v3`,
   `roleAttestation` and `contentAssertion` from it. In 0.8.0 a fully specified `.js` deep path
   still resolved through the passthrough the 0.7.0 changelog reserved the right to close. The
@@ -120,7 +136,7 @@ No verification verdict changes; the source is 0.8.0's.
 
 - README: the versioning section states the 1.0 contract, and the install pins move to 1.0.0.
 
-## [0.8.0] — 2026-10-29
+## [0.8.0] (2026-10-29)
 
 No verification verdict changes. Before 1.0 the minor position is the breaking boundary: this release
 changes the behavior of several public functions and of facts values (marked **Breaking** below).
@@ -133,7 +149,7 @@ changes the behavior of several public functions and of facts values (marked **B
   throws `InvalidError` for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the
   `0x04` prefix, coordinates below p, on the curve).
 - The vendored certified producer-canonicality corpus snapshot
-  (`conformance/corpus-producer-canonicality`, revision 1, 75 cases — 44 Ed25519 assembly, 4
+  (`conformance/corpus-producer-canonicality`, revision 1, 75 cases comprising 44 Ed25519 assembly, 4
   Ed25519 export encoding, 24 ES256 assembly, 3 ES256 export encoding; index SHA-256
   `99ee6fbbf32758b03d4630647f721d8d4e349f0628d860493d667fe6e762c601` pinned at load, byte-synced
   from the BAP 0.9.0 Hex package, whose registry checksum the rotation verified) plus
@@ -145,8 +161,7 @@ changes the behavior of several public functions and of facts values (marked **B
 
 ### Changed
 
-- **Breaking:** compact assembly and anchored-export encoding are producer surfaces — they frame
-  a signature and verify none — and now refuse, with the closed error, a signature that no
+- **Breaking:** compact assembly and anchored-export encoding frame signatures without verifying them. They now refuse, with the closed error, signatures that no
   conforming signer emits, emitting every accepted signature's bytes unchanged (erratum 3 of the
   protocol's errata registry, BAP 0.9.0; `REQ1/REQ2-SIGNING-ed25519-producer-canonical` and
   `REQ3-SIGNING-producer-canonical`). One Ed25519 gate owns the clauses for every Ed25519
@@ -259,8 +274,8 @@ changes the behavior of several public functions and of facts values (marked **B
 
 - Test fixtures that framed signatures the producer now refuses sign for real: the struct test's
   all-zero assembler input uses gate-passing bytes, the strict-Ed25519 forgery tests frame their
-  (deliberately non-canonical) forgeries by direct concatenation — the verifier-rejection claims
-  are unchanged — and the encode-parity fixtures keep their key pairs and sign each anchor and
+  (deliberately non-canonical) forgeries by direct concatenation, preserving the verifier-rejection claims.
+  The encode-parity fixtures keep their key pairs and sign each anchor and
   transition. The permissiveness helper splits into Ed25519 and ES256 forms, as the reference's
   two compact-JWS modules do.
 - Dev dependencies at latest in range (the currency gate): `@types/node` 26.6.6, `eslint` 10.13.0,
@@ -279,7 +294,7 @@ changes the behavior of several public functions and of facts values (marked **B
 - For the same reason, the docs sample that imports the signer runs in a child process against the
   built package without `bap-source`, so `pnpm test` and `pnpm test:portable` now build first.
 
-## [0.7.0] — 2026-10-13
+## [0.7.0] (2026-10-13)
 
 Browser-safe builds. The package now loads and runs in browsers, Deno, Bun and workers, with no
 `node:crypto`, no `Buffer` and no other Node API outside the Node backend, and with verdicts
@@ -366,7 +381,7 @@ and may be closed in a future 0.x minor; import from the package root. In this r
 - The 0.6.0 playground-shim test is retargeted to the portable backend with its coverage kept.
 - The bench's demo-issuance dev dependency moves to `@bounded-authority-protocol/signer` 0.4.0.
 
-## [0.6.0] — 2026-10-13
+## [0.6.0] (2026-10-13)
 
 Strict Ed25519 verification: reject small-order and non-canonical keys and points. Security
 advisory: [GHSA-prrq-qm8j-7j67](https://github.com/baselabs/bounded_authority_protocol_typescript/security/advisories/GHSA-prrq-qm8j-7j67). Before 1.0 the
@@ -419,7 +434,7 @@ below.
 - Test fixtures that used all-zero or repeated-byte placeholders as public keys now use generated keys,
   each with a positive control proving the key reaches and passes key acceptance.
 
-## [0.5.0] — 2026-09-27
+## [0.5.0] (2026-09-27)
 
 The content-assertion release. Before 1.0 the minor position is the breaking boundary, so this
 release is also the package-major step for the identifier-admission tightening below.
@@ -459,16 +474,16 @@ release is also the package-major step for the identifier-admission tightening b
   typecheck (the compiler API the mutation tests use is absent) and lint (typescript-eslint
   8.70.1 peers `typescript <6.1.0`).
 
-## [0.4.1] — 2026-09-23
+## [0.4.1] (2026-09-23)
 
 ### Fixed
 
 - **Producer/consumer bounds agreement on emitted bytes** (the class the protocol repository's
   repair patch 0.6.1 fixed): `attestationSigningInput`
-  now enforces the caller-resolved limits on what it EMITS — encoded and decoded
+  now applies caller-resolved limits to emitted bytes: encoded and decoded
   `segment_bytes`, `json_bytes`, `jcs_bytes` over the emitted payload JSON, and the
-  projected `compact_bytes` (segments + separators + the 86-char signature encoding) — so the
-  producer cannot mint bytes its own decoder rejects under the caller's bounds. Each gate is
+  projected `compact_bytes` (segments, separators and the 86-character signature encoding).
+  The producer therefore cannot mint bytes its decoder rejects under the caller's bounds. Each gate is
   injection-proven red-capable against its named leg. The emitted-number-lexeme class is
   closed one layer down: any exponent-form integer is far past the shared JCS encoder's
   2^53−1 magnitude bound (probe: `jcsEncode` throws `jcs: integer bound`); a producer-side
@@ -477,32 +492,29 @@ release is also the package-major step for the identifier-admission tightening b
   certified corpora agree at unchanged counts).
 
 
-## [0.4.0] — 2026-09-23
+## [0.4.0] (2026-09-23)
 
-The role-attestation release (ADR 0036 Decision 1.8: the first `0.x.0` bearing the
-`bap-role-attestation/1` profile). Additive public surface — the `roleAttestation` namespace —
-with zero verdict changes on existing input (all four certified corpora agree at unchanged
+The role-attestation release (the first release bearing the
+`bap-role-attestation/1` profile). The additive `roleAttestation` namespace
+leaves verdicts unchanged on existing input (all four certified corpora agree at unchanged
 counts); malformed caller context now fails closed instead of crashing past `Result` or being
 silently coerced, across the v1/v2/v3 façades.
 ### Fixed
 
 - **Malformed caller context now fails closed on every contract-major surface** (first closed
   for the role-attestation profile when it landed). `bounds.ts`'s `coerceBounds` and the leaf
-  `resolve` reject a structurally malformed `Bounds` object — a non-object, a missing
-  maximum table, or an `overrides` that is missing, `null`, a bare array of non-pairs, or a
-  string — with the single closed error instead of throwing a native `TypeError` past the
+  `resolve` return the single closed error for malformed `Bounds` objects, including non-objects, missing
+  maximum tables and `overrides` values that are missing, `null`, bare arrays or strings, instead of throwing a native `TypeError` past the
   `Result` contract, and `untrustedKeyLocator` in v1/v2/v3 now COERCES its caller bounds
-  (it resolved them ahead of any coercion, so a forged widening override was honored — the
-  only surface where that remained). Pinning note: a hand-rolled
-  non-`Map` `ReadonlyMap` implementation now fails closed rather than iterating — an
-  undocumented shape no documented producer ever emitted. The producers gain the field-level
+  (it resolved them ahead of any coercion, so this last remaining path honored a forged widening override). Pinning note: a hand-rolled
+  non-`Map` `ReadonlyMap` implementation now rejects. No documented producer emitted that undocumented shape. The producers gain the field-level
   shape gates they lacked: `grantSigningInput` in v1/v2/v3 (previously a `null`/numeric
-  `keyId` COERCED into a wire `kid` `"null"`/`"123"` — likewise a `null` operation name into
-  `"name":"null"` — and nine other junk field shapes threw native `TypeError`s) and
+  `keyId` became a wire `kid` `"null"`/`"123"`, and a `null` operation name became
+  `"name":"null"`; nine other malformed field shapes threw native `TypeError`s) and
   `boundaryAnchorSigningInput` in v1/v2/v3 (the same coercion class on `keyId`). The
   selector producer leaves harden the caller-shaped selector items in all three majors: a
   non-array `path` previously iterated as CHARACTERS when handed a string and was silently
-  minted into the signed grant (`path: "abc"` → `["a","b","c"]` — a scope rewrite), numeric
+  minted into the signed grant (`path: "abc"` became `["a","b","c"]`, rewriting its scope), numeric
   path members coerced to strings, and null selector/value/`values` items threw native
   `TypeError`s. No verdict changes on legal input: all four certified corpora, the census
   legs, and the pre-existing suites are unchanged; the new context-fail-closed suite carries the
@@ -511,13 +523,13 @@ silently coerced, across the v1/v2/v3 façades.
 
 ### Added
 
-- **The `bap-role-attestation/1` sibling profile** (the protocol's ADR 0036; the release
-  precondition for any `0.x.0` bearing the profile), exported as the `roleAttestation`
-  namespace and re-derived from the normative sources alone (`spec/bap-role-attestation-v1.md`
-  + the certified corpus — ADR 0014's no-derivation bar): a standalone, grant-unbound compact
+- **The `bap-role-attestation/1` sibling profile**, specified by the public
+  [role-attestation profile](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md), exported as the `roleAttestation`
+  namespace and re-derived from the normative sources alone (the public role-attestation specification
+  and its certified corpus): a standalone, grant-unbound compact
   JWS under contract-major-1 mechanics (Ed25519/EdDSA, `BAP1-Ed25519-SHA256`) in which an
   attestor key binds a subject key to a role (`issuer`/`holder`) for a window contained in the
-  attestor key's validity. Four surfaces — `attestationSigningInput` (external signature only;
+  attestor key's validity. The four surfaces are `attestationSigningInput` (external signature only;
   the SDK holds no private key), `assembleAttestationCompact` (revalidates header, payload
   member rules, segment bounds, and signature width before returning bytes),
   `decodeAttestation` (bounded decode, no trust evaluation), and `verifyAttestation` (the
@@ -527,8 +539,8 @@ silently coerced, across the v1/v2/v3 façades.
   and raw public-key byte-equality, self-attestation rejected on either leg (thumbprint or key
   id), window containment with `exp == valid_before` accepting, and the half-open
   `now ∈ [nbf, exp)`. The attestor context (`HistoricalPublicKey`) window endpoints and `now`
-  are integer- and magnitude-bounded (2^53−1) — the `verifyHistoricalAnchor` parity the
-  sibling Python/Go legs landed without and repaired same-day. `AttestationFacts` carry the
+  must be integers within 2^53−1, matching `verifyHistoricalAnchor`.
+  The sibling Python and Go implementations gained these checks the same day. `AttestationFacts` carry the
   anchor posture (`verification: "signature_and_window"`, `trust: "not_evaluated"`, RFC 7638
   fingerprints, and NO authorization marker). Parsed by no contract-major: attestation bytes
   reject at the v1/v2/v3 surfaces and a live v1 grant rejects at attestation decode.
@@ -549,20 +561,19 @@ silently coerced, across the v1/v2/v3 façades.
   signature gate, the protected-header canonical gate, and the `nbf`/`exp` integer tags. The two
   injected cases: the `v`
   integer-tag distinction is byte-level redundant (JCS re-encodes `1.0` to `1`, so the
-  canonical gate subsumes float lexemes for `v` — relaxing the tag check changed zero
+  canonical gate already rejects float lexemes for `v`; relaxing the tag check changed zero
   verdicts), while float `nbf`/`exp` endpoints are canonical (`1000.5` re-encodes
   byte-identically) and carry their own red-capable closure. Two closures (header canonical,
   window integer tags) and a double-encoded test header were added or corrected before release,
   each with its red proof and the full battery re-run.
 - `SigningInputKind` gains `role_attestation` (the `assembleSegments` kind list; assembly for
-  every existing kind is byte-unchanged) — the TypeScript form of ADR 0036 D7's labeled
-  kind touch.
+  every existing kind is byte-unchanged), making role-attestation assembly dispatch explicit.
 
-## [0.3.0] — 2026-09-22
+## [0.3.0] (2026-09-22)
 
 ### Added
 
-- **Wire contract-major 3 — the `BAP3-ES256-SHA256` suite** (the protocol's ADR 0035 activation),
+- **Wire contract-major 3 uses the `BAP3-ES256-SHA256` suite** ([major-3 suite specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules)),
   exported as the `v3` namespace and re-derived from the normative sources alone
   (`spec/bap-v3.md` + the incorporated v1/v2 sections + the certified corpus): ECDSA over NIST
   P-256 with SHA-256 (`alg: "ES256"`), `v: 3` payloads, the `BAP3-REQUEST\0` / `BAP3-CHAIN\0` /
@@ -571,8 +582,8 @@ silently coerced, across the v1/v2/v3 façades.
   points (`0x04||x||y`) with pure-arithmetic coordinate-range and on-curve validation before
   any backend; the proof JWK is exactly `{crv:"P-256", kty:"EC", x, y}` with the RFC 7638
   thumbprint over that member set; signatures are the RFC 7518 §3.4 raw `r||s` form (64 bytes)
-  with `0 < r < n`, `0 < s ≤ (n−1)/2` — low-S required and load-bearing (Node's backend
-  accepts the malleable high-S counterpart; the mutation gate proves the gate red-capable).
+  with `0 < r < n`, `0 < s ≤ (n−1)/2`. Low-S is required because Node's backend
+  accepts the malleable high-S counterpart. The mutation test proves the profile gate rejects it.
   Every v1 and v2 artifact rejects under `v3` with the single closed error, and vice versa.
 - New modules `src/es256.ts` (the P-256 arithmetic + `node:crypto` ECDSA layer, with its own
   census tracking for the runner's verify-import leg) and `src/ec_jwk.ts` (the EC JWK
@@ -582,7 +593,7 @@ silently coerced, across the v1/v2/v3 façades.
   byte-synced from the monorepo; `conformance/run_v3.ts` recomputes every verdict (292/292
   agree) and runs the census legs (curated == index two-way; discovery ⊆ declared;
   verify-import ⊇ expected-verify keys).
-- Corpus-repair rotation (in the same release): the certified v3 corpus was repaired upstream — the
+- Corpus-repair rotation (in the same release): the certified v3 corpus was repaired upstream because the
   signing-input case files had carried v2-shaped 32-byte Ed25519 public keys, so their
   valid-class cases were mislabeled verdict invalid; inputs were re-keyed to v3 EC shapes and
   expected re-derived. The vendored snapshot was re-synced byte-for-byte (`rsync -a --delete`),
@@ -592,9 +603,9 @@ silently coerced, across the v1/v2/v3 façades.
   (11 keys; discovery stays a strict 8-of-11 subset). 292/292 agreement re-proven; the v1/v2
   corpora and pins are unchanged.
 - Permissiveness mutation-gate battery for the ES256 closure classes (7 defect-injection
-  entries, each red-proven at authoring): low-S acceptance, r/s integer range (the
-  encoding-level ordering pin — OpenSSL rejects zero/≥n itself, so the verdict legs stay green
-  without the gates), EC JWK member set, coordinate width (via an on-curve x=256 falsifier
+  entries, each red-proven at authoring): low-S acceptance, r/s integer range (an
+  encoding-level ordering check; OpenSSL itself rejects zero/≥n, so verdict checks alone pass
+  without these gates), EC JWK member set, coordinate width (via an on-curve x=256 falsifier
   whose short spelling passes every arithmetic gate), coordinate range + on-curve (via the
   x=p/√b pair, which satisfies the curve equation so only the `< p` gate rejects it), and the
   cross-major `v` gate (same-header v-swap falsifiers; v1/v2 bytes also reject at the `alg`
@@ -604,31 +615,30 @@ silently coerced, across the v1/v2/v3 façades.
   release lane now runs the same three-corpus verification gate before staging (it had been
   left at v1+v2 when the corpus landed) and enforces tag/manifest version match, as the signer's
   release lane does.
-- **The verifier bench** — this package's public GitHub Pages site: the real verify path
+- **The verifier bench** is this package's public GitHub Pages site, with the real verify path
   running in the visitor's browser. A static bundle built from this repository's verifier
   source plus the published signer package (demo issuance only; no backend, deploy-only
   permissions): check an envelope, decode grants and proofs, and read the cryptographic facts,
   with keys minted in the browser that never leave it. The page's npm badge tracks the
   released version.
-- README: the contract-major 3 sections — the majors table row (the `BAP3-ES256-SHA256` suite
+- README: the contract-major 3 updates include the majors table row (the `BAP3-ES256-SHA256` suite
   summary), the `v3` namespace walkthrough, the 292-vector corpus count, and the
   versioning statement now reading "majors 1, 2, and 3".
 
-## [0.2.2] — 2026-09-17
+## [0.2.2] (2026-09-17)
 
-No library-code change — toolchain and documentation alignment with the protocol repository's
-2026-09-17 state (BAP 0.4.1, the tri-platform build bar, the dependency-currency gate).
+This release aligns toolchain and documentation with the protocol repository's
+2026-09-17 state (BAP 0.4.1, cross-platform builds and dependency currency), without library-code changes.
 
 - BAP 0.4.1 (published 2026-09-17; no wire-format or public-API change): the vendored
   v1, v2, and local-loopback conformance snapshots were compared byte-for-byte against
-  the monorepo's `priv/conformance` at `main` — no delta, so no corpus rotation was
-  required.
+  the monorepo's `priv/conformance` at `main`. The snapshots matched, so no corpus rotation was required.
 - Tri-platform CI: the verify battery now runs on ubuntu-24.04,
-  macos-latest, and windows-latest — observed green on all three lanes — and a
-  `.gitattributes` eol policy keeps the byte-exact corpora conversion-free on any clone.
-- Dependency-currency gate (latest-first, the shape of the protocol repository's ADR 0032):
+  macos-latest and windows-latest. All three lanes passed.
+  A `.gitattributes` eol policy keeps the byte-exact corpora conversion-free on any clone.
+- Dependency-currency gate (latest-first):
   `tools/check-currency.mjs` classifies `pnpm outdated` data with the canonical
-  `semver` range resolver — in-range resolvable drift fails (never pinnable),
+  `semver` range resolver. In-range resolvable drift fails and cannot be pinned;
   deliberate pins cover only out-of-range latests and carry inline reasons
   (typescript stays on 6.x pending the 7.x native-compiler review), and an
   unverifiable currency state fails closed. Dev dependencies refreshed to latest:
@@ -638,25 +648,25 @@ No library-code change — toolchain and documentation alignment with the protoc
   and CI's `node-version` agree; `engines.node >= 22` stays the consumer-facing floor.
   The release lane pins its Node exactly (24.19.0, matching the signer's lane) and
   SHA-pins `pnpm/action-setup` like every other action.
-- README: "Pairing with the signer" — the three-role production flow (issuer signs,
+- README: "Pairing with the signer" explains the three-role production flow (issuer signs,
   holder proves, resource verifies through this package), the key-custody and
   cross-validation properties, and related-package cross-links.
 
-## [0.2.1] — 2026-09-14
+## [0.2.1] (2026-09-14)
 
 - The first provenance-bound release of this package: identical library content to 0.2.0
   (which was published from a local checkout during the rename and carries no registry
   attestation), published through this repository's release workflow under npm trusted
-  publishing — the workflow stages with a signed provenance statement and a human approves
+  publishing. The workflow stages with a signed provenance statement and a human approves
   under 2FA.
 
-## [0.2.0] — 2026-09-14
+## [0.2.0] (2026-09-14)
 
 ### Added
 
 - Per-language mutation-gate entries for v2 assembly revalidation (the reference's
   `validate_assembled_compact`): a well-formed signing input whose payload violates the
-  profile must not assemble — the closed member set (grant/anchor/transition), the
+  profile must not assemble. Checks cover the closed member set (grant/anchor/transition), the
   canonical-payload binding (the segment must equal the JCS encoding, anchor/transition), and
   the anchor genesis binding (sequence 0 carries the all-zero chain hash). Each leg is
   red-capable: mechanically removing the named check fails its test.
@@ -672,7 +682,7 @@ No library-code change — toolchain and documentation alignment with the protoc
 - `dist/` now ships only the compiled library (`src/`); conformance runners and tests are no
   longer emitted into the published tarball.
 
-## [0.1.0] — 2026-09-14
+## [0.1.0] (2026-09-14)
 
 - First npm publication. Wire contract-majors 1 (283 certified conformance vectors) and 2
   (268 vectors, `lte`/`gte` range selectors) in one package; zero runtime dependencies;

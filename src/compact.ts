@@ -3,9 +3,9 @@ import { base64urlDecode, base64urlEncode } from "./base64url.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 import { signatureGate } from "./ed25519.js";
 
-// JWS compact serialization (RFC 7515) — the 3-segment wire shape: base64url(protected) || "." ||
-// base64url(payload) || "." || base64url(signature). The signing input (REQ1-SIGNING-exact-input)
-// is ASCII(base64url(protected) || "." || base64url(payload)) — no signature, no extra bytes.
+// JWS compact serialization has three base64url segments separated by dots. The exact signing
+// input is ASCII(base64url(protected) + "." + base64url(payload)); the signature segment is
+// excluded. See RFC 7515 and REQ1-SIGNING-exact-input.
 
 export interface CompactSegments {
   readonly protectedSegment: Uint8Array; // the raw base64url TEXT (not decoded)
@@ -41,10 +41,8 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
   const protectedBytes = base64urlDecode(protectedText, resolve(b, "decoded_segment_bytes" as MaximaKey));
   const payloadBytes = base64urlDecode(payloadText, resolve(b, "decoded_segment_bytes" as MaximaKey));
   const signature = base64urlDecode(signatureText);
-  // Decoded signature-width gate (runtime.ex:237 parse_grant, :259 parse_proof,
-  // boundary_anchor_codec.ex:88, key_transition_codec.ex:120 all enforce byte_size(signature) ==
-  // signature_bytes). scanCompact (the ath/hash gate) intentionally does NOT — it mirrors
-  // CompactJws.scan (shape+size only); the decoded-width check belongs to the decode path.
+  // The decode path requires the decoded signature to match signature_bytes. The ath/hash
+  // structural scan deliberately omits this check because it does not decode signature bytes.
   if (signature.length !== resolve(b, "signature_bytes" as MaximaKey)) fail("compact: signature width");
   return {
     protectedSegment: protectedText,
@@ -58,12 +56,9 @@ export function parseCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
 
 const DOTB = new Uint8Array([DOT]);
 
-// Scan_compact — faithful port of the reference CompactJws.scan (compact_jws.ex:16-27): the
-// shape+size gate that `ath`/`hash` run BEFORE hashing a compact. It validates structure + bounds
-// only — NOT base64url canonicity (canonicity is the full verify path's job via parseCompact). The
-// producer ath (proof_signing_input) and the verify grant-hash both gate on this so a non-compact
-// grant (wrong segment count, oversized, dotted signature) is rejected rather than hashed. Mirrors
-// the Rust scan_compact gate added in the Rust SDK.
+// Scan compact structure and bounds before ath/hash computation. The full decode path
+// separately checks base64url canonicality. This scan rejects malformed framing, wrong segment
+// counts and oversized inputs before hashing.
 export function scanCompact(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): void {
   const b = coerceBounds(bounds);
   if (input.length > resolve(b, "compact_bytes" as MaximaKey)) fail("compact: byte bound");
@@ -89,31 +84,33 @@ function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-// assemble_compact: SigningInput (protected + payload segments as text) + 64-byte signature → compact.
-// REQ1-VERIFY-no-signer-callback: takes a signature, never a key. kind ∈ {grant, proof,
-// boundary_anchor, key_transition} (the runner's accepted signing-input kinds) — plus the
-// byte-distinct sibling-profile kinds (local_loopback_http_proof per ADR 0027,
-// role_attestation per ADR 0036, content_assertion per ADR 0037; existing assembly bytes stay unchanged).
+/**
+ * Closed artifact discriminant carried by SigningInput. It selects the assembly profile and does
+ * not permit profile inference from presented bytes. Sibling profiles use distinct labeled kinds.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @inline
+ */
 export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion";
 
+/**
+ * Canonical unpadded-base64url JWS segments for external signing. Sign the exact ASCII
+ * protectedSegment bytes, one period byte (0x2e), then payloadSegment bytes. Assembly accepts a
+ * signature, never a private key or callback.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ */
 export interface SigningInput {
+  /** Closed discriminant selecting the documented artifact or selector variant. */
   readonly kind: SigningInputKind;
-  readonly protectedSegment: Uint8Array; // base64url text
-  readonly payloadSegment: Uint8Array; // base64url text
+  /** Unpadded base64url ASCII of the canonical protected header, without any period. */
+  readonly protectedSegment: Uint8Array;
+  /** Unpadded base64url ASCII of the canonical payload, without any period. */
+  readonly payloadSegment: Uint8Array;
 }
 
-// assemble_segments: the LOW-LEVEL Ed25519 compact assembler (mirrors CompactJws.assemble's byte
-// assembly, compact_jws.ex:41-43). Validates the kind closed-set + 64-byte signature width, then
-// concatenates protected.payload.base64url(signature). It does NOT validate the signing-input
-// header/payload content — that is the v1.ts assemble_compact FAÇADE's job (re-parse per kind,
-// runtime.ex:151 validate_assembled_compact). Test helpers and conformance use this to build
-// compacts freely; the public contract is the façade (assembleCompact in v1.ts).
-//
-// Erratum 3 (REQ1/REQ2-SIGNING-ed25519-producer-canonical): assembly is a producer surface — it
-// frames a signature and verifies none — so it refuses a signature that fails the keyless part
-// of rule S1 (R canonical, R not of small order, S < L) and emits every accepted signature's
-// bytes unchanged. Every Ed25519 assembler (contract-majors 1 and 2, local loopback, role
-// attestation, content assertion) assembles through this function.
+// Low-level Ed25519 assembly checks the closed kind set, 64-byte signature width and the
+// keyless part of rule S1: canonical R, R not small-order, and S < L. It emits accepted bytes
+// unchanged without verifying signatures. The public facade then reparses the complete header
+// and payload for the selected kind. All Ed25519 profiles share this assembler. See erratum 3.
 export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
     const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation", "content_assertion"];
@@ -126,10 +123,9 @@ export function assembleSegments(input: SigningInput, signature: Uint8Array): Re
   });
 }
 
-// The ES256 counterpart of assemble_segments (mirrors the reference's separate V3.CompactJws
-// assembler: width check only — the canonical-signature gate is the v3 façade's, as it is the
-// reference runtime's). Contract-major 3's signatures share the 64-byte width but not the
-// suite: a raw r || s is big-endian and low-S, never little-endian R || S.
+// Low-level ES256 assembly enforces the 64-byte width. The public major-3 facade separately
+// enforces canonical raw big-endian r || s and low-S. This signature representation differs
+// from Ed25519 R || S.
 export function assembleSegmentsEs256(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
     const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];

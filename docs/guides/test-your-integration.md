@@ -91,7 +91,7 @@ assert.deepEqual(checkEnvelope(outside.grant, outside.proof, outside.expected), 
 // your code, because checkEnvelope accepts the identical envelope every time.
 function decide(facts: EnvelopeFacts, seen: Set<string>, revoked: Set<string>): "execute" | "refuse" {
   if (revoked.has(facts.grantId)) return "refuse";
-  const key = `${facts.grantId}/${facts.invocationId}`;
+  const key = JSON.stringify([facts.issuer, facts.grantId, facts.invocationId]);
   if (seen.has(key)) return "refuse";
   seen.add(key);
   return "execute";
@@ -116,7 +116,11 @@ would still "pass" by rejecting, and only the positive control notices.
 The package proves what the bytes say; replay protection and revocation are yours. The end of the
 sample above tests them with the same real fixtures: it verifies an envelope, reserves its
 invocation id, and checks that the second presentation of the identical envelope is refused by the
-service's own code even though `checkEnvelope` accepts it again.
+service's own code even though `checkEnvelope` accepts it again. This example's set never evicts
+entries within its process lifetime. A production store must persist across restarts and atomically
+reserve across instances. If it expires entries, retain each through `grantExpiresAt + clockSkew`
+with the largest skew accepted by any instance. Test a fresh proof with the same invocation after
+the original proof expires, too. The [HTTP recipe](http-server.md) uses that retention rule.
 
 ## Both backends
 

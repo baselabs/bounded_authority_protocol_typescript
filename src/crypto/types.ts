@@ -7,6 +7,9 @@ declare const brand: unique symbol;
 // stand in for it (the brand is a unique symbol no value outside the backends can carry).
 export type BackendPublicKey = { readonly [brand]: "bap-backend-public-key" };
 
-// "node": the node:crypto backend (Node.js under its default conditions).
-// "portable": the pure-JavaScript backend (browsers, Deno, Bun, workers, and Node under bap-portable).
+/**
+ * The resolved crypto implementation: node uses node:crypto; portable uses pure JavaScript noble
+ * libraries. Selection must not change protocol verdicts.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ */
 export type BackendId = "node" | "portable";

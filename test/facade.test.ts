@@ -1,10 +1,5 @@
-// T4 façade tests — the 17-function v1 surface against corpus known-answer vectors. Each test
-// drives a façade function on the published corpus fixtures (the same inputs the conformance
-// runner will recompute every verdict from in T5). The corpus is the byte-level arbiter; these
-// known-answer assertions are the red-before-green evidence for the 13 functions landed in this
-// slice (grant/proof/anchor/transition signing-input producers, checkEnvelope, checkChain,
-// encodeConsumptionEntry, verifyHistoricalAnchor, verifyKeyTransition, encodeAnchoredExport,
-// verifyAnchoredExport, requestDigest façade, assemble_compact).
+// Exercise the 17-function v1 surface against independent corpus known-answer bytes
+// for signing inputs, envelopes, chains, anchors, transitions, archives and compacts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { strUtf8 } from "../src/json.js";
@@ -542,7 +537,7 @@ test("proofSigningInput rejects a malformed (2-segment) grant compact", () => {
     holderPublicKey: b64d(HOLDER_PUB),
     proofId: "urn:example:proof:1", method: "POST", targetUri: "https://resource.example.test/invoke",
     issuedAt: 1100, invocationId: "550e8400-e29b-41d4-a716-446655440000", operation: "read",
-    grantCompact: strUtf8("eyJhbGciOiJFZERTQSJ9.bm90YWNvbXBhY3Q"), // 2 segments — not a compact
+    grantCompact: strUtf8("eyJhbGciOiJFZERTQSJ9.bm90YWNvbXBhY3Q"), // A compact requires three segments.
     castArguments: jsonDecode(strUtf8('{"limit":10}')),
   });
   assert.equal(r.ok, false);
@@ -633,9 +628,8 @@ test("assembleCompact rejects a structurally-invalid grant payload (re-parse)", 
 });
 
 test("assembleCompact rejects a well-formed grant payload with a numeric iss (field re-parse)", () => {
-  // Cross-vendor (codex): the grant re-parse must validate FIELD values, not just the closed key-set.
-  // This payload has every required key with the right types EXCEPT `iss` (numeric, not a string) —
-  // the structural validator alone accepts it; the full decode_grant re-parse must reject it.
+  // A numeric iss has the required member name but an invalid field value. Full grant
+  // re-parsing must reject it even when the closed member-set check succeeds.
   const json = '{"v":1,"iss":123,"jti":"urn:example:g:1","aud":["https://resource.example.test"],' +
     '"iat":1000,"nbf":1000,"exp":2000,"cnf":{"jkt":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},' +
     '"operations":[{"name":"read","selectors":[{"kind":"all"}]}]}';
@@ -646,11 +640,8 @@ test("assembleCompact rejects a well-formed grant payload with a numeric iss (fi
   assert.equal(r.ok, false);
 });
 
-// Canonical-form (reference BoundaryAnchorCodec.parse:95-96,118-119 / KeyTransitionCodec.parse): the
-// protected AND payload segments of an anchor/transition compact must be the exact JCS encoding.
-// The SDK parse helpers now enforce this (parseAnchorHeader/parseTransitionHeader on the protected
-// segment; validateAnchorPayload/validateTransitionPayload on the payload). These prove BOTH sites
-// fire — without the check the façade accepts the non-canonical compact.
+// Anchor and transition protected and payload segments must equal their exact JCS
+// encoding. These cases independently exercise both canonical checks.
 const ANCHOR_HEADER = strUtf8(START_ANCHOR_COMPACT.split(".")[0]!);   // canonical anchor header
 const ANCHOR_PAYLOAD = strUtf8(START_ANCHOR_COMPACT.split(".")[1]!);   // canonical anchor payload
 
@@ -862,8 +853,8 @@ test("encode-parity: a tightened outer bounds takes effect at the row re-check (
 
 test("encode-parity: a start-anchor nested-bounds mismatch rejects (the four-pin sweep)", () => {
   const { input, expected } = conformantExportT();
-  // The reference pins ALL FOUR nested bounds to the outer (anchored_export_codec.ex:352-354,
-  // :404-406); the F1 fix landed only the chain pin — this leg pins the anchor sweep.
+  // Each nested bounds object must equal the outer bounds. This case isolates anchors
+  // in addition to the separate chain check.
   const anchorTight = boundsNew({ chain_row_bytes: 156 });
   const r = encodeAnchoredExport(input, { ...expected, startAnchor: { ...expected.startAnchor, bounds: anchorTight } });
   assert.equal(r.ok, false, "a nested anchor-bounds mismatch must reject at encode");
@@ -895,23 +886,16 @@ test("encode-parity: a transition nested-bounds mismatch rejects (the four-pin s
 
 test("encode-parity: the chain nested-bounds pin rejects a mismatched chain.bounds (isolated)", () => {
   const { input, expected } = conformantExportT();
-  // Isolates the CHAIN pin: the row (157 bytes) FITS under the tightened limit
-  // chosen here (chain_row_bytes 4096 stays above the row), so the row walk
-  // cannot backstop — only the pin fires on the mismatched chain.bounds
-  // (delta-review finding 1: the F1 leg's 156 ceiling made it joint-only).
-  // Isolated the diff-review's way: the OUTER stays at maximum (untightened —
-  // the sibling absent-nested pins pass); ONLY chain.bounds carries a different
-  // value (4000 < 4096, row-safe). The prior fixture tightened the OUTER, so
-  // the sibling absent-nested pins backstopped it — vacuous under the mutation.
+  // Keep outer bounds at maximum and change only chain.bounds to a row-safe 4000.
+  // The 157-byte row still fits, isolating chain-bounds equality from row-length checks.
   const r = encodeAnchoredExport(input, { ...expected, chain: { ...expected.chain, bounds: boundsNew({ chain_row_bytes: 4000 }) } });
   assert.equal(r.ok, false, "a chain nested-bounds mismatch must reject at encode (isolated)");
 });
 
 test("encode-parity: a tightened anchor_bytes rejects the anchor compacts at encode (round 2)", () => {
   const { input, expected } = conformantExportT();
-  // The codex probe: anchor_bytes=1 tightened outer — parseCompact only gates
-  // compact_bytes (65536), so without the explicit per-anchor ceiling the ~440-byte
-  // anchors framed fine (the reference codec gates anchor_bytes at :82/:114).
+  // A one-byte anchor ceiling rejects these roughly 440-byte anchors. Their compacts
+  // still fit compact_bytes, isolating the per-anchor byte limit.
   const tight = boundsNew({ anchor_bytes: 1 });
   const r = encodeAnchoredExport(input, { ...expected, bounds: tight });
   assert.equal(r.ok, false, "tightened anchor_bytes must reject the anchor compacts at encode");
@@ -970,7 +954,7 @@ test("bounds-parity: an out-of-magnitude bounded validBefore rejects at verify (
   const comp = (compact as { ok: true; value: Uint8Array }).value;
   const fp = thumbprintRaw(jwkFromPublicKey(key));
   const expected = { anchorId: "anchor-mag", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: fp };
-  // Control: normal windows — the real signature verifies Ok.
+  // The real signature verifies under normal validity windows.
   const rOk = verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000 }, expected as never);
   assert.equal(rOk.ok, true, "control: the signed anchor verifies at normal windows");
   // Huge bounded validBefore (2^62): membership holds; only the magnitude gate fires.
@@ -1022,8 +1006,7 @@ test("bounds-parity: fractional/NaN key-validity endpoints reject at verify (cro
 });
 
 test("bounds-parity: the ARCHIVE verify path guards key validity (round 7)", () => {
-  // The corpus' REAL signed export; only the caller keys are tampered.
-  // Vendored snapshot (graduation discipline — no monorepo-relative path).
+  // Use the vendored corpus signed export and change only caller-supplied keys.
   const { readFileSync } = fs as typeof import("node:fs");
   const corpusPath = join(process.cwd(), "conformance/corpus/cases/anchored-export/verify.json");
   const cases = JSON.parse(readFileSync(corpusPath, "utf8")).cases as any[];
@@ -1071,7 +1054,7 @@ test("bounds-parity: an inverted key window (validBefore <= validFrom) rejects (
   const comp = (assembleCompact(siValue, sig) as { ok: true; value: Uint8Array }).value;
   const expected = { anchorId: "anchor-ord", anchoredAt: 1000, chainId: "chain-x", sequence: 0, chainHash: Z32T, keyId: "anchor-a", keyFingerprint: thumbprintRaw(jwkFromPublicKey(key)) };
   assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 0, validBefore: 2000 }, expected as never).ok, true);
-  // Inverted window: validBefore == validFrom (both in-magnitude, integral) — the
-  // ordering gate fires (jointly with membership; an inverted window admits no time).
+  // A window with validBefore equal to validFrom is empty. Both endpoints are valid
+  // integers, so ordering or membership must reject it.
   assert.equal(verifyHistoricalAnchor(comp, { keyId: "anchor-a", publicKey: key, validFrom: 1000, validBefore: 1000 }, expected as never).ok, false);
 });

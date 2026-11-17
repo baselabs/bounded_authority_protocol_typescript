@@ -1,5 +1,5 @@
 // Builds the bench (pnpm build:site): bundles web/main.ts with esbuild and copies the static site
-// pieces next to it (managed-language, cross-platform — no shell in the build path), cache-busting
+// pieces next to it. The cross-platform build uses no shell and cache-busts
 // the asset URLs: every deploy gets styles.css/app.js suffixed with the commit SHA, so returning
 // visitors can never be served a stale stylesheet from an unchanged URL.
 //
@@ -23,7 +23,7 @@ let version = "dev";
 try {
   version = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: join(web, "..") }).toString().trim();
 } catch {
-  // no git (e.g., an exported tree) — fall back to a content-free tag
+  // An exported tree may lack Git; use a development asset tag in that case.
 }
 
 let html = readFileSync(join(web, "index.html"), "utf8");

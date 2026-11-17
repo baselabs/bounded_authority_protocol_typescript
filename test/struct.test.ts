@@ -1,5 +1,5 @@
-// T4 structural tests — digest (typed projection), selector identity, compact parse/assemble.
-// Known-answer vectors from the corpus.
+// Structural known-answer tests cover typed projection, selector identity and compact
+// parsing and assembly against the independent corpus.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { strUtf8 } from "../src/json.js";

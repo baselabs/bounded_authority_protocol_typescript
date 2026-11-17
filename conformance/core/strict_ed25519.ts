@@ -33,7 +33,8 @@ const b64e = (b: Uint8Array): string => utf8(base64urlEncode(b));
 // The corpus integrity hash is @noble/hashes, independent of the package backend under test.
 const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toString(16).padStart(2, "0")).join("");
 
-// Vendored snapshot beside this runner (ADR 0014 D4 binding, ADR 0015 D3 graduation discipline).
+// Load the certified snapshot vendored beside this runner. Its digest and exact file
+// set bind the runner to published bytes without consulting a sibling checkout.
 const DIR = "corpus-strict-ed25519";
 
 // The certified index.json SHA-256 (hex). Pinned here and in test/strict-ed25519-corpus.test.ts; rotate
@@ -52,8 +53,8 @@ function abort(message: string): never {
 const INVALID = Symbol("invalid");
 type Verdict = Record<string, unknown> | typeof INVALID;
 
-// Only a genuine protocol rejection maps to INVALID; a thrown non-InvalidError is a runner/SDK bug and
-// aborts (the InvalidError whitelist discipline, ADR 0014 Decision 6).
+// Only protocol rejection maps to INVALID. Unexpected thrown errors are runner or
+// SDK defects and abort rather than becoming conformance verdicts.
 function runThunk<T>(fn: () => T): T | typeof INVALID {
   try {
     return fn();

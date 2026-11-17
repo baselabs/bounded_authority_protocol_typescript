@@ -2,11 +2,11 @@
 # THIS repository's workflow identity (GitHub Actions OIDC, no long-lived
 # token) and runs in TWO STAGES per the npm trusted-publisher configuration:
 # the workflow STAGES the artifact (`npm stage publish`, provenance attached),
-# and a human approves the staged release on npmjs.com under the org's 2FA —
+# and a human approves the staged release on npmjs.com under the org's 2FA.
 # CI can never make a version live alone. The trusted publisher names exactly
 # this repository and this workflow file; a publish attempted anywhere else
 # fails. (Known edge: re-running a tag whose version is staged but not yet
-# approved conflicts in staging — approve or discard the staged version first.)
+# approved conflicts in staging. Approve or discard the staged version first.)
 name: Release
 
 on:
@@ -111,7 +111,7 @@ jobs:
         with:
           version: 10.20.0
 
-      - name: Set up Node (24 bundles npm >= 11.5 — required for OIDC trusted publishing)
+      - name: Set up Node (24 bundles npm >= 11.5, which OIDC trusted publishing requires)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0 # pinned exactly, matching the signer's release lane
@@ -126,7 +126,7 @@ jobs:
 
       # Idempotent releases: a version already on the registry (e.g. seeded from
       # the repository checkout under the owner's session, as 0.1.0 and the 0.2.0
-      # rename seed were) verifies only — the verify job still gates the tag.
+      # rename seed were) verifies only. The verify job still gates the tag.
       - name: Check registry for existing version
         id: existing
         run: |
@@ -136,7 +136,7 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # The family routine is "a v* tag on a version-bump commit" — enforce the
+      # The family routine requires a v* tag on a version-bump commit. Enforce the
       # match instead of trusting it: the idempotency check above keys on the
       # TAG, while npm stage publish below publishes package.json's version, so
       # a tag/manifest mismatch would silently stage the wrong version.

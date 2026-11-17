@@ -1,0 +1,31 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "tsconfig": "tsconfig.build.json",
+  "out": "site-dist/api",
+  "includeVersion": true,
+  "readme": "none",
+  "navigationLinks": {
+    "Guides": "https://github.com/baselabs/bounded_authority_protocol_typescript#documentation",
+    "Verifier bench": "https://baselabs.github.io/bounded_authority_protocol_typescript/"
+  },
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "notDocumented": true
+  },
+  "requiredToBeDocumented": [
+    "Namespace",
+    "Enum",
+    "EnumMember",
+    "Variable",
+    "Function",
+    "Class",
+    "Interface",
+    "Property",
+    "Method",
+    "Accessor",
+    "TypeAlias"
+  ],
+  "treatWarningsAsErrors": true,
+  "disableSources": true
+}

@@ -1,5 +1,4 @@
-// Red-before-green primitives test — exercises the core permissiveness closures + JCS.
-// Run: pnpm test
+// Primitive tests exercise permissiveness guards and canonical JCS encoding.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { jsonDecode, strUtf8, type Tagged } from "../src/json.js";
@@ -19,7 +18,7 @@ function rejects(label: string, fn: () => unknown) {
   });
 }
 
-// REQ1-JSON-no-duplicate — the load-bearing closure.
+// REQ1-JSON-no-duplicate rejects repeated member names.
 rejects("duplicate member at depth 1", () => dec('{"a":1,"a":2}'));
 rejects("duplicate member at depth 3", () => dec('{"a":{"b":{"c":1,"c":2}}}'));
 test("accepts distinct members", () => {
@@ -27,7 +26,7 @@ test("accepts distinct members", () => {
   assert.equal(v.t, "object");
 });
 
-// REQ1-JSON-single-value — trailing bytes reject.
+// REQ1-JSON-single-value rejects trailing non-whitespace bytes.
 rejects("trailing bytes", () => dec('{} junk'));
 rejects("two top-level values", () => dec('1 2'));
 test("accepts trailing whitespace only", () => {
@@ -36,9 +35,7 @@ test("accepts trailing whitespace only", () => {
   assert.equal((v as { v: number }).v, 42);
 });
 
-// REQ1-SELECTOR-semantic-identity / __proto__ — null-prototype container.
-// A "__proto__" key must be DATA, not a prototype mutation. After decode, the object must have the
-// __proto__ member present (it was not absorbed into the prototype).
+// REQ1-SELECTOR-semantic-identity retains __proto__ in a Map.
 test("__proto__ member is preserved as data (null-prototype)", () => {
   const v = dec('{"__proto__":{"evil":1},"ok":2}') as Extract<Tagged, { t: "object" }>;
   assert.equal(v.t, "object");
@@ -54,7 +51,7 @@ test("int vs float tag preserved", () => {
   assert.equal(dec("-5").t, "int");
 });
 
-// REQ1-JSON-raw-lexeme — magnitude bound.
+// REQ1-JSON-raw-lexeme enforces numeric magnitude.
 rejects("integer magnitude over bound", () => dec(String(MAXIMA.integer_magnitude + 1)));
 rejects("number lexeme over 64-byte ceiling", () => dec("9".repeat(65)));
 
@@ -130,7 +127,7 @@ test("ed25519 rejects a forged signature", () => {
   const raw = base64urlDecode(strUtf8(KNOWN_X));
   const key = importPublicKey(raw, KNOWN_TP);
   const msg = strUtf8("hello");
-  const badSig = new Uint8Array(64); // all zeros — never valid
+  const badSig = new Uint8Array(64); // The zero signature cannot verify.
   assert.equal(ed25519Verify(msg, badSig, key), false);
 });
 test("sha256 known-answer", () => {

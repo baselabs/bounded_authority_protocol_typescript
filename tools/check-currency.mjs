@@ -1,46 +1,19 @@
 #!/usr/bin/env node
-// Dependency-currency gate (latest-first) — the pnpm analogue of the Elixir family's
-// dependency-currency gate (BAP ADR 0032), written in the repo's managed language
-// because the tri-platform build bar (BAP ADR 0031) rejects POSIX shell inside a
-// declared gate. Classification is on data from real resolvers, never on a tool's
-// exit status alone: `pnpm outdated --format json` for the drift table (it exits
-// nonzero both on drift and on lookup failure, and exits 0 with `{}` when everything
-// is current — that empty exit-0 table is a VERIFIED all-current state), plus
-// `npm view <name> versions --json` resolved through the canonical `semver` package
-// for the in-range maximum. npm returns versions in publish order, not semver
-// order, so the max must be computed (semver.maxSatisfying), not picked off the end;
-// pnpm's `wanted` field is lockfile-anchored and cannot carry this either.
+// Verify direct dependency currency using real pnpm and npm registry results. Classify data,
+// rather than exit status alone: pnpm outdated exits nonzero for both drift and lookup failure.
+// Its empty exit-zero table confirms that everything is current. Use semver.maxSatisfying over
+// npm's version list because publication order and pnpm's lockfile-anchored wanted field do not
+// identify the highest permitted version.
 //
-// Latest-first policy: every dependency resolvable to a newer registry version is
-// updated in the change that discovers it; anything deliberately not at latest
-// carries its reason in DELIBERATE_PINS below (package.json cannot hold comments).
-// A pin is major-jump-shaped only: it exempts a package from updates OUTSIDE its
-// declared range (the range itself — package.json — is where "stay on this major"
-// lives, mirroring the Elixir gate's `~>` requirement cap); it NEVER exempts drift
-// the declared range already allows.
+// Update resolvable in-range drift; no pin excuses it. DELIBERATE_PINS records reasons only for
+// retaining a declared major line when a newer major exists. Transitive dependencies move through
+// deliberate lockfile updates. An unverifiable registry state always fails. Currency is independent
+// of the operating system, so one CI lane runs this gate. Keep subprocess handling portable.
 //
-// Documented departures from the Elixir shape:
-// - pnpm renders DIRECT dependencies only (no --all table), so transitive currency
-//   is not classified here — transitive moves ride deliberate `pnpm update` commits
-//   behind the CI-frozen lockfile.
-// - The npm-side max can diverge from pnpm's resolver when a dist-tag rollback
-//   leaves a stable in-range version above the `latest` tag: the gate then demands
-//   a version `pnpm update` will not pick. That failure is loud (a named red), never
-//   silent, and clears only via an explicit version bump.
-// - The gate runs in CI on one lane (currency is a property of the manifest +
-//   lockfile, OS-independent); the win32 shell path is exercised by local
-//   `pnpm check:currency` runs on a Windows checkout, not by the CI matrix.
-//
-// Classification, per outdated package:
-//   isDeprecated                   -> exit 1, named
-//   current !== in-range max       -> exit 1, named — in-range resolvable drift; never pinnable
-//   in-range max below latest      -> exit 1, named — newer release outside the declared range
-//   in-range max below latest, pinned -> reported with the pin's reason
-//   pinned but not listed by pnpm  -> reported (at latest or absent — drop a stale pin)
-//   non-registry spec (file:, git, link, shorthand) -> exit 1: unverified, never passes
-//   pnpm exit 0 + empty table      -> PASS (verified all-current), stale pins still reported
-//   unparseable output, empty-but-nonzero table, npm-view failure/timeout, spawn error
-//                                  -> exit 1 (an unverified currency state never passes)
+// Report deprecated packages, in-range drift and unpinned newer majors as failures. Report stale
+// pins even when pnpm lists no drift. Reject non-registry specifications, unparsable results,
+// resolver errors and timeouts. A dist-tag rollback can require an explicit version bump when
+// pnpm update would not select the highest published in-range version.
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -64,14 +37,11 @@ const declared = Object.keys(ranges);
 
 // Registry ranges start with a version or a range operator; anything else (file:,
 // git+…, link:, workspace:, URL, user/repo shorthand, local paths) is a spec this
-// gate cannot verify — it fails closed rather than silently passing.
+// gate cannot verify. Such specifications fail closed.
 const REGISTRY_RANGE = /^[0-9^~><=*\s-]/;
 
-// pnpm/npm are .CMD shims on Windows, which spawn cannot execute directly — route
-// through the shell there only (the ADR 0031 `cmd /c` wrapper analogue). All args
-// are package names and flags with no shell metacharacters, so the shell surface
-// is closed. Each resolver call is bounded: a stalled registry kills the child and
-// the gate fails closed.
+// On Windows, execute pnpm/npm .CMD shims through the shell. Arguments contain only package
+// names and flags without shell metacharacters. Bound every resolver call with a timeout.
 function run(command, args) {
   return new Promise((resolve) => {
     const child = spawn(command, args, { cwd: root, shell: process.platform === "win32" });

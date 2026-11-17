@@ -161,9 +161,11 @@ non-integer time, `clockSkew` above 60, or `proofMaxAge` of 0 or above 300.
 2. **Build `ExpectedRequest` from your own request handling**, not from the proof: the method and
    URI this server received, the operation this endpoint performs, and the arguments it parsed.
 3. **Verify** with `checkEnvelope`.
-4. **Reserve the invocation id once.** The package keeps no state, so the same envelope verifies
-   again until it expires. Record `invocationId` (with `grantId`) in your own store and refuse a
-   second use.
+4. **Reserve the invocation id once.** Atomically record the tuple of `issuer`, `grantId` and
+   `invocationId` in a shared durable store before execution, and refuse a second use. Retain it
+   through `grantExpiresAt + clockSkew`, using the largest skew any accepting instance permits.
+   A holder can refresh a proof while the grant remains valid, so the first proof's expiry is
+   too early to discard this record. See the [HTTP recipe](http-server.md) for the store contract.
 5. **Check revocation and policy**, then execute. `EnvelopeFacts` tells you what was proven; whether
    to act on it is your decision.
 

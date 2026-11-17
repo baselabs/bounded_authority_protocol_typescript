@@ -135,12 +135,68 @@ test("every docs sample typechecks under strict settings against the source", ()
   }
 });
 
-// The protocol's decision records are not published, so the public docs neither link nor cite one: a
-// reader must get the substance from the page itself or from a published specification.
-test("the public docs link and cite no unpublished decision record", () => {
-  const hits = [...docFiles(), join(REPO, "SECURITY.md")].flatMap((file) =>
-    readFileSync(file, "utf8").split("\n").flatMap((line, i) =>
-      /docs\/adr\/|\bADR[ -]?\d/.test(line) ? [`${relative(REPO, file)}:${i + 1}: ${line.trim()}`] : []));
+// Public readers must be able to follow every normative citation without private records.
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir).sort().flatMap((name) => {
+    const file = join(dir, name);
+    return statSync(file).isDirectory() ? filesUnder(file) : [file];
+  });
+}
+
+const PUBLIC_FILES = [...new Set([
+  ...docFiles(), ...readdirSync(REPO).filter((name) => /\.(?:md|json|js|mjs|yml)$/.test(name))
+    .map((name) => join(REPO, name)),
+  ...["src", "web", "tools", ".github/workflows"].flatMap((dir) => filesUnder(join(REPO, dir))),
+  ...["test", "conformance", "browser"].flatMap((dir) => filesUnder(join(REPO, dir)))
+    .filter((file) => /\.(?:ts|js|mjs)$/.test(file)),
+])].filter((file) => /\.(?:md|ts|js|mjs|html|css|json|yml)$/.test(file));
+const privateRecord = /(?<![a-z])adrs?(?=$|[^a-z])|architecture[ -]decision[ -]records?/i;
+
+test("private-record hygiene recognizes citation spellings", () => {
+  for (const citation of ["ADR", "ADRs", "ADR 14", "ADR-0014", "ADR0014", "ADR_0014", "ADR:0014",
+    "ADR#0014", "adr/0014", "docs/adr/0014.md", ".kimosabe/adr/0014", "architecture decision record"]) {
+    assert.ok(privateRecord.test(citation), citation);
+  }
+  assert.equal(privateRecord.test("address and quadrant"), false);
+});
+
+test("public prose and source cite no unpublished decision record", () => {
+  const hits = PUBLIC_FILES.flatMap((file) =>
+    publicProse(file).split("\n").flatMap((line, i) =>
+      privateRecord.test(line) ? [`${relative(REPO, file)}:${i + 1}: ${line.trim()}`] : []));
+  assert.deepEqual(hits, []);
+});
+
+// Code literals and vectors keep their punctuation. For source files, examine comment trivia
+// rather than operators or string literals; in prose, ignore inline code and fenced code blocks.
+function publicProse(file: string): string {
+  const source = readFileSync(file, "utf8");
+  if (/\.(?:ts|js|mjs)$/.test(file)) {
+    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, source);
+    const comments: string[] = [];
+    for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+      if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) {
+        comments.push(scanner.getTokenText());
+      }
+    }
+    return comments.join("\n");
+  }
+  if (file.endsWith(".css")) return [...source.matchAll(/\/\*[\s\S]*?\*\//g)].map((m) => m[0]).join("\n");
+  if (file.endsWith(".html")) return source.replace(/<[^>]*>/g, "");
+  if (file.endsWith(".yml")) return source.split("\n").filter((line) => /^\s*#/.test(line)).join("\n");
+  return source.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, "");
+}
+const proseDash = /—|[a-z][.,;:!?]?[ \t]+-[ \t]+(?=[a-z])/i;
+
+test("prose hygiene distinguishes sentence dashes from code and subtraction", () => {
+  assert.ok(proseDash.test("Request bytes — signed exactly."));
+  assert.ok(proseDash.test("Request bytes - signed exactly."));
+  assert.equal(proseDash.test("2^53 - 1; rowCount - 1; - a list item"), false);
+});
+
+test("public prose uses sentences without em dashes or spaced hyphen dashes", () => {
+  const hits = PUBLIC_FILES.flatMap((file) => publicProse(file).replace(/`[^`]*`/g, "").split("\n")
+    .flatMap((line) => proseDash.test(line) ? [`${relative(REPO, file)}: ${line.trim()}`] : []));
   assert.deepEqual(hits, []);
 });
 

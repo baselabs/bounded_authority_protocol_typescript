@@ -7,26 +7,34 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
 import { validateEcPublicKey } from "./es256.js";
 import { readMembers } from "./jwk.js";
 
-// RFC 7638 JWK thumbprint for EC P-256 public keys (spec/bap-v3.md §3.1). The public EC JWK has
-// exactly four members — crv="P-256", kty="EC", x=<canonical unpadded base64url of 32 bytes>,
-// y=<same> — and the thumbprint preimage is the JCS of that object with the required members in
-// RFC 7638 lexicographic order (crv, kty, x, y). The thumbprint is unpadded-base64url SHA-256 of
-// those UTF-8 bytes; the raw thumbprint is the 32-byte digest. The raw-byte public-key form this
-// module pairs with is the 65-byte uncompressed SEC1 point 0x04||x||y (REQ3-KEY-uncompressed-sec1).
+// The public P-256 JWK has exactly crv="P-256", kty="EC", x and y. Each coordinate is canonical
+// unpadded base64url of 32 bytes. Hash the UTF-8 JCS encoding in crv, kty, x, y order for its
+// 32-byte RFC 7638 thumbprint. The raw public key is a 65-byte uncompressed SEC1 point. See
+// spec/bap-v3.md section 3.1.
 
+/**
+ * The closed public P-256 JWK shape for major 3. Coordinates are canonical unpadded base64url of
+ * exactly 32 bytes each. Key helpers require an on-curve point; no private d is accepted.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#31-keys-and-the-proof-jwk
+ */
 export interface EcPublic {
+  /** Exact JWK curve name required by the suite. */
   readonly crv: "P-256";
+  /** Exact public JWK key family required by the suite. */
   readonly kty: "EC";
-  readonly x: string; // base64url of the 32 raw coordinate bytes
-  readonly y: string; // base64url of the 32 raw coordinate bytes
+  /** Canonical unpadded base64url of the 32-byte unsigned big-endian P-256 x coordinate (43 ASCII characters). */
+  readonly x: string;
+  /** Canonical unpadded base64url of the 32-byte P-256 y coordinate. */
+  readonly y: string;
 }
 
-// Encode a raw 65-byte SEC1 P-256 public key as the canonical EC JCS JSON bytes.
 /**
  * The canonical JSON bytes of the public EC JWK `{crv: "P-256", kty: "EC", x, y}` for a raw
  * 65-byte SEC1 key. Throws `InvalidError` for a key that is not an acceptable P-256 point (65 bytes,
  * the 0x04 prefix, both coordinates below p, on the curve), as the Elixir `V3.EcJwk.encode_public`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns Canonical UTF-8 JSON for the closed public JWK.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk.encode_public: public key width must be 65");
@@ -43,15 +51,11 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
   return jcsEncode({ t: "object", v: members }, bounds);
 }
 
-// Decode an EC public JWK from bytes (the JSON text). Returns the raw 65-byte SEC1 key. The closed
-// member set is exactly {crv, kty, x, y} (every additional member, including private d, is invalid —
-// REQ3-HEADER-no-private-jwk); crv must be "P-256", kty "EC"; x and y are canonical unpadded
-// base64url of exactly 32 bytes each (the RFC 7518 §6.2.1.2/.3 fixed-width spelling), each less
-// than the field prime, and the point must be on the curve (REQ3-KEY-point-on-curve).
 /**
  * Parses exactly a public P-256 EC JWK and returns the raw 65-byte uncompressed key after full
  * point validation.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns The validated raw 65-byte uncompressed SEC1 P-256 public key in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed EC shape.
@@ -86,8 +90,8 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
   }
 }
 
-// The EC JWK of a raw 65-byte SEC1 public key (structural spelling only — the full point
-// validation lives with the profile's key gates / es256.validateEcPublicKey).
+// Spell the EC JWK for a raw 65-byte SEC1 point. This helper checks structure; the profile key
+// gates perform full curve validation.
 export function jwkFromPublicKey(rawKey: Uint8Array): EcPublic {
   assert(rawKey.length === 65, "jwk: public key width");
   return {
@@ -98,8 +102,8 @@ export function jwkFromPublicKey(rawKey: Uint8Array): EcPublic {
   };
 }
 
-// RFC 7638 thumbprint preimage: the JCS bytes of {crv, kty, x, y} (lexicographic order) — exactly
-// the required EC members over the exact member set (REQ3-HEADER-thumbprint).
+// Encode exactly the required {crv, kty, x, y} members as JCS in lexicographic order to form
+// the RFC 7638 thumbprint preimage. See REQ3-HEADER-thumbprint.
 export function thumbprintPreimage(jwk: EcPublic): Uint8Array {
   const members = new Map<string, never>([
     ["crv", { t: "string", v: strUtf8(jwk.crv) } as never],
@@ -110,10 +114,11 @@ export function thumbprintPreimage(jwk: EcPublic): Uint8Array {
   return jcsEncode({ t: "object", v: members });
 }
 
-// Thumbprint as base64url SHA-256 of the preimage.
 /**
  * The RFC 7638 thumbprint of a public P-256 JWK `{crv, kty, x, y}`, as unpadded base64url.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function thumbprint(jwk: EcPublic): string {
   return utf8Str(base64urlEncode(sha256(thumbprintPreimage(jwk))));
@@ -153,7 +158,9 @@ function acceptableJwkPoint(jwk: EcPublic): Uint8Array {
 /**
  * The public EC JWK object `{crv: "P-256", kty: "EC", x, y}` of a raw 65-byte uncompressed SEC1 key.
  * Throws `InvalidError` for a key that is not an acceptable P-256 point.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns The validated public EC JWK object.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function publicJwk(rawKey: Uint8Array): EcPublic {
   assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk: public key width");
@@ -164,7 +171,9 @@ export function publicJwk(rawKey: Uint8Array): EcPublic {
 /**
  * The RFC 7638 thumbprint preimage of a public P-256 JWK: the canonical JSON of `{crv, kty, x, y}`.
  * Throws `InvalidError` for a JWK whose point is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns Canonical UTF-8 JSON of exactly the four RFC 7638 required EC JWK members.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function checkedThumbprintPreimage(jwk: EcPublic): Uint8Array {
   return thumbprintPreimage(jwkFromPublicKey(acceptableJwkPoint(jwk)));
@@ -173,7 +182,9 @@ export function checkedThumbprintPreimage(jwk: EcPublic): Uint8Array {
 /**
  * The RFC 7638 thumbprint of a public P-256 JWK as unpadded base64url (the form a v3 grant's
  * `holderThumbprint` takes). Throws `InvalidError` for a JWK whose point is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function checkedThumbprint(jwk: EcPublic): string {
   return utf8Str(base64urlEncode(sha256(checkedThumbprintPreimage(jwk))));
@@ -182,7 +193,9 @@ export function checkedThumbprint(jwk: EcPublic): string {
 /**
  * The RFC 7638 thumbprint of a public P-256 JWK as 32 raw bytes. Throws `InvalidError` for a JWK
  * whose point is not acceptable.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function checkedThumbprintRaw(jwk: EcPublic): Uint8Array {
   return sha256(checkedThumbprintPreimage(jwk));
@@ -191,7 +204,9 @@ export function checkedThumbprintRaw(jwk: EcPublic): Uint8Array {
 /**
  * The raw 32-byte RFC 7638 thumbprint of a raw 65-byte P-256 key (a v3 key fingerprint, as anchors
  * and transitions carry). Throws `InvalidError` for a key that is not an acceptable P-256 point.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
+ * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint of the validated P-256 public key.
+ * @throws InvalidError when the documented representation or resource limits are violated.
  */
 export function checkedPublicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(publicJwk(rawKey));

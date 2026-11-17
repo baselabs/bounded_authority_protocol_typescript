@@ -5,22 +5,21 @@ import { base64urlEncode } from "./base64url.js";
 import { strUtf8, type Tagged } from "./json.js";
 import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.js";
 
-// The request digest (spec/bap-v1.md § Signing and digest inputs, L238-264):
-//   base64url(SHA-256("BAP1-REQUEST\0" || JCS([operation, typed(cast_arguments)])))
-// The prefix is exact ASCII including its final zero byte (REQ1-SIGNING-digest-prefix). typed()
-// projects the tagged JSON algebra to the closed ["tag", value] JSON form before JCS, preserving the
-// int/float distinction (REQ1-SELECTOR-semantic-identity depends on it).
+/**
+ * Exact 13-byte ASCII domain separator `BAP1-REQUEST\0` for request hashing. Treat these bytes as
+ * immutable; mutation changes the wire contract.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ */
 export const REQUEST_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x31, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00, // "BAP1-REQUEST\0"
 ]);
 
-// typed() projection: tagged value → ["tag", value] JSON array (spec/bap-v1.md).
-//   :null → ["null"]; bool → ["boolean",v]; int → ["integer",v]; float → ["float",v];
-//   string → ["string",v]; array → ["array", [typed(v)...]]; object → ["object", {k: typed(v)...}]
 /**
- * The typed projection behind request digests and selector identity: every value becomes `["tag",
- * value]`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * The typed projection behind request digests and selector identity. Null becomes `["null"]`;
+ * every other value becomes `[tag, value]` with recursively projected containers.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ * @returns The recursively tagged projection; null projects to ["null"] and other variants to [tag, value].
+ * @throws InvalidError for an unknown variant tag. This low-level projection requires a well-formed Tagged value; it does not validate bounds.
  */
 export function typedProject(value: Tagged): Tagged {
   switch (value.t) {
@@ -39,16 +38,16 @@ export function typedProject(value: Tagged): Tagged {
   }
 }
 
-// request_digest(operation, cast_arguments, bounds?). operation is validated printable ASCII 1..128.
-// Pins the v1 domain separator (BAP1-REQUEST\0); the v2 façade calls digestWithPrefix with the
-// BAP2-REQUEST\0 separator — everything else in the digest is major-independent.
+// Validate the operation as 1 to 128 printable ASCII bytes and hash the typed argument
+// projection with the selected major-specific domain separator. The request-digest algorithm is
+// otherwise shared across majors.
 export function requestDigest(operation: string, castArguments: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   return digestWithPrefix(REQUEST_PREFIX, operation, castArguments, bounds);
 }
 
 // The major-independent digest core: SHA-256(prefix || JCS([operation, typed(cast_arguments)])).
 // The domain separator is the only per-major input (REQ1-SIGNING-digest-prefix; the v2 profile
-// carries BAP2-REQUEST\0 per ADR 0028's contract-major activation).
+// carries BAP2-REQUEST\0 per spec/bap-v2.md#selectors's contract-major activation).
 export function digestWithPrefix(
   prefix: Uint8Array,
   operation: string,

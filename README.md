@@ -42,6 +42,11 @@ reads no clock, makes no network or filesystem calls, and performs no replay res
 revocation check or policy decision. Choosing which keys to trust, reserving each invocation id
 once, and deciding whether to execute belong to your service.
 
+OAuth 2.0 is an [authorization framework](https://www.rfc-editor.org/rfc/rfc6749#section-1)
+for delegated, scoped access. BAP complements it by binding a holder's authority to the exact
+request bytes defined by the protocol's typed request projection. Authorization mechanisms can
+overlap; successful BAP verification returns facts, while the host applies authorization policy.
+
 ## Install
 
 ```bash
@@ -139,6 +144,10 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 
 ## Documentation
 
+Browse the [versioned API reference](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
+for signatures, searchable symbols and field contracts. Its header displays the package version.
+The guides below show complete tasks with executable examples.
+
 | Guide | What it covers |
 |---|---|
 | [Verify requests](docs/guides/verify-requests.md) | Grants, holder proofs, `checkEnvelope`, selectors, nonces, picking the issuer key |
@@ -195,12 +204,12 @@ total (it never throws), it returns `true` only for an uncompressed, on-curve P-
 SHA-256 signature over the message. It applies the `REQ3-SIGNING-*` rules of the v3 profile to raw
 bytes.
 
-Compact assembly and anchored-export encoding are producer surfaces —
-they frame a signature and verify none — so each refuses, with the closed error, a signature no
-conforming signer emits and emits every accepted signature's bytes unchanged (erratum 3): an
-Ed25519 signature whose `S` is at least the group order or whose `R` is non-canonical or of small
-order, and an ES256 `r || s` outside `0 < r < n`, `0 < s <= (n - 1) / 2` — including the high-S
-twin of a valid signature, which verifies under raw ECDSA. A signer normalizes to low-S itself
+Compact assembly and anchored-export encoding frame signatures without verifying them. Each
+producer refuses signatures that no conforming signer emits and preserves accepted bytes
+unchanged (erratum 3). Refused forms include an Ed25519 signature whose `S` is at least the group
+order or whose `R` is non-canonical or of small order, and an ES256 `r || s` outside
+`0 < r < n`, `0 < s <= (n - 1) / 2`. That includes the high-S twin of a valid signature, which
+verifies under raw ECDSA. A signer normalizes to low-S itself
 before assembly; the package never rewrites a signature.
 
 ## Browsers, Deno, Bun and workers
@@ -488,7 +497,7 @@ boundary; the [changelog](CHANGELOG.md) lists each release's verdict and API cha
 ## Related packages
 
 - [bounded_authority_protocol](https://github.com/baselabs/bounded_authority_protocol): the
-  protocol source, with the specifications, ADRs, the certified conformance corpora this package
+  protocol source, with the specifications, the certified conformance corpora this package
   vendors, and the reference Elixir implementation.
 - [@bounded-authority-protocol/signer](https://www.npmjs.com/package/@bounded-authority-protocol/signer):
   the issuer and holder companion that signs grants, proofs, boundary anchors and key transitions
@@ -499,6 +508,7 @@ boundary; the [changelog](CHANGELOG.md) lists each release's verdict and API cha
 ```bash
 pnpm install
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
+pnpm docs:api                # strict TypeDoc reference in site-dist/api, stamped with package version
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance             # 283/283 and the key census (vendored v1 snapshot)
@@ -523,6 +533,12 @@ pnpm check:currency          # dependency-currency gate (latest-first)
 pnpm test:readback           # the post-publish read-back, held to the published 1.0.0
 pnpm readback <version> --sha256 <hex>  # read back a release: registry, bytes, provenance, signatures, fresh consumers
 ```
+
+TypeDoc discovers entry points from `package.json`'s `exports` map; `typedoc.json` deliberately
+leaves `entryPoints` unset so a new public subpath cannot bypass documentation coverage. Build the
+bench with `pnpm build:site` before `pnpm docs:api`: the site builder recreates `site-dist`, and the
+API build adds `site-dist/api`. CI rejects undocumented declarations and warnings. The Pages
+workflow uploads both outputs together, with the API header stamped from the package version.
 
 ## Security
 

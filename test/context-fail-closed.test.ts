@@ -13,18 +13,13 @@ import { assembleSegments } from "../src/compact.js";
 import { acceptablePublicKey } from "../src/ed25519.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
 
-// The Result contract on every public surface: a malformed CALLER CONTEXT — a garbage Bounds
-// object, or a grant producer with junk field types — returns the single closed error. It
-// never throws a native TypeError past `trying()` (which re-throws non-InvalidError as a
-// bug, crashing the caller) and never silently coerces (a null keyId minting kid "null").
-// The role-attestation profile closed these classes at its own landing; this suite sweeps
-// the contract-major façades (v1/v2/v3) — cross-vendor review m1/m2, owner-authorized sweep.
+// Malformed Bounds and producer field types must return the closed Result error on
+// v1, v2 and v3, without native TypeError or silent coercion of a null key ID.
 
 const utf8 = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
-// A byte-shape-only compact ("x.y.z" — 3 segments, garbage content): every decode/verify path
-// must reject it as INVALID for CONTENT reasons; the bounds gate must reject BEFORE any of
-// that, so the verdict with a malformed Bounds is the closed error regardless.
+// The compact x.y.z has invalid content. Malformed Bounds must reject before parsing,
+// independently of that later content rejection.
 const GARBAGE_COMPACT = strUtf8("x.y.z");
 
 const GRANT: GrantProducer = {
@@ -53,8 +48,8 @@ const ED = freshEdKey();
 
 const HIST_KEY = { keyId: "k", publicKey: ED.raw, validFrom: 0, validBefore: null };
 
-// A REAL P-256 uncompressed point for v3 surfaces: the all-zero 65-byte array fails v3's
-// on-curve validation before the bounds gate is ever reached (a vacuous cell — review F4).
+// Use a real P-256 point. An all-zero point could hide a missing bounds guard by
+// failing curve validation first.
 function freshEcPublicKey(): Uint8Array {
   const { publicKey } = nodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   return new Uint8Array(publicKey.export({ type: "spki", format: "der" }).subarray(-65));
@@ -147,8 +142,7 @@ test("anchor producers reject junk field types with the closed error (no coercio
     ["chainHash null", { ...ANCHOR, chainHash: null }],
   ];
   for (const [producerName, produce] of producers) {
-    // v3's suite-specific public-key width (65-byte EC) would mask the shape gate, so v3's
-    // junk inputs carry the EC point — the field-type gate is what must fire.
+    // Supply a valid EC point so key validation cannot hide the malformed field type.
     const adapt = producerName.startsWith("v3")
       ? (input: Record<string, unknown>) => ({ ...input, publicKey: freshEcPublicKey() })
       : (input: Record<string, unknown>) => input;
@@ -192,8 +186,7 @@ test("grant producers reject junk field types with the closed error (no coercion
     ["one_of values number", { ...GRANT, operations: [{ name: "read", selectors: [{ kind: "one_of", path: ["region"], values: 3 }] }] }],
     ["one_of values with null member", { ...GRANT, operations: [{ name: "read", selectors: [{ kind: "one_of", path: ["region"], values: [{ t: "string", v: strUtf8("x") }, null] }] }] }],
   ];
-  // v2/v3-only: the lte/gte numeric-bound arms (v1 has no range selectors). The null-value
-  // leg pins isNumericTag's null guard — without it the whole suite stays green (review gap).
+  // The null range value isolates isNumericTag beyond the other numeric-tag cases.
   const junkV2V3: Array<[string, unknown]> = [
     ["lte value null", { ...GRANT, operations: [{ name: "read", selectors: [{ kind: "lte", path: ["amount"], value: null }] }] }],
     ["gte value null", { ...GRANT, operations: [{ name: "read", selectors: [{ kind: "gte", path: ["amount"], value: null }] }] }],

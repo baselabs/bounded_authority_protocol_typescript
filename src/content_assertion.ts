@@ -1,4 +1,12 @@
-// bap-content-assertion/1, specified by BAP ADR 0037 and its normative profile.
+/**
+ * The bap-content-assertion/1 sibling profile binds exact content and application-profile digests to a
+ * signed assertion under an already-trusted Ed25519 attestor. Generation and predecessor digests
+ * support explicit successor verification. The verifier fetches no content, interprets no application
+ * schema and grants no authority.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#4-verification
+ * @module contentAssertion
+ */
+// bap-content-assertion/1, specified by spec/bap-content-assertion-v1.md and its normative profile.
 // Independent implementation from the public specification and corpus, using existing SDK primitives.
 import { isStringOrUri } from "./string_or_uri.js";
 import { assert, fail, trying, type Result } from "./error.js";
@@ -12,41 +20,93 @@ import { boundsNew, coerceBounds, resolve, MAXIMUM_BOUNDS, type Bounds } from ".
 import type { HistoricalPublicKey } from "./v1.js";
 import { redacted, redactedInspection } from "./redact.js";
 
+/**
+ * Unsigned digest-bound content assertion. Identifiers are bounded StringOrURI values. Generation one
+ * uses an all-zero prev; later generations name a predecessor compact digest. Signing, schema
+ * interpretation and lineage policy remain external.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#4-verification
+ */
 export interface ContentAssertionProducer {
+  /** Attestor protected-header kid, 1 to 128 permitted ASCII bytes. */
   readonly attestorKeyId: string;
+  /** Artifact StringOrURI identifier, 1 to 512 UTF-8 bytes. */
   readonly jti: string;
+  /** Issuer StringOrURI claim, 1 to 512 UTF-8 bytes. */
   readonly iss: string;
+  /** Audience StringOrURI claim, 1 to 512 UTF-8 bytes. */
   readonly aud: string;
+  /** Subject StringOrURI claim, 1 to 512 UTF-8 bytes. */
   readonly sub: string;
+  /** Application-profile StringOrURI, 1 to 512 UTF-8 bytes. The verifier does not interpret its schema. */
   readonly profile: string;
+  /** Opaque caller-pinned 32-byte application-profile identity. BAP compares it without prescribing its construction. */
   readonly profileDigest: Uint8Array;
+  /** Raw 32-byte contentDigest output using the BAP1-CONTENT domain separator. */
   readonly contentDigest: Uint8Array;
+  /** Positive safe-integer generation. One starts a lineage; successors must increment by exactly one. */
   readonly gen: number;
+  /** Raw 32-byte digest of the predecessor compact; all zeros at generation one. */
   readonly prev: Uint8Array;
+  /** Issue timestamp in integer Unix seconds. */
   readonly iat: number;
+  /** Inclusive assertion-validity lower endpoint in integer Unix seconds. */
   readonly nbf: number;
+  /** Exclusive assertion-validity upper endpoint in integer Unix seconds; no clock skew applies. */
   readonly exp: number;
 }
+/**
+ * Trusted attestor and independently expected identifiers, digests, time and limits for content
+ * verification. The application computes and trusts content/profile bindings separately. Verification
+ * fetches no content and infers no schema.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#4-verification
+ */
 export interface ExpectedContentAssertion {
+  /** Already-trusted attestor public key and its half-open validity window. */
   readonly attestor: HistoricalPublicKey;
+  /** Expected or verified issuer StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
   readonly issuer: string;
+  /** Expected audience StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
   readonly audience: string;
+  /** Independently expected subject StringOrURI, matched exactly. */
   readonly subject: string;
+  /** Application-profile StringOrURI, 1 to 512 UTF-8 bytes. The verifier does not interpret its schema. */
   readonly profile: string;
+  /** Opaque caller-pinned 32-byte application-profile identity. BAP compares it without prescribing its construction. */
   readonly profileDigest: Uint8Array;
+  /** Raw 32-byte contentDigest output using the BAP1-CONTENT domain separator. */
   readonly contentDigest: Uint8Array;
+  /** Host-supplied integer Unix seconds. The verifier reads no clock. */
   readonly now: number;
+  /** Explicit resource bounds; use boundsMaximum() for the profile maxima. */
   readonly bounds: Bounds;
 }
+/**
+ * Canonical content-assertion claims after bounded decoding without signature, time or
+ * expected-context verification. This is a diagnostic view, never a trusted assertion.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#4-verification
+ */
 export interface DecodedContentAssertion extends ContentAssertionProducer {
+  /** Content-assertion profile version 1, not the npm package version. */
   readonly version: 1;
+  /** No cryptographic verification has run. Parsing alone establishes no trust or execution authority. */
   readonly verification: "not_evaluated";
 }
+/**
+ * Content claims and compact digest after signature, window and expected-context checks. Trust remains
+ * unevaluated. Successor verification checks lineage separately without reevaluating the predecessor
+ * at the current time.
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#4-verification
+ */
 export interface ContentAssertionFacts extends ContentAssertionProducer {
+  /** Content-assertion profile version 1, not the npm package version. */
   readonly version: 1;
+  /** Raw 32-byte RFC 7638 thumbprint of the attestor public key. */
   readonly attestorKeyFingerprint: Uint8Array;
+  /** Raw 32-byte SHA-256 of the exact ASCII assertion compact, used for successor prev bindings. */
   readonly digest: Uint8Array;
+  /** Completed verification stage only; conveys no key trust, replay reservation or execution authority. */
   readonly verification: "signature_and_window";
+  /** Always not_evaluated. The caller owns trust selection and policy. */
   readonly trust: "not_evaluated";
 }
 
@@ -137,7 +197,8 @@ const numeric=(n:number):Tagged=>({t:"int",v:n});
 /**
  * Builds the signing input of a `bap-content-assertion/1` assertion binding a content digest to
  * issuer, audience, subject, profile, generation and window.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns Canonical protected and payload base64url segments for the content assertion in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function assertionSigningInput(p:ContentAssertionProducer,bounds?:Bounds):Result<SigningInput> {
   return trying(()=>{
@@ -160,7 +221,8 @@ export function assertionSigningInput(p:ContentAssertionProducer,bounds?:Bounds)
 /**
  * Joins a content-assertion signing input and a 64-byte signature into a compact JWS and re-parses
  * it. It does not verify the signature.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns Exact ASCII compact JWS bytes in a success Result; no signature verification is performed. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function assembleCompact(input:SigningInput,signature:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{
@@ -174,7 +236,8 @@ export function assembleCompact(input:SigningInput,signature:Uint8Array,bounds?:
 /**
  * Parses and validates a content assertion's structure without checking its signature or any
  * context (`verification: "not_evaluated"`).
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns Canonical content-assertion claims in a success Result, with verification not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function decodeAssertion(compact:Uint8Array,bounds?:Bounds):Result<DecodedContentAssertion> {
   return trying(()=>redactedInspection({version:1 as const,...parse(compact,bounded(bounds)).claims,verification:"not_evaluated" as const},"ContentAssertion.V1.DecodedContentAssertion"));
@@ -182,7 +245,8 @@ export function decodeAssertion(compact:Uint8Array,bounds?:Bounds):Result<Decode
 /**
  * The content digest an assertion binds: SHA-256 over `BAP1-CONTENT\0` and 1 to 65,536 exact
  * content bytes (`content_bytes`).
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns The raw 32-byte domain-separated content digest in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function contentDigest(content:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{
@@ -194,7 +258,8 @@ export function contentDigest(content:Uint8Array,bounds?:Bounds):Result<Uint8Arr
 /**
  * SHA-256 of the exact compact bytes after a structure check (the value a successor's `prev`
  * carries). Makes no signature claim.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns The raw 32-byte SHA-256 of the structurally validated compact in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function assertionDigest(compact:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{parse(compact,bounded(bounds));return sha256(compact);});
@@ -210,7 +275,8 @@ function expectedContext(e:ExpectedContentAssertion):Bounds {
 /**
  * Verifies a content assertion under the attestor key against the expected identities, digests and
  * time. `expected.bounds` is required. Facts carry `trust: "not_evaluated"`.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns Redacted ContentAssertionFacts in a success Result, with trust not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifyAssertion(compact:Uint8Array,e:ExpectedContentAssertion):Result<ContentAssertionFacts> {
   return trying(()=>{
@@ -232,12 +298,12 @@ function validateFacts(f:ContentAssertionFacts,b:Bounds):void {
   object(f); assert(f.version===1 && f.verification==="signature_and_window" && f.trust==="not_evaluated","facts markers");
   validateProducer(f,b); bytes(f.attestorKeyFingerprint,32); bytes(f.digest,32);
 }
-// Facts are caller-provenanced values. This comparison is not signature verification or present-time admission.
 /**
  * Compares two verified facts values: same context, consecutive generations, `prev` equal to the
  * predecessor's digest, non-decreasing issuance time and a new `jti`. Checks no signature and no
  * current time.
- * @see https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/reference.md
+ * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md#6-public-api-and-assembly
+ * @returns A success Result with undefined value when every lineage binding matches. No signature or current-time check is performed. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
  */
 export function verifySuccessor(predecessor:ContentAssertionFacts,successor:ContentAssertionFacts,bounds:Bounds):Result<void> {
   return trying(()=>{

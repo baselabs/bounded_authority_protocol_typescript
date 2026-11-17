@@ -1,15 +1,8 @@
 #!/usr/bin/env node
-// Dependency-license check for @bounded-authority-protocol/verifier (ADR 0014 Decision 8). Since 0.7.0 the SDK
-// has three runtime dependencies, all exactly pinned and MIT-licensed: @noble/ed25519, @noble/curves
-// and @noble/hashes, loaded only by the portable crypto backend (browsers, Deno, Bun, and Node under
-// --conditions=bap-portable); the node backend uses node:crypto. This gate fails if any runtime
-// dependency, direct or transitive, carries a license outside the Apache-2.0/BSD/MIT/ISC allowlist
-// (AGENTS rule 10). This is the TS analog of the Elixir scripts/check_dependency_licenses.exs.
-//
-// It enumerates the package's own dependency tree (dependencies, NOT devDependencies — dev tooling
-// like eslint/tsx/typescript is build-time, not shipped in the published package's runtime surface).
-// The published package ships only `dist` + LICENSE + NOTICE (see package.json `files`), so runtime
-// license posture is what this gate certifies.
+// Check the shipped dependency tree against the Apache-2.0/BSD/MIT/ISC license allowlist.
+// Runtime dependencies are exactly pinned: @noble/ed25519, @noble/curves and @noble/hashes.
+// The portable backend loads these MIT-licensed packages; the Node backend uses node:crypto.
+// Dev dependencies are build tools and do not enter the published runtime dependency tree.
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +21,7 @@ function packageDir(name, fromDir) {
   }
 }
 
-// The allowlist (AGENTS rule 10; ADR 0001 license decision): permissive, GPL-incompatible.
+// Permit only the explicitly listed permissive licenses in the shipped runtime dependency tree.
 const ALLOW = new Set([
   "Apache-2.0", "Apache 2.0", "BSD-2-Clause", "BSD-3-Clause", "BSD",
   "MIT", "ISC", "0BSD", "Unlicense", "CC0-1.0",
