@@ -380,11 +380,11 @@ async function reset(): Promise<void> {
   $("trust-key").textContent = `${issuer.keyId} · jkt ${issuer.thumb.slice(0, 8)}…`;
   $("slot-grant").textContent = "";
   $("slot-proof").textContent = "";
-  $("decode-grant").textContent = "Not evaluated";
-  $("decode-proof").textContent = "Not evaluated";
+  $("decode-grant").textContent = "Mint an envelope to decode it";
+  $("decode-proof").textContent = "Mint an envelope to decode it";
   bVerify.disabled = true;
   tamperBtns.forEach((b) => (b.disabled = true));
-  $("facts-body").textContent = "Not evaluated";
+  $("facts-body").textContent = "Verify an envelope to see its facts";
   $("tamper-hint").className = "hint";
   $("tamper-hint").textContent = "Mint and verify an envelope, then try a mutation.";
   segTabs.innerHTML = "";

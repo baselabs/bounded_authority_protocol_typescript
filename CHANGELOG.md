@@ -12,6 +12,13 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Fixed
 
+- Replay stores own their authoritative expiry clock; caller clocks cannot evict live entries.
+  Hosts may cap accepted grant lifetimes to bound retention.
+- Spec citations are checked against real normative headings, including wrapped comments.
+- Pages builds `/api/` from the release tag matching npm latest and records its commit.
+  The bench identifies its bundled verifier as development source.
+- Permit only esbuild dependency install scripts so clean installs prepare the native binary.
+
 - HTTP integration replay reservations last through grant expiry plus allowed clock skew.
   A fresh proof for an already accepted invocation cannot execute again after the earlier
   proof ages out. The regression runs the guide's actual store with real signatures.
@@ -21,8 +28,9 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 - Every public declaration has TSDoc, including field units, byte widths and public spec links.
   TypeDoc 0.28.20 builds the package-versioned API reference from the package exports map.
   CI treats documentation warnings as errors; Pages includes the reference under `/api/`.
-- OAuth positioning describes delegated authorization and how BAP binds authority to exact
-  request bytes. Verification facts remain separate from authorization policy.
+- OAuth positioning describes delegated authorization and how BAP binds authority to the
+  method, URI, operation and JCS typed projection of `cast_arguments`. Verification facts
+  remain separate from authorization policy.
 - Public documentation and source comments are self-contained, use published normative
   references and follow US English prose conventions. Hygiene checks cover these surfaces.
 

@@ -89,7 +89,8 @@
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs",
-    "docs:api": "typedoc"
+    "docs:api": "typedoc",
+    "docs:api:release": "node tools/build-release-api.mjs"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

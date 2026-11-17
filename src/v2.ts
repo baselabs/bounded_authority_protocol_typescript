@@ -2266,9 +2266,9 @@ export function verifyAnchoredExport(archived: ArchivedObject, keyChain: Histori
         if (k.validBefore !== null && k.validBefore <= k.validFrom) fail("verify_anchored_export: key valid_before ordering");
       }
     }
-    // Validate the expected chain, anchors and transitions before key shapes, archive chunks
-    // and hashing. This ordering rejects malformed context before doing digest work; it is part
-    // of the verification contract even when final verdicts would coincide.
+    // Key shapes and validity windows have been checked above. Validate the expected chain,
+    // anchors and transitions next, before archive chunks and hashing. This ordering rejects
+    // malformed context before digest work, as required by the verification contract.
     const bpre = coerceBounds(expected.bounds ?? MAXIMUM_BOUNDS);
     const mpre = resolve(bpre, "integer_magnitude" as MaximaKey);
     const preIdentifier = (v: unknown, label: string): void => {

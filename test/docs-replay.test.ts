@@ -11,14 +11,17 @@ import {
 
 // Execute the guide's actual store and middleware reservation expression. Extracting both keeps
 // this regression tied to the reader's recipe rather than a second implementation in the test.
-async function guideReservation(): Promise<(facts: EnvelopeFacts, now: number) => boolean> {
+async function guideReservation(): Promise<(facts: EnvelopeFacts, storeTime: number, instanceTime?: number) => boolean> {
   const guide = readFileSync(new URL("../docs/guides/http-server.md", import.meta.url), "utf8");
   const constants = guide.match(/^const (?:CLOCK_SKEW|PROOF_MAX_AGE) = .*$/gm);
-  const store = guide.match(/interface ReplayStore[\s\S]*?const replay = memoryReplayStore\(\);/);
+  const store = guide.match(/interface ReplayStore[\s\S]*?const replay = memoryReplayStore\([^;]*\);/);
   const reservation = guide.match(/const key = .*;\n\s*if \(!replay\.reserve\((.*)\)\) return refuse\(\);/);
   assert.equal(constants?.length, 2, "extract the guide's time bounds");
   assert.ok(store && reservation, "extract the actual store and reservation call");
-  const code = `${constants.join("\n")}\n${store[0]}\nexport function reserve(facts, now) {
+  const actualStore = store[0].replace(/const replay = memoryReplayStore\([^;]*\);/, "const replay = memoryReplayStore(() => storeTime);");
+  const code = `${constants.join("\n")}\nlet storeTime;\n${actualStore}\nexport function reserve(facts, authoritativeTime, instanceTime = authoritativeTime) {
+    storeTime = authoritativeTime;
+    const now = instanceTime;
     ${reservation[0].split("\n")[0]}
     return replay.reserve(${reservation[1]});
   }`;
@@ -26,7 +29,7 @@ async function guideReservation(): Promise<(facts: EnvelopeFacts, now: number) =
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   });
   const module = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`) as {
-    reserve: (facts: EnvelopeFacts, now: number) => boolean;
+    reserve: (facts: EnvelopeFacts, storeTime: number, instanceTime?: number) => boolean;
   };
   return module.reserve;
 }
@@ -79,7 +82,11 @@ test("the HTTP guide rejects a fresh proof for a reserved invocation through gra
   const next = checkEnvelope(grant, proofAt(400, nextInvocation), { ...expected, invocationId: nextInvocation, evaluationTime: 400 });
   assert.ok(next.ok);
   assert.equal(reserve(next.value, 400), true, "another invocation is independently reservable");
+  // A fast instance may trigger store housekeeping while another still accepts this grant.
+  // Its local clock must never determine eviction of an absolute reservation. The guide uses
+  // store-owned time, injected explicitly here; instanceTime reaches only the legacy recipe.
   for (const now of [400, 3700, 3759]) {
+    if (now === 3700) assert.equal(reserve(next.value, 3699, 3761), false, "a fast instance cannot evict a live reservation");
     const fresh = checkEnvelope(grant, proofAt(now), { ...expected, evaluationTime: now });
     assert.ok(fresh.ok, `a new proof still verifies at ${now}`);
     assert.equal(reserve(fresh.value, now), false, `same invocation must not execute again at ${now}`);

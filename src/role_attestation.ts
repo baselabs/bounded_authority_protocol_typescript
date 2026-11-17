@@ -210,7 +210,7 @@ function parseAttestationHeader(seg: ReturnType<typeof parseCompact>, bounds: Bo
 // The payload has exactly {v, jti, key_id, public_key, role, nbf, exp}. Version v is integer-
 // tagged 1. Apply the grant-jti and kid string rules, decode public_key to exactly 32 Ed25519
 // bytes, require role issuer or holder, and enforce integral nbf < exp. See spec/bap-role-
-// attestation-v1.md#claims.
+// attestation-v1.md#2-protected-header-and-payload-claims.
 function parseAttestationPayload(seg: ReturnType<typeof parseCompact>, bounds: Bounds): AttestationClaims {
   const p = jsonDecode(seg.payloadBytes, bounds);
   requireObjectExact(p, ["exp", "jti", "key_id", "nbf", "public_key", "role", "v"], "attestation payload");

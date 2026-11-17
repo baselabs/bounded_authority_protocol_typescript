@@ -43,9 +43,15 @@ revocation check or policy decision. Choosing which keys to trust, reserving eac
 once, and deciding whether to execute belong to your service.
 
 OAuth 2.0 is an [authorization framework](https://www.rfc-editor.org/rfc/rfc6749#section-1)
-for delegated, scoped access. BAP complements it by binding a holder's authority to the exact
-request bytes defined by the protocol's typed request projection. Authorization mechanisms can
+for delegated, scoped access. BAP complements it by binding a holder's authority to the method,
+URI, operation and JCS typed projection of `cast_arguments`. Authorization mechanisms can
 overlap; successful BAP verification returns facts, while the host applies authorization policy.
+
+The hosted `/api/` reference is built with `pnpm docs:api:release` from the immutable tag
+matching npm latest. Its `release.json` records the version, tag and commit; source links point
+to that commit. `pnpm docs:api` checks current-source documentation strictly in CI. Historical
+release rendering preserves the comments shipped at the tag without retroactive coverage checks.
+The bench runs development source and identifies it as such. Only esbuild may run install scripts.
 
 ## Install
 

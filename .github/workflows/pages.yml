@@ -1,12 +1,12 @@
 # GitHub Pages publishes the verifier bench and versioned API reference from this
-# repository's verifier source plus the published signer package (demo
+# repository's development verifier source plus the published signer package (demo
 # issuance only); no backend, no secrets, deploy-only permissions.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ["web/**", "src/**", "docs/**", "README.md", "typedoc.json", "tsconfig*.json", "package.json", "pnpm-lock.yaml", ".github/workflows/pages.yml"]
+    paths: ["web/**", "src/**", "docs/**", "README.md", "typedoc.json", "tsconfig*.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tools/build-release-api.mjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -35,14 +35,6 @@ jobs:
           node-version: 22.23.1 # lockstep with .tool-versions (the family asdf pin)
           cache: pnpm
 
-      # The bench page's npm badge is a hand-maintained literal (the site build
-      # templates only the asset cache-buster). It drifted once when the 0.2.2
-      # badge shipped on the 0.3.0-bumping deploy. Nothing else compares the two,
-      # so this lane does, before it can publish a stale version claim.
-      - name: Bench badge must match package.json version
-        run: |
-          node --input-type=module -e "const { readFileSync } = await import('node:fs'); const pkg = JSON.parse(readFileSync('package.json', 'utf8')).version; const html = readFileSync('web/index.html', 'utf8'); if (!html.includes(\`npm \${pkg}</li>\`)) { console.error(\`web/index.html's badge does not carry the current version \${pkg}\`); process.exit(1); } console.log(\`bench badge matches package.json \${pkg}\`);"
-
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
@@ -52,8 +44,8 @@ jobs:
       - name: Build the bundle
         run: pnpm build:site
 
-      - name: Build versioned API reference under /api/ (warnings are errors)
-        run: pnpm docs:api
+      - name: Build /api/ from the release tag matching npm latest
+        run: pnpm docs:api:release
 
       - name: Scan the bench bundle (no unresolved globals, eval or Function constructor)
         run: node tools/browser-guard.mjs --scan site-dist/app.js

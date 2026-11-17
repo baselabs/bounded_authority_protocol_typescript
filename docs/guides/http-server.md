@@ -18,10 +18,15 @@ Two choices here are this recipe's, not the protocol's:
   Retaining only until `proofIssuedAt + proofMaxAge + clockSkew` allows a refreshed proof to execute
   the invocation again. The in-memory store below works within one process lifetime. Across
   instances and restarts, use a shared durable store with an atomic insert-if-absent and an expiry.
-  Use the largest clock skew any accepting instance permits, and never evict a reservation early.
+  The store compares the absolute expiry against its own single authoritative clock, never a
+  TTL calculated as `until - now` from a reserving instance's local clock. All accepting instances
+  use that same authoritative time for verification; otherwise add a retention margin covering
+  the maximum clock offset between them and the store. Use the largest clock skew any accepting
+  instance permits, and never evict a reservation early. A host may cap the grant lifetime it
+  accepts, because replay retention lasts as long as the grant.
   This implements the host's single-use responsibility in the protocol's
   [security considerations](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#21-security-considerations)
-  and [invocation guidance](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#correlation-surfaces).
+  and [invocation guidance](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#21-security-considerations).
 
 ```ts
 import assert from "node:assert/strict";
@@ -47,12 +52,14 @@ const PROOF_MAX_AGE = 120; // seconds, 1 to 300
 const trustedIssuers = new Map<string, TrustedIssuer>();
 
 // Reserve each invocation of a grant once, through the validity of every proof under that grant.
-// until and now are integer Unix seconds. Keep the entry at equality; purge only after until.
-interface ReplayStore { reserve(key: string, until: number, now: number): boolean }
-function memoryReplayStore(): ReplayStore {
+// until is an absolute expiry in integer Unix seconds. Only the store reads its clock.
+// Keep the entry at equality; purge only after until. A shared store must do both atomically.
+interface ReplayStore { reserve(key: string, until: number): boolean }
+function memoryReplayStore(clock: () => number): ReplayStore {
   const reserved = new Map<string, number>();
   return {
-    reserve(key, until, now) {
+    reserve(key, until) {
+      const now = clock();
       for (const [k, expiry] of reserved) if (expiry < now) reserved.delete(k);
       if (reserved.has(key)) return false;
       reserved.set(key, until);
@@ -60,7 +67,7 @@ function memoryReplayStore(): ReplayStore {
     },
   };
 }
-const replay = memoryReplayStore();
+const replay = memoryReplayStore(() => Math.floor(Date.now() / 1000));
 
 const header = (req: IncomingMessage, name: string): string | undefined => {
   const value = req.headers[name];
@@ -118,7 +125,7 @@ function requireEnvelope(operation: string, handler: Handler) {
     // A fresh proof can reuse this invocation. Retain it through the grant's expiry plus skew.
     const facts = result.value;
     const key = JSON.stringify([facts.issuer, facts.grantId, facts.invocationId]);
-    if (!replay.reserve(key, facts.grantExpiresAt + CLOCK_SKEW, now)) return refuse();
+    if (!replay.reserve(key, facts.grantExpiresAt + CLOCK_SKEW)) return refuse();
 
     // Revocation and your own policy come next. The facts say what was proven, not what to allow.
     handler(facts, args.value, res);
