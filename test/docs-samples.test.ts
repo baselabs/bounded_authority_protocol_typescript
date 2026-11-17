@@ -273,7 +273,7 @@ for (const sample of SAMPLES) {
 // published. A sample that needs a newer release is fenced `ts since=<version>` and its prose says
 // "new in <version> (unreleased)"; once that version is published, the same sample runs here against
 // it. The consumer is a fresh directory with "type": "module", the published verifier and the signer
-// version this repository tests with, installed by frozen pnpm; each sample runs with Node's own TypeScript
+// version this repository tests with, installed by npm; each sample runs with Node's own TypeScript
 // type stripping, under the backend condition of this run (bap-portable under test:portable).
 const PUBLISHED = execFileSync("npm", ["view", "@bounded-authority-protocol/verifier", "version"], { encoding: "utf8" }).trim();
 const SIGNER_VERSION = (JSON.parse(readFileSync(join(SIGNER_ENTRY, "..", "..", "..", "package.json"), "utf8")) as { version: string }).version;
@@ -288,7 +288,7 @@ test("reader path: install the published package in a fresh consumer", () => {
     name: "bap-docs-reader", private: true, type: "module",
     dependencies: { "@bounded-authority-protocol/verifier": PUBLISHED, "@bounded-authority-protocol/signer": SIGNER_VERSION },
   }));
-  execFileSync("pnpm", ["install", "--frozen-lockfile", "--ignore-scripts"], { cwd: consumer, stdio: "ignore" });
+  execFileSync("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"], { cwd: consumer, stdio: "ignore" });
 });
 
 for (const sample of READER) {
