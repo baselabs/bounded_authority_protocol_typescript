@@ -4,6 +4,8 @@
 // L; ES256 requires in-range r and low-S s. Validate index and file hashes, exact file
 // set, profile identity, revision and family counts before evaluating cases.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
+import { computedOutcome } from "../digest.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as v1 from "../../src/v1.js";
 import * as v2 from "../../src/v2.js";
@@ -23,13 +25,9 @@ const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toStrin
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = "corpus-producer-canonicality";
+const DIR = corpusDir("producer-canonicality");
 
-// The certified index.json SHA-256, revision 1 (75 cases), hex
-// 99ee6fbbf32758b03d4630647f721d8d4e349f0628d860493d667fe6e762c601
-// Pinned independently here, in the protocol repository's errata registry, and in every SDK
-// consumer; rotate every pin in the same change as any corpus revision.
-const CERTIFIED_INDEX_SHA256 = "99ee6fbbf32758b03d4630647f721d8d4e349f0628d860493d667fe6e762c601";
+// SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-producer-canonicality/1";
 const CERTIFIED_REVISION = 1;
 const CERTIFIED_CASES = 75;
@@ -99,11 +97,8 @@ interface FamilyDoc {
 }
 
 function loadCorpus(source: CorpusSource): { families: Array<{ name: string; cases: readonly (AssembleCase | ExportCase)[] }> } {
+  certifyCorpus(source, DIR);
   const indexBytes = source.read(`${DIR}/index.json`);
-  const indexSha = sha256Hex(indexBytes);
-  if (indexSha !== CERTIFIED_INDEX_SHA256) {
-    abort(`index.json SHA-256 mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA256}`);
-  }
   const index = JSON.parse(utf8(indexBytes)) as {
     profile: string; revision: number; total_cases: number;
     families: Record<string, number>;
@@ -272,7 +267,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
         } else {
           refused++;
         }
-        verdicts.push([entry.id, `ok=${result.ok}`]);
+        verdicts.push([entry.id, computedOutcome(entry.expected, result.ok ? {compact: utf8(result.value)} : null)]);
         continue;
       }
 
@@ -286,16 +281,16 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
         abort(`${entry.id}: accepted export-encode case without a certified artifact (unsupported by this runner)`);
       }
       refused++;
-      verdicts.push([entry.id, `ok=${result.ok}`]);
+      verdicts.push([entry.id, computedOutcome(entry.expected, result.ok ? {} : null)]);
     }
   }
   if (seen.size !== CERTIFIED_CASES) abort(`case census: ${seen.size} != ${CERTIFIED_CASES}`);
 
   const byFamily = families.map((f) => `${f.name} ${f.cases.length}`).join(", ");
-  return { verdicts, summary: [
-    `producer-canonicality conformance: PASS — ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
+  return { verdicts: completeVerdicts(source, DIR, verdicts), summary: [
+    `producer-canonicality conformance: PASS: ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
       `(${refused} refused, ${accepted} accepted with bytes unchanged; revision ${CERTIFIED_REVISION}, ` +
-      `index SHA-256 ${CERTIFIED_INDEX_SHA256.slice(0, 8)}…; ${byFamily}).`,
+      `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…; ${byFamily}).`,
   ] };
 }
 

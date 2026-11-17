@@ -1,6 +1,6 @@
 // The node:fs corpus loader, used by the Node runners and by the Deno and Bun lanes (both provide
 // node:fs). Paths are relative to the conformance/ directory.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, lstatSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CorpusSource } from "./core/types.js";
@@ -12,8 +12,10 @@ export function fsSource(root: string = CONFORMANCE_DIR): CorpusSource {
     const out: string[] = [];
     for (const name of readdirSync(dir).sort()) {
       const full = join(dir, name);
-      if (statSync(full).isDirectory()) out.push(...walk(full, `${prefix}${name}/`));
-      else out.push(`${prefix}${name}`);
+      const info = lstatSync(full);
+      if (info.isDirectory()) out.push(...walk(full, `${prefix}${name}/`));
+      else if (info.isFile()) out.push(`${prefix}${name}`);
+      else throw new Error(`snapshot contains a link or special file: ${full}`);
     }
     return out;
   };

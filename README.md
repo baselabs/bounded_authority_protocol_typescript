@@ -414,8 +414,12 @@ package rejects. Its full key-handle contract is in the
 ## Certified, not self-tested
 
 Every release of this package is verified against the protocol's published, certified conformance
-corpora, recomputing every verdict from scratch with each corpus `index.json` SHA-256 asserted at
-load, so a drifted snapshot fails loudly:
+corpora. The binding is Hex `bounded_authority_protocol` 1.0.0's entire `priv/conformance/`
+subtree, vendored at `conformance/priv/conformance/`. `conformance/SOURCE` records the release's
+outer tarball checksum and all nine index SHA-256 pins. Every runner checks the index pin, every
+indexed file's recorded digest, the exact file set, counts, applicability, and unique certified and
+executed ids before accepting results. Tests are offline; CI separately fetches the named Hex
+release, verifies both archive checksums, and byte-compares the whole tree in both directions:
 
 | Corpus | Cases |
 |---|---|
@@ -428,6 +432,15 @@ load, so a drifted snapshot fails loudly:
 | Strict Ed25519 (rule S1, additive to the corpora above) | 2410 |
 | Producer canonicality (erratum 3, additive: assembly and export encoding refuse a non-canonical signature) | 75 |
 | Selector float-zero (erratum 6, new in 2.0.0, additive: decode rejects a float-tagged zero in `equals`/`one_of`; the grant producer refuses float-tagged integral selector values) | 161 |
+
+Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.
+Expected values come from the certified cases; computed values come from the SDK. A future
+published `bap-corpus-verdict-digests/1` file must agree as well. The npm tarball excludes the corpus.
+
+[Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring
+tool, candidate verification, and weekly adoption PRs. Candidate snapshots are refused on main
+and at release. Releases require the newest non-retired Hex version after its revert window;
+per-push CI remains bound to the named version.
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
 by construction, so the suite also carries a mutation gate that proves each closure can fail:

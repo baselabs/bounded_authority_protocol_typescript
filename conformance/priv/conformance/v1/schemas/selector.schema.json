@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/selector.schema.json",
+  "title": "BAP v1 selector",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {"kind": {"const": "all"}}
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "value"],
+      "properties": {
+        "kind": {"const": "all"},
+        "path": {"$ref": "#/$defs/jsonValue"},
+        "value": {"$ref": "#/$defs/jsonValue"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "values"],
+      "properties": {
+        "kind": {"const": "all"},
+        "path": {"$ref": "#/$defs/jsonValue"},
+        "values": {"$ref": "#/$defs/jsonValue"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "value"],
+      "properties": {
+        "kind": {"const": "equals"},
+        "path": {"$ref": "#/$defs/path"},
+        "value": {"$ref": "#/$defs/jsonValue"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "values"],
+      "properties": {
+        "kind": {"const": "one_of"},
+        "path": {"$ref": "#/$defs/path"},
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/jsonValue"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "path": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "x-bap-maximum-utf8-bytes": 128
+      }
+    },
+    "jsonValue": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "boolean"},
+        {"type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991},
+        {"type": "string", "maxLength": 8192, "x-bap-maximum-utf8-bytes": 8192},
+        {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/jsonValue"}},
+        {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {"maxLength": 128, "x-bap-maximum-utf8-bytes": 128},
+          "additionalProperties": {"$ref": "#/$defs/jsonValue"}
+        }
+      ]
+    }
+  }
+}

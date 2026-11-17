@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/public-okp-jwk.schema.json",
+  "title": "BAP v1 public Ed25519 OKP JWK",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["crv", "kty", "x"],
+  "properties": {
+    "crv": {"const": "Ed25519"},
+    "kty": {"const": "OKP"},
+    "x": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

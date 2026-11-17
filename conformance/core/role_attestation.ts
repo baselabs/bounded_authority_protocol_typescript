@@ -2,6 +2,7 @@
 // grant to attestation decode; these cases send attestations to each contract-major
 // decode and verification surface with well-formed contexts.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import {
   attestationSigningInput,
@@ -23,14 +24,9 @@ const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toStrin
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = "corpus-role-attestation";
+const DIR = corpusDir("role-attestation");
 
-// The certified index.json SHA-256, revision 1 (40 cases), hex
-// be5275c69539a0f31734242ff00a484c2f855f39181c55689d8b0f671195d62a
-// (base64url vlJ1xpU5oPMXNCQv8ApITC-FXzkYHFVonYsPZxGV1io). Pinned independently here, in the
-// profile spec, in the monorepo requirement map, and in every SDK consumer; rotate every pin
-// in the same change as any corpus revision.
-const CERTIFIED_INDEX_SHA256 = "be5275c69539a0f31734242ff00a484c2f855f39181c55689d8b0f671195d62a";
+// SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-role-attestation/1";
 const CERTIFIED_REVISION = 1;
 const CERTIFIED_CASES = 40;
@@ -62,11 +58,8 @@ interface ProfileContext {
 }
 
 function loadCorpus(source: CorpusSource): { profile: ProfileContext; cases: CaseEntry[] } {
+  certifyCorpus(source, DIR);
   const indexBytes = source.read(`${DIR}/index.json`);
-  const indexSha = sha256Hex(indexBytes);
-  if (indexSha !== CERTIFIED_INDEX_SHA256) {
-    abort(`index.json SHA-256 mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA256}`);
-  }
   const index = JSON.parse(utf8(indexBytes)) as {
     profile: string;
     revision: number;
@@ -149,7 +142,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
     decodeAgree++;
 
     const verified = verifyAttestation(compact, expected);
-    verdicts.push([entry.id, `decode=${decoded.ok};verify=${verified.ok}`]);
+    verdicts.push([entry.id, {decode: decoded.ok, verify: verified.ok}]);
     if (verified.ok !== entry.verify) {
       abort(`verify disagreement on ${entry.id}: expected ${entry.verify}, got ${verified.ok}`);
     }
@@ -215,10 +208,10 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   const crossProfileGrant = cases.find((c) => c.v1_grant === true);
   if (!crossProfileGrant) abort("cross-profile v1-grant case missing");
 
-  return { verdicts, summary: [
-    `role-attestation conformance: PASS — ${decodeAgree}/${CERTIFIED_CASES} decode + ` +
+  return { verdicts: completeVerdicts(source, DIR, verdicts), summary: [
+    `role-attestation conformance: PASS: ${decodeAgree}/${CERTIFIED_CASES} decode + ` +
       `${verifyAgree}/${CERTIFIED_CASES} verify agreement (revision ${CERTIFIED_REVISION}, ` +
-      `index SHA-256 ${CERTIFIED_INDEX_SHA256.slice(0, 8)}…), producer/assembly byte symmetry ` +
+      `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…), producer/assembly byte symmetry ` +
       `against the certified compact, cross-profile rejection both directions ` +
       `(${crossProfileGrant.id} in-corpus + v1/v2/v3 out-of-profile).`,
   ] };

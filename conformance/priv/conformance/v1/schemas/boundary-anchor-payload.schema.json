@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/boundary-anchor-payload.schema.json",
+  "title": "BAP v1 boundary-anchor payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "anchor_id",
+    "anchored_at",
+    "chain_id",
+    "sequence",
+    "chain_hash",
+    "key_fingerprint"
+  ],
+  "properties": {
+    "v": {"const": 1},
+    "anchor_id": {"$ref": "#/$defs/stringOrUri"},
+    "anchored_at": {"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991},
+    "chain_id": {"$ref": "#/$defs/stringOrUri"},
+    "sequence": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "chain_hash": {"$ref": "#/$defs/sha256"},
+    "key_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "stringOrUri": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "sha256": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

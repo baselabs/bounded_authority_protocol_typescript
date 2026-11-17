@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/key-transition-payload.schema.json",
+  "title": "BAP v1 historical-key-transition payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "transition_id",
+    "chain_id",
+    "effective_at",
+    "from_key_fingerprint",
+    "to_key_id",
+    "to_key_fingerprint"
+  ],
+  "properties": {
+    "v": {"const": 1},
+    "transition_id": {"$ref": "#/$defs/stringOrUri"},
+    "chain_id": {"$ref": "#/$defs/stringOrUri"},
+    "effective_at": {"type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991},
+    "from_key_fingerprint": {"$ref": "#/$defs/sha256"},
+    "to_key_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "x-bap-maximum-utf8-bytes": 128,
+      "pattern": "^[A-Za-z0-9._~-]+$"
+    },
+    "to_key_fingerprint": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "stringOrUri": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "sha256": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

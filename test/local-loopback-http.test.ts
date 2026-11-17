@@ -2,6 +2,8 @@ import * as nodeCrypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { certifyCorpus, corpusDir } from "../conformance/certification.js";
+import { fsSource } from "../conformance/node_source.js";
 
 import { base64urlDecode, base64urlEncode } from "../src/base64url.js";
 import { publicKeyThumbprintRaw } from "../src/jwk.js";
@@ -24,7 +26,6 @@ import {
 } from "../src/v1.js";
 
 const utf8 = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
-const CERTIFIED_INDEX_SHA256 = "10fc4cf05affcddc9e6340ff392c247e25ab038cd938f2557829a7ce63b1a5e4";
 
 test("local loopback HTTP URI profile accepts only exact loopback literals", () => {
   const valid: Array<readonly [string, string]> = [
@@ -73,10 +74,10 @@ test("local loopback HTTP URI profile accepts only exact loopback literals", () 
 
 test("certified local-loopback corpus drives TypeScript verdicts", () => {
   // Use the vendored certified snapshot. Its bytes must match the published corpus.
-  const root = new URL("../conformance/corpus-local-loopback-http/", import.meta.url);
+  const root = new URL("../conformance/priv/conformance/application-profiles/local-loopback-http/v1/", import.meta.url);
   const readJson = (name: string): unknown => JSON.parse(readFileSync(new URL(name, root), "utf8"));
   const indexBytes = readFileSync(new URL("index.json", root));
-  assert.equal(nodeCrypto.createHash("sha256").update(indexBytes).digest("hex"), CERTIFIED_INDEX_SHA256);
+  assert.equal(nodeCrypto.createHash("sha256").update(indexBytes).digest("base64url"), certifyCorpus(fsSource(), corpusDir("local-loopback-http")).indexSha);
   const index = JSON.parse(indexBytes.toString("utf8")) as {
     files: Array<{ path: string; sha256: string }>;
     profile: string; revision: number; proof_cases: number; uri_cases: number;

@@ -6,6 +6,19 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Changed
 
+- Bind certification to the complete `priv/conformance/` subtree of Hex
+  `bounded_authority_protocol` 1.0.0 at `conformance/priv/conformance/`, with release identity,
+  outer checksum and nine index pins in `conformance/SOURCE`. Transactional vendoring verifies
+  both Hex checksums, refuses retirement, and supports immutable candidate commits for PRs.
+- Every corpus checks indexed bytes, file sets, counts, applicability and unique, complete
+  execution. Shared verdict digests now use index-ordered JCS `[[id, value], ...]` and unpadded
+  base64url SHA-256, deriving expected values from certified outcomes and checking a published
+  digest file when present. Remove the separate census inputs and the former digest pins.
+- CI compares the complete snapshot with the named artifact. Main and release workflows refuse
+  candidates; releases require the newest eligible non-retired Hex version. Weekly adoption PRs
+  handle newer releases without making push CI depend on upstream freshness. The npm `files`
+  allowlist remains runtime-only. The corpus adoption guide documents the complete workflow.
+
 - Development dependencies use signer 2.0.0, ESLint 10.15.0, Playwright 1.65.1 and
   typescript-eslint 8.73.0. The site and documentation samples use the signer release that
   depends on verifier 2.x. Runtime dependency versions are unchanged.
@@ -63,7 +76,7 @@ now refuse.
 ### Added
 
 - The vendored certified selector-float-zero corpus snapshot
-  (`conformance/corpus-selector-float-zero`, profile `bap-selector-float-zero/1`, revision 1,
+  (`conformance/priv/conformance/selector-float-zero`, profile `bap-selector-float-zero/1`, revision 1,
   161 cases comprising 78 grant decode, 48 grant signing input and 35 envelope cases across contract-majors 1, 2
   and 3; index SHA-256 `97fd7a99cdbf3acc0a78f5ba1c6556e23a63e0ad66f533e31fd69f82dc5f3003` pinned
   at load, byte-identical to the protocol repository's `priv/conformance/selector-float-zero`)
@@ -71,8 +84,7 @@ now refuse.
   runtime-neutral core: 161/161 verdict agreement (98 rejected, 63 accepted, every accepted
   signing input byte-equal to the certified segments). Typed values travel as JSON text and are
   decoded with the package's own tag-preserving `jsonDecode`. Wired into CI, the release lane,
-  the portable lane, the Deno/Bun and browser lanes, and `conformance/verdict-digests.json`
-  (digest `1a23b3d2…`). Before the repair, 92 of the 161 cases disagreed. Every existing corpus
+  the portable lane, and the Deno/Bun and browser lanes. Before the repair, 92 of the 161 cases disagreed. Every existing corpus
   and digest is unchanged.
 
 ### Changed
@@ -167,14 +179,13 @@ changes the behavior of several public functions and of facts values (marked **B
   throws `InvalidError` for a key or JWK whose point is not an acceptable P-256 key (65 bytes, the
   `0x04` prefix, coordinates below p, on the curve).
 - The vendored certified producer-canonicality corpus snapshot
-  (`conformance/corpus-producer-canonicality`, revision 1, 75 cases comprising 44 Ed25519 assembly, 4
+  (`conformance/priv/conformance/producer-canonicality`, revision 1, 75 cases comprising 44 Ed25519 assembly, 4
   Ed25519 export encoding, 24 ES256 assembly, 3 ES256 export encoding; index SHA-256
   `99ee6fbbf32758b03d4630647f721d8d4e349f0628d860493d667fe6e762c601` pinned at load, byte-synced
   from the BAP 0.9.0 Hex package, whose registry checksum the rotation verified) plus
   `conformance/run_producer_canonicality.ts` and the runtime-neutral core: 75/75 verdict
   agreement (60 refused, 15 accepted with the compact bytes emitted unchanged), wired into CI,
-  the release lane, the portable lane, the Deno/Bun and browser lanes, and
-  `conformance/verdict-digests.json` (digest `c67c3e26…`, identical on both backends). Every
+  the release lane, the portable lane, and the Deno/Bun and browser lanes. Every
   existing corpus and digest is unchanged.
 
 ### Changed
@@ -348,12 +359,8 @@ additive except the internal types noted under deep imports. No verdict changes.
   `@noble/ed25519` 3.2.0, `@noble/curves` 2.4.0 (which depends on `@noble/hashes`) and
   `@noble/hashes` 2.4.0. The package previously had none. `tools/license-check.mjs` and `NOTICE` list
   them.
-- Node.js verdicts are unchanged. Every certified corpus's verdict digest (SHA-256 over the canonical
-  JSON of `[case id, verdict]` per case, `conformance/verdict-digests.json`) was recorded from the
-  0.6.0 source and is reproduced by both backends on Node 22.23.1 and 24.19.0, on Deno 2.5.6 and Bun
-  1.3.14, and in Chromium 153 (observed locally; CI also runs Firefox and WebKit): v1 `c90b903a…` (283), v2 `72176430…` (268), v3 `79aa0344…` (292),
-  local-loopback-http `8b6f4ecf…` (44), role-attestation `e27f5ce5…` (40), content-assertion
-  `9207c4cc…` (154), strict-ed25519 `cf0fe815…` (2410).
+- Node.js verdicts are unchanged. Both backends reproduce every certified outcome on Node
+  22.23.1 and 24.19.0, Deno 2.5.6 and Bun 1.3.14, and Chromium. CI also runs Firefox and WebKit.
 - **API behavior change.** `sha256` (exported from the package root and the `v2` and `v3`
   namespaces) now throws `InvalidError`, the package's closed error, for any part that is not a
   `Uint8Array` (a subclass such as Node's `Buffer` still is one), identically on both backends. 0.6.0
@@ -563,7 +570,7 @@ silently coerced, across the v1/v2/v3 façades.
   fingerprints, and NO authorization marker). Parsed by no contract-major: attestation bytes
   reject at the v1/v2/v3 surfaces and a live v1 grant rejects at attestation decode.
 - The vendored certified role-attestation corpus snapshot
-  (`conformance/corpus-role-attestation`, revision 1, 40 cases, index SHA-256
+  (`conformance/priv/conformance/attestation-profiles/role-attestation/v1`, revision 1, 40 cases, index SHA-256
   `be5275c69539a0f31734242ff00a484c2f855f39181c55689d8b0f671195d62a` pinned at load; the exact
   two-file set, profile identity, revision, and case counts verified before the per-file
   digests are trusted) plus `conformance/run_role_attestation.ts`: 40/40 decode + verify
@@ -605,10 +612,10 @@ silently coerced, across the v1/v2/v3 façades.
 - New modules `src/es256.ts` (the P-256 arithmetic + `node:crypto` ECDSA layer, with its own
   census tracking for the runner's verify-import leg) and `src/ec_jwk.ts` (the EC JWK
   encode/decode/thumbprint layer); `src/v3.ts` mirrors the v2 façade module exactly.
-- The vendored v3 corpus snapshot (`conformance/corpus-v3`, 292 certified vectors, index
-  SHA-256 pinned at load) plus the curated census sidecar (`conformance/curated-inputs-v3.json`),
+- The vendored v3 corpus snapshot (`conformance/priv/conformance/v3/corpus`, 292 certified vectors, index
+  SHA-256 pinned at load),
   byte-synced from the monorepo; `conformance/run_v3.ts` recomputes every verdict (292/292
-  agree) and runs the census legs (curated == index two-way; discovery ⊆ declared;
+  agree) and runs the census legs (discovery ⊆ declared;
   verify-import ⊇ expected-verify keys).
 - Corpus-repair rotation (in the same release): the certified v3 corpus was repaired upstream because the
   signing-input case files had carried v2-shaped 32-byte Ed25519 public keys, so their
@@ -616,8 +623,8 @@ silently coerced, across the v1/v2/v3 façades.
   expected re-derived. The vendored snapshot was re-synced byte-for-byte (`rsync -a --delete`),
   the certified index pin rotated to the re-certified digest
   (`a5c8075e7534345c3bb6611d0b40292904bcfa3af0702e07ae014fa66926433c`, base64url
-  `pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw`), and the curated census sidecar re-vendored
-  (11 keys; discovery stays a strict 8-of-11 subset). 292/292 agreement re-proven; the v1/v2
+  `pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw`), with 11 indexed keys
+  (discovery stays a strict 8-of-11 subset). 292/292 agreement re-proven; the v1/v2
   corpora and pins are unchanged.
 - Permissiveness mutation-gate battery for the ES256 closure classes (7 defect-injection
   entries, each red-proven at authoring): low-S acceptance, r/s integer range (an
@@ -628,7 +635,7 @@ silently coerced, across the v1/v2/v3 façades.
   cross-major `v` gate (same-header v-swap falsifiers; v1/v2 bytes also reject at the `alg`
   gate). The census verify-import leg closes over the ES256 boundary.
 - CI: a third conformance lane (`pnpm conformance:v3`) on every OS of the tri-platform matrix;
-  `.gitattributes` extends the byte-exact eol exemption to `conformance/corpus-v3/**`. The
+  `.gitattributes` extends the byte-exact eol exemption to `conformance/priv/conformance/v3/corpus/**`. The
   release lane now runs the same three-corpus verification gate before staging (it had been
   left at v1+v2 when the corpus landed) and enforces tag/manifest version match, as the signer's
   release lane does.

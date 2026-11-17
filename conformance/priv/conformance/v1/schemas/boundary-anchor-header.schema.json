@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/boundary-anchor-header.schema.json",
+  "title": "BAP v1 protected boundary-anchor header",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alg", "typ", "kid"],
+  "properties": {
+    "alg": {"const": "EdDSA"},
+    "typ": {"const": "ba+chain-anchor"},
+    "kid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "x-bap-maximum-utf8-bytes": 128,
+      "pattern": "^[A-Za-z0-9._~-]+$"
+    }
+  }
+}

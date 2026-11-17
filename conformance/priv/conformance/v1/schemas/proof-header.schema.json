@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/proof-header.schema.json",
+  "title": "BAP v1 protected proof header",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["alg", "typ", "jwk"],
+  "properties": {
+    "alg": {"const": "EdDSA"},
+    "typ": {"const": "dpop+jwt"},
+    "jwk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crv", "kty", "x"],
+      "properties": {
+        "crv": {"const": "Ed25519"},
+        "kty": {"const": "OKP"},
+        "x": {
+          "type": "string",
+          "minLength": 43,
+          "maxLength": 43,
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        }
+      }
+    }
+  }
+}

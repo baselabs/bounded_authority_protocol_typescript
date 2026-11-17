@@ -1,65 +1,145 @@
-// The runtime-neutral conformance cores (conformance/core/*). Each core must fail closed on a
-// one-byte-tampered index.json (the certified pin is checked by the core itself, not by a loader),
-// must agree with every case of its corpus, and must reproduce the pinned verdict digest, which is
-// the identity every runtime lane (Node with either backend, Deno, Bun, browsers) is held to.
+// Real offline snapshots and deliberate mutations, with cleanup owned by each test.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fsSource } from "../conformance/node_source.js";
-import { CoreAbort, type CorpusSource } from "../conformance/core/types.js";
+import { createHash } from "node:crypto";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { build } from "esbuild";
+import { fileURLToPath } from "node:url";
+import { fsSource, CONFORMANCE_DIR } from "../conformance/node_source.js";
 import { CORES } from "../conformance/core/index.js";
-import { firstDifferences, verdictDigest } from "../conformance/digest.js";
-
+import { CoreAbort, type Core, type VerdictEntry } from "../conformance/core/types.js";
+import { assertVerdictDigest, certifyCorpus, completeVerdicts, expectedOutcome, expectedVerdicts } from "../conformance/certification.js";
+import { firstDifferences, hash64, jcs, verdictDigest } from "../conformance/digest.js";
 const source = fsSource();
-const PINNED = JSON.parse(readFileSync(new URL("../conformance/verdict-digests.json", import.meta.url), "utf8")) as {
-  digests: Record<string, { cases: number; sha256: string }>;
-};
-
-// Flip the case of the first ASCII letter that opens a JSON string, so the file stays valid JSON
-// (a key or value changes) and only the pin can catch it.
-function tamperedIndex(inner: CorpusSource, indexPath: string): CorpusSource {
-  return {
-    read(path) {
-      const bytes = inner.read(path);
-      if (path !== indexPath) return bytes;
-      const text = new TextDecoder().decode(bytes);
-      const at = text.search(/"[a-z]/) + 1;
-      assert.ok(at > 0, "index.json has a string to tamper");
-      const out = new Uint8Array(bytes);
-      out[at] = out[at]! ^ 0x20;
-      return out;
-    },
-    list: (dir) => inner.list(dir),
-  };
+const root = fileURLToPath(new URL("..", import.meta.url));
+function fixture(run: (dir: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), "bap-corpus-"));
+  try { cpSync(join(CONFORMANCE_DIR, "priv"), join(dir, "priv"), {recursive: true}); cpSync(join(CONFORMANCE_DIR, "SOURCE"), join(dir, "SOURCE")); run(dir); }
+  finally { rmSync(dir, {recursive: true, force: true}); }
 }
-
-test("nine cores, one per certified corpus", () => {
-  assert.deepEqual(CORES.map((c) => c.corpus).sort(), [
-    "content-assertion", "local-loopback-http", "producer-canonicality", "role-attestation", "selector-float-zero", "strict-ed25519", "v1", "v2", "v3",
-  ]);
+function red(label: string, run: () => unknown, pattern: RegExp): void {
+  assert.throws(run, (error: Error) => { assert.match(error.message, pattern); console.log(`RED ${label}: ${error.message}`); return true; });
+}
+test("nine cores and nine SOURCE pins", () => {
+  assert.equal(CORES.length, 9);
+  const pins = JSON.parse(readFileSync(join(CONFORMANCE_DIR, "SOURCE"), "utf8")).indexes;
+  assert.deepEqual(Object.keys(pins).sort(), CORES.map(c => c.dir.slice("priv/conformance/".length)).sort());
 });
-
 for (const core of CORES) {
-  test(`${core.corpus}: a one-byte-tampered index.json aborts before any verdict`, () => {
-    assert.throws(() => core.run(tamperedIndex(source, `${core.dir}/index.json`)), CoreAbort);
-  });
-
-  test(`${core.corpus}: every case agrees and the verdict digest matches the pin`, () => {
+  test(`${core.corpus}: all cases, index order, and corpus-derived digest`, () => {
     const report = core.run(source);
     assert.deepEqual(report.failures, []);
-    const pin = PINNED.digests[core.corpus];
-    assert.ok(pin, `a pinned digest for ${core.corpus}`);
-    assert.equal(report.verdicts.length, pin.cases);
-    assert.equal(verdictDigest(report.verdicts), pin.sha256);
+    assert.equal(jcs(report.verdicts), jcs(expectedVerdicts(source, core.dir)));
+    assert.equal(verdictDigest(report.verdicts), createHash("sha256").update(jcs(expectedVerdicts(source, core.dir))).digest("base64url"));
+    console.log(`GREEN ${core.corpus}: ${assertVerdictDigest(source, core.dir, report.verdicts)} (${report.verdicts.length} cases)`);
+  });
+  for (const mutation of ["index byte", "case byte", "extra file", "missing file", "missing snapshot directory"] as const) {
+    test(`${core.corpus}: ${mutation} is refused before execution`, () => fixture(dir => {
+      const cert = certifyCorpus(source, core.dir), file = cert.cases[0]!.file;
+      const target = join(dir, core.dir, mutation === "index byte" ? "index.json" : file);
+      const original = readFileSync(target);
+      if (mutation === "extra file") writeFileSync(join(dir, core.dir, "extra.json"), "{}");
+      else if (mutation === "missing file") rmSync(target);
+      else if (mutation === "missing snapshot directory") rmSync(join(dir, "priv"), {recursive: true});
+      else writeFileSync(target, Buffer.concat([original, Buffer.from(" ")]));
+      red(`${core.corpus} ${mutation}`, () => core.run(fsSource(dir)), mutation === "index byte" ? /SOURCE pin mismatch/ : mutation === "case byte" ? /recorded digest mismatch/ : /file set differs|ENOENT/);
+      rmSync(join(dir, "priv"), {recursive: true, force: true});
+      cpSync(join(CONFORMANCE_DIR, "priv"), join(dir, "priv"), {recursive: true});
+      const restored = core.run(fsSource(dir)); assert.deepEqual(restored.failures, []);
+      assertVerdictDigest(fsSource(dir), core.dir, restored.verdicts);
+      console.log(`GREEN ${core.corpus} restored after ${mutation}`);
+    }));
+  }
+  test(`${core.corpus}: a duplicate cannot replace a skipped execution`, () => {
+    const entries = expectedVerdicts(source, core.dir);
+    red(`${core.corpus} duplicate replacing skip`, () => completeVerdicts(source, core.dir, [entries[0]!, ...entries.slice(0, -1)]), /duplicate executed id/);
+    red(`${core.corpus} skip`, () => completeVerdicts(source, core.dir, entries.slice(1)), /skip or unknown id/);
+    assert.deepEqual(completeVerdicts(source, core.dir, entries), entries);
   });
 }
-
-test("the verdict digest is order-sensitive and projection-sensitive", () => {
-  const a = [["case-a", "invalid"], ["case-b", '{"ok":true}']] as const;
-  const reordered = [a[1], a[0]] as const;
-  const changed = [a[0], ["case-b", "invalid"]] as const;
-  assert.notEqual(verdictDigest(a), verdictDigest(reordered));
-  assert.notEqual(verdictDigest(a), verdictDigest(changed));
-  assert.equal(verdictDigest(a), verdictDigest([...a]));
-  assert.deepEqual(firstDifferences(a, changed), ['#1: case-b => {"ok":true} | case-b => invalid']);
+test("every raw sidecar is hashed before execution", () => fixture(dir => {
+  for (const core of CORES) {
+    const raws = source.list(core.dir).filter(p => p.endsWith(".raw"));
+    for (const file of raws) {
+      const target = join(dir, core.dir, file), bytes = readFileSync(target), changed = Buffer.from(bytes);
+      changed[0] = changed[0]! ^ 1; writeFileSync(target, changed);
+      red(`${core.corpus} raw byte ${file}`, () => core.run(fsSource(dir)), /recorded digest mismatch/);
+      writeFileSync(target, bytes);
+    }
+    assert.deepEqual(core.run(fsSource(dir)).failures, []);
+  }
+}));
+test("duplicate certified ids are enforced even after rehashing a candidate", () => fixture(dir => {
+  const core = CORES[0]!, file = certifyCorpus(source, core.dir).cases[0]!.file;
+  const target = join(dir, core.dir, file), indexPath = join(dir, core.dir, "index.json"), sourcePath = join(dir, "SOURCE");
+  const doc = JSON.parse(readFileSync(target, "utf8")), index = JSON.parse(readFileSync(indexPath, "utf8")), pin = JSON.parse(readFileSync(sourcePath, "utf8"));
+  doc.cases[1].id = doc.cases[0].id;
+  writeFileSync(target, JSON.stringify(doc));
+  index.files.find((f: {path: string}) => f.path === file).sha256_base64url = hash64(readFileSync(target));
+  writeFileSync(indexPath, JSON.stringify(index)); pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(sourcePath, JSON.stringify(pin));
+  red("duplicate certified id", () => core.run(fsSource(dir)), /duplicate or invalid case id/);
+}));
+test("applicability and counts remain total even when an index is rehashed", () => fixture(dir => {
+  const core = CORES[0]!, indexPath = join(dir, core.dir, "index.json"), pinPath = join(dir, "SOURCE");
+  const bytes = readFileSync(indexPath), pin = JSON.parse(readFileSync(pinPath, "utf8"));
+  for (const mutation of ["surface", "class", "count", "total"] as const) {
+    const index = JSON.parse(bytes.toString()), surface = Object.keys(index.applicability)[0]!;
+    if (mutation === "surface") delete index.applicability[surface];
+    else if (mutation === "class") delete index.applicability[surface][Object.keys(index.applicability[surface])[0]!];
+    else if (mutation === "count") index.files.find((f: {cases: number}) => f.cases > 0).cases++;
+    else index.total_cases++;
+    writeFileSync(indexPath, JSON.stringify(index));
+    pin.indexes[core.dir.slice("priv/conformance/".length)] = hash64(readFileSync(indexPath)); writeFileSync(pinPath, JSON.stringify(pin));
+    red(`rehash ${mutation}`, () => certifyCorpus(fsSource(dir), core.dir), /applicability is not total|case count mismatch/);
+  }
+  writeFileSync(indexPath, bytes); cpSync(join(CONFORMANCE_DIR, "SOURCE"), pinPath);
+  assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
+}));
+test("future published digests are checked from a real snapshot plus a generated file", () => fixture(dir => {
+  const corpora = Object.fromEntries(CORES.map(core => { const cert = certifyCorpus(source, core.dir); return [cert.path, {index_sha256_base64url: cert.indexSha, case_count: cert.cases.length, verdict_digest_sha256_base64url: verdictDigest(expectedVerdicts(source, core.dir))}]; }));
+  const path = join(dir, "priv/conformance/verdict-digests.json");
+  const write = () => writeFileSync(path, JSON.stringify({format: "bap-corpus-verdict-digests/1", corpora}, null, 2) + "\n");
+  write();
+  for (const core of CORES) assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
+  const core = CORES[0]!, pin = corpora[certifyCorpus(source, core.dir).path]!, original = pin.verdict_digest_sha256_base64url;
+  pin.verdict_digest_sha256_base64url = "A".repeat(43); write();
+  red("published verdict digest", () => assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts), /published verdict digest mismatch/);
+  pin.verdict_digest_sha256_base64url = original; write();
+  assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
+}));
+test("always-pass comparator cannot conceal a wrong computed result", async () => {
+  const core = CORES.find(c => c.corpus === "v2")!;
+  const invalid = certifyCorpus(source, core.dir).cases.find(c => c.data.surface === "base64url.decode" && (c.value as {verdict: string}).verdict === "invalid")!;
+  const result = await build({stdin: {contents: 'export { core } from "./conformance/core/v2.ts";', resolveDir: root, loader: "ts"}, bundle: true, platform: "node", format: "esm", write: false,
+    plugins: [{name: "comparator-mutation", setup(b) {
+      b.onResolve({filter: /^#crypto$/}, () => ({path: join(root, "src/crypto/node.ts")}));
+      b.onLoad({filter: /conformance[\/]core[\/]v2\.ts$/}, args => {
+        const original = readFileSync(args.path, "utf8");
+        const changed = original.replace(/function compareVerdict\([\s\S]*?(?=function compareField)/, "function compareVerdict(): boolean { return true; }\n\n")
+          .replace("const actual = dispatch(c.surface, input, raws);", `const actual = c.id === ${JSON.stringify(invalid.id)} ? {} : dispatch(c.surface, input, raws);`);
+        assert.notEqual(changed, original); assert.ok(changed.includes("return true;"));
+        return {contents: changed, loader: "ts"};
+      });
+    }}]});
+  const mutant = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`) as {core: Core};
+  const report = mutant.core.run(source); assert.deepEqual(report.failures, [], "the mutated comparator always agrees");
+  red("always-pass comparator", () => assertVerdictDigest(source, core.dir, report.verdicts), /verdict digest mismatch/);
+  assertVerdictDigest(source, core.dir, core.run(source).verdicts);
+});
+test("outcome schemas exclude inputs and fail closed on missing outcomes", () => {
+  const record = {id: "case", compact: "input", decode: false, verify: false, expected_overrides: {now: 1}};
+  assert.deepEqual(expectedOutcome("attestation-profiles/role-attestation/v1", "attestation-cases.json", record), {decode: false, verify: false});
+  assert.throws(() => expectedOutcome("strict-ed25519", "cases/ra1/a.json", {id: "case", surface: "role_attestation", decode: true}), CoreAbort);
+  assert.throws(() => expectedOutcome("strict-ed25519", "cases/a.json", {id: "case", surface: "unknown"}), CoreAbort);
+});
+test("JCS is structured, ordered, field-sensitive, and refuses non-JSON", () => {
+  const entries: VerdictEntry[] = [["a", {z: -0, a: 1e-7}], ["b", {verdict: "invalid"}]];
+  assert.equal(jcs(entries), '[["a",{"a":1e-7,"z":0}],["b",{"verdict":"invalid"}]]');
+  assert.notEqual(verdictDigest(entries), verdictDigest([...entries].reverse()));
+  assert.notEqual(verdictDigest(entries), verdictDigest([["a", {a: 1e-7, z: 1}], entries[1]!]));
+  assert.equal(verdictDigest(entries).length, 43);
+  assert.deepEqual(firstDifferences(entries, entries), []);
+  for (const value of [undefined, NaN, Infinity, "\ud800"]) assert.throws(() => jcs(value));
 });

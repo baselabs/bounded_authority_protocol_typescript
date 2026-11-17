@@ -147,7 +147,7 @@ function filesUnder(dir: string): string[] {
 const PUBLIC_FILES = [...new Set([
   ...docFiles(), ...readdirSync(REPO).filter((name) => /\.(?:md|json|js|mjs|yml)$/.test(name))
     .map((name) => join(REPO, name)),
-  ...["src", "web", "tools", ".github/workflows"].flatMap((dir) => filesUnder(join(REPO, dir))),
+  ...["src", "web", "tools", "scripts", ".github/workflows"].flatMap((dir) => filesUnder(join(REPO, dir))),
   ...["test", "conformance", "browser"].flatMap((dir) => filesUnder(join(REPO, dir)))
     .filter((file) => /\.(?:ts|js|mjs)$/.test(file)),
 ])].filter((file) => /\.(?:md|ts|js|mjs|html|css|json|yml)$/.test(file));

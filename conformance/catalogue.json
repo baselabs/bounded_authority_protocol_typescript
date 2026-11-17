@@ -1,0 +1,11 @@
+{
+  "v1": "v1/corpus",
+  "v2": "v2/corpus",
+  "v3": "v3/corpus",
+  "local-loopback-http": "application-profiles/local-loopback-http/v1",
+  "role-attestation": "attestation-profiles/role-attestation/v1",
+  "content-assertion": "attestation-profiles/content-assertion/v1",
+  "strict-ed25519": "strict-ed25519",
+  "producer-canonicality": "producer-canonicality",
+  "selector-float-zero": "selector-float-zero"
+}

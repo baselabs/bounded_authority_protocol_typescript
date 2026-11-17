@@ -6,10 +6,11 @@
 import { BACKEND_ID } from "../src/index.js";
 import { CORES } from "../conformance/core/index.js";
 import { CoreAbort } from "../conformance/core/types.js";
-import { verdictDigest } from "../conformance/digest.js";
+import { assertVerdictDigest } from "../conformance/certification.js";
+import type { VerdictEntry } from "../conformance/core/types.js";
 import { loadCorpus } from "./loader.js";
 
-interface CorpusResult { cases: number; digest: string; ms: number; failures: string[]; verdicts: (readonly [string, string])[] }
+interface CorpusResult { cases: number; digest: string; ms: number; failures: string[]; verdicts: VerdictEntry[] }
 interface LaneResult {
   backend: string; secure: boolean; userAgent: string; violations: string[]; error: string | null;
   corpora: Record<string, CorpusResult>; totalMs: number;
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
     const t = performance.now();
     try {
       const report = core.run(source);
-      result.corpora[core.corpus] = { cases: report.verdicts.length, digest: verdictDigest(report.verdicts), ms: Math.round(performance.now() - t), failures: [...report.failures], verdicts: [...report.verdicts] };
+      result.corpora[core.corpus] = { cases: report.verdicts.length, digest: assertVerdictDigest(source, core.dir, report.verdicts), ms: Math.round(performance.now() - t), failures: [...report.failures], verdicts: [...report.verdicts] };
     } catch (e) {
       const message = e instanceof CoreAbort ? `${e.prefix}: ${e.message}` : String(e);
       result.corpora[core.corpus] = { cases: 0, digest: "", ms: Math.round(performance.now() - t), failures: [`abort: ${message}`], verdicts: [] };

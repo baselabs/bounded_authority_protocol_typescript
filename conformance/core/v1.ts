@@ -2,6 +2,8 @@
 // corpus. Validate the index digest and run the two-boundary census. Disagreement
 // aborts with the case ID and expected and actual verdicts. The normative spec and
 // corpus define the contract; the SDK is the implementation under test.
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
+import { computedOutcome } from "../digest.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as v1 from "../../src/v1.js";
 import { jsonDecode, strUtf8, utf8Str, type Tagged } from "../../src/json.js";
@@ -20,7 +22,7 @@ const b64e = (b: Uint8Array): string => utf8(base64urlEncode(b));
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = "corpus";
+const DIR = corpusDir("v1");
 
 // Only protocol rejection maps to INVALID. Unexpected thrown errors are runner or
 // SDK defects and abort rather than becoming conformance verdicts.
@@ -52,18 +54,12 @@ interface CorpusCase {
 }
 interface Raws extends Map<string, Uint8Array> {}
 
-// Pin the certified index.json SHA-256 in base64url form. Snapshot changes fail
-// closed until a reviewed corpus rotation updates this pin and related runners.
-const CERTIFIED_INDEX_SHA = "TLUHKrQP_UsRFlnm1KsgIJICOAUF8fhCS5bSLlM8uRs";
-
+// SOURCE binds this corpus to its certified index.
 function loadCorpus(source: CorpusSource): { index: Record<string, unknown>; cases: CorpusCase[]; raws: Raws } {
+  certifyCorpus(source, DIR);
   const indexRaw = source.read(`${DIR}/index.json`);
   const index = JSON.parse(utf8(indexRaw));
   // Require the published snapshot digest before trusting per-file checksums.
-  const indexSha = b64e(sha256(indexRaw));
-  if (indexSha !== CERTIFIED_INDEX_SHA) {
-    abort(`index.json SHA mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA}`);
-  }
   const totalCases = index.total_cases as number;
   const cases: CorpusCase[] = [];
   const raws: Raws = new Map();
@@ -820,16 +816,16 @@ function runAll(source: CorpusSource): { pass: number; fail: number; total: numb
       input = applyTamper(base.input, c.tamper, raws);
     }
     const actual = dispatch(c.surface, input, raws);
-    const projection = actual === INVALID ? "invalid" : canonicalJson(actual);
+    const projection = computedOutcome(c.expected, actual === INVALID ? null : actual);
     verdicts.push([c.id, projection]);
     if (compareVerdict(c.expected, actual)) pass++;
     else {
       fail_++;
-      failures.push(`${c.id} [${c.surface}]: expected ${canonicalJson(c.expected)}, got ${projection}`);
+      failures.push(`${c.id} [${c.surface}]: expected ${canonicalJson(c.expected)}, got ${canonicalJson(projection)}`);
     }
   }
   runCensus(index, cases);
-  return { pass, fail: fail_, total: cases.length, index, cases, verdicts, failures };
+  return { pass, fail: fail_, total: cases.length, index, cases, verdicts: completeVerdicts(source, DIR, verdicts), failures };
 }
 
 // The runtime-neutral entry: every case through the façade, then the census. A loader prints the
@@ -841,12 +837,12 @@ export const core: Core = {
     const { pass, total, index, verdicts, failures } = runAll(source);
     return {
       corpus: "v1",
-      verdicts,
+      verdicts: completeVerdicts(source, DIR, verdicts),
       failures,
       summary: [
         `conformance: ${pass}/${total} cases agree`,
         `census: discovery == verify-import == index public_key_fingerprints (${(index.public_key_fingerprints as string[]).length} keys)`,
-        "conformance: PASS (all cases agree + census two-way equal)",
+        "conformance: PASS (all cases agree + certified key census)",
       ],
     };
   },

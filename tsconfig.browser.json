@@ -8,6 +8,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "customConditions": ["bap-portable"],
     "rootDir": ".",
     "outDir": "dist",

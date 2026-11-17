@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/consumption-row.schema.json",
+  "title": "BAP v1 canonical consumption row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "chain_id", "sequence", "previous", "commitment"],
+  "properties": {
+    "v": {"const": 1},
+    "chain_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "previous": {"$ref": "#/$defs/sha256"},
+    "commitment": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

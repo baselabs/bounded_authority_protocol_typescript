@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/json-value.schema.json",
+  "title": "BAP v1 JSON input",
+  "description": "Structural schema. The normative decoder additionally rejects duplicate names, invalid UTF-8, over-limit strings and structures, and overlong numeric lexemes.",
+  "oneOf": [
+    {"type": "null"},
+    {"type": "boolean"},
+    {"type": "number", "minimum": -9007199254740991, "maximum": 9007199254740991},
+    {"type": "string", "maxLength": 8192, "x-bap-maximum-utf8-bytes": 8192},
+    {"type": "array", "maxItems": 256, "items": {"$ref": "#"}},
+    {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {"maxLength": 128, "x-bap-maximum-utf8-bytes": 128},
+      "additionalProperties": {"$ref": "#"}
+    }
+  ]
+}

@@ -1,31 +1,44 @@
-// The verdict digest: SHA-256 over the canonical JSON (RFC 8785 JCS for this value shape: an array of
-// two-string arrays) of every case's [case id, verdict projection], in corpus order. Equal digests mean
-// equal verdicts case by case. It is computed with @noble/hashes directly, never through the package's
-// own backend, so a lane cannot certify its own hash.
+// Independent RFC 8785 encoding and SHA-256. The verifier's JCS and hashes are under test.
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { VerdictEntry } from "./core/types.js";
-
-const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-
-// For an array of arrays of strings, JSON.stringify emits exactly the JCS form: no whitespace, and
-// JCS string escaping is ECMAScript JSON.stringify escaping.
-export function verdictJcs(verdicts: readonly VerdictEntry[]): string {
-  return JSON.stringify(verdicts.map(([id, projection]) => [id, projection]));
+export function base64url(bytes: Uint8Array): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  let out = "", bits = 0, value = 0;
+  for (const byte of bytes) {
+    value = (value << 8) | byte; bits += 8;
+    while (bits >= 6) { bits -= 6; out += alphabet[(value >>> bits) & 63]; }
+  }
+  if (bits) out += alphabet[(value << (6 - bits)) & 63];
+  return out;
 }
-
-export function verdictDigest(verdicts: readonly VerdictEntry[]): string {
-  return hex(sha256(new TextEncoder().encode(verdictJcs(verdicts))));
+export const hash64 = (bytes: Uint8Array): string => base64url(sha256(bytes));
+export const hashHex = (bytes: Uint8Array): string => Array.from(sha256(bytes), b => b.toString(16).padStart(2, "0")).join("");
+export function jcs(value: unknown): string {
+  if (value === null || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
+  if (typeof value === "string") {
+    // RFC 8785 refuses lone UTF-16 surrogates.
+    if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value)) throw new Error("JCS: lone surrogate");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${Array.from(value, jcs).join(",")}]`;
+  if (typeof value === "object" && value !== null && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    return `{${Object.keys(value).sort().map(k => `${jcs(k)}:${jcs((value as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  throw new Error("JCS: non-JSON verdict value");
 }
-
-// The first `limit` positions where two verdict lists differ, for a mismatch report.
+export const verdictJcs = (entries: readonly VerdictEntry[]): string => jcs(entries);
+export const verdictDigest = (entries: readonly VerdictEntry[]): string => hash64(new TextEncoder().encode(verdictJcs(entries)));
+// Select the certified shape only. Values always come from computation; null means refusal.
+export function computedOutcome(expected: Record<string, unknown>, actual: Record<string, unknown> | null): Record<string, unknown> {
+  if (actual === null) return {verdict: "invalid"};
+  return {...Object.fromEntries(Object.keys(expected).filter(k => k !== "verdict").map(k => [k, actual[k]])), verdict: "valid"};
+}
 export function firstDifferences(a: readonly VerdictEntry[], b: readonly VerdictEntry[], limit = 10): string[] {
   const out: string[] = [];
-  const n = Math.max(a.length, b.length);
-  for (let i = 0; i < n && out.length < limit; i++) {
+  for (let i = 0; i < Math.max(a.length, b.length) && out.length < limit; i++) {
     const x = a[i], y = b[i];
-    if (x?.[0] !== y?.[0] || x?.[1] !== y?.[1]) {
-      out.push(`#${i}: ${x ? `${x[0]} => ${x[1]}` : "<absent>"} | ${y ? `${y[0]} => ${y[1]}` : "<absent>"}`);
-    }
+    if (!x || !y || x[0] !== y[0] || jcs(x[1]) !== jcs(y[1])) out.push(`#${i}: ${x ? `${x[0]} => ${jcs(x[1])}` : "<absent>"} | ${y ? `${y[0]} => ${jcs(y[1])}` : "<absent>"}`);
   }
   return out;
 }

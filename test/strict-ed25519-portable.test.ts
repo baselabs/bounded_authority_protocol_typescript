@@ -25,7 +25,7 @@ import {
 hashes.sha512 = sha512;
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const CORPUS = fileURLToPath(new URL("../conformance/corpus-strict-ed25519/", import.meta.url));
+const CORPUS = fileURLToPath(new URL("../conformance/priv/conformance/strict-ed25519/", import.meta.url));
 
 interface Bundle {
   verifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean;

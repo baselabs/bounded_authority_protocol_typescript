@@ -2,6 +2,7 @@
 // index digest, exact file set, URI verdicts, producer/assembly bytes and each proof
 // case's local-decode, standard-decode and local-envelope flags.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import { base64urlDecode } from "../../src/base64url.js";
 import { strUtf8, utf8Str } from "../../src/json.js";
@@ -17,8 +18,7 @@ import {
   type ProofProducer,
 } from "../../src/v1.js";
 
-const DIR = "corpus-local-loopback-http";
-const CERTIFIED_INDEX_SHA256 = "10fc4cf05affcddc9e6340ff392c247e25ab038cd938f2557829a7ce63b1a5e4";
+const DIR = corpusDir("local-loopback-http");
 const PREFIX = "local-loopback-http conformance";
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 const sha256Hex = (b: Uint8Array) => hex(nobleSha256(b));
@@ -47,9 +47,9 @@ interface ProofCase {
 }
 
 function main(source: CorpusSource): { summary: string[]; failures: string[]; verdicts: VerdictEntry[] } {
+  certifyCorpus(source, DIR);
   const read = (name: string) => source.read(`${DIR}/${name}`);
   const indexBytes = read("index.json");
-  check(sha256Hex(indexBytes) === CERTIFIED_INDEX_SHA256, `index.json SHA-256 mismatch: got ${sha256Hex(indexBytes)}, certified ${CERTIFIED_INDEX_SHA256}`);
   const index = JSON.parse(utf8Str(indexBytes)) as {
     files: Array<{ path: string; sha256: string }>;
     profile: string; revision: number; proof_cases: number; uri_cases: number;
@@ -68,7 +68,7 @@ function main(source: CorpusSource): { summary: string[]; failures: string[]; ve
   for (const uriCase of profile.uri_cases) {
     const result = localLoopbackHttpUriNormalize(strUtf8(uriCase.input));
     const projection = result.ok ? `valid;normalized=${utf8Str(result.value)}` : "invalid";
-    verdicts.push([uriCase.id, projection]);
+    verdicts.push([uriCase.id, result.ok ? {valid: true, normalized: utf8Str(result.value)} : {valid: false}]);
     const want = uriCase.valid ? `valid;normalized=${uriCase.normalized}` : "invalid";
     if (projection !== want) failures.push(`${uriCase.id}: expected ${want}, got ${projection}`);
   }
@@ -143,15 +143,15 @@ function main(source: CorpusSource): { summary: string[]; failures: string[]; ve
     const decodeStandard = decodeProof(compact).ok;
     const envelopeLocal = checkLocalLoopbackHttpEnvelope(strUtf8(profile.grant_compact), compact, caseExpected).ok;
     const projection = `decode_local=${decodeLocal};decode_standard=${decodeStandard};envelope_local=${envelopeLocal}`;
-    verdicts.push([proofCase.id, projection]);
+    verdicts.push([proofCase.id, {decode_local: decodeLocal, decode_standard: decodeStandard, envelope_local: envelopeLocal}]);
     const want = `decode_local=${proofCase.decode_local};decode_standard=${proofCase.decode_standard};envelope_local=${proofCase.envelope_local}`;
     if (projection !== want) failures.push(`${proofCase.id}: expected ${want}, got ${projection}`);
   }
   return {
-    verdicts,
+    verdicts: completeVerdicts(source, DIR, verdicts),
     failures,
     summary: [
-      `${PREFIX}: ${verdicts.length - failures.length}/${verdicts.length} cases agree (${index.uri_cases} URI, ${index.proof_cases} proof; index SHA-256 ${CERTIFIED_INDEX_SHA256.slice(0, 8)}…), producer/assembly byte symmetry for the ipv4 and ipv6 proofs`,
+      `${PREFIX}: ${verdicts.length - failures.length}/${verdicts.length} cases agree (${index.uri_cases} URI, ${index.proof_cases} proof; index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…), producer/assembly byte symmetry for the ipv4 and ipv6 proofs`,
     ],
   };
 }

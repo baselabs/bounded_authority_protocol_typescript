@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/conformance-case.schema.json",
+  "title": "BAP v1 portable conformance case file",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "provenance", "cases"],
+  "properties": {
+    "format": {"const": "bounded-authority-protocol-v1-conformance-cases"},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["private_material_tracked"],
+      "properties": {
+        "private_material_tracked": {"const": false}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "surface", "class", "input", "expected"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "x-bap-maximum-utf8-bytes": 512
+        },
+        "surface": {
+          "enum": [
+            "untrusted_key_locator",
+            "grant_signing_input",
+            "proof_signing_input",
+            "encode_consumption_entry",
+            "check_chain",
+            "boundary_anchor_signing_input",
+            "key_transition_signing_input",
+            "encode_anchored_export",
+            "assemble_compact",
+            "decode_grant",
+            "decode_proof",
+            "verify_grant",
+            "verify_historical_anchor",
+            "verify_key_transition",
+            "verify_anchored_export",
+            "check_envelope",
+            "request_digest",
+            "jcs.encode",
+            "jwk.encode_public",
+            "jwk.decode_public",
+            "jwk.thumbprint_preimage",
+            "jwk.thumbprint",
+            "jwk.thumbprint_raw",
+            "jwk.public_key_thumbprint_raw",
+            "uri.normalize",
+            "json.decode",
+            "base64url.decode",
+            "bounds.new"
+          ]
+        },
+        "class": {
+          "enum": [
+            "valid",
+            "boundary_near",
+            "exact_bound",
+            "maximum_plus_one",
+            "invalid_duplicate",
+            "invalid_encoding",
+            "invalid_algorithm",
+            "invalid_key",
+            "invalid_claim",
+            "invalid_time",
+            "invalid_nonce",
+            "invalid_uri",
+            "invalid_request",
+            "invalid_selector",
+            "invalid_limit",
+            "tamper_meaningful_byte"
+          ]
+        },
+        "bound_profile": {"$ref": "#/$defs/bound_profile"},
+        "input": {"$ref": "#/$defs/input"},
+        "expected": {"$ref": "#/$defs/expected"},
+        "tamper": {"$ref": "#/$defs/tamper"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "class": {"enum": ["exact_bound", "maximum_plus_one"]}
+            },
+            "required": ["class"]
+          },
+          "then": {"required": ["bound_profile"]}
+        },
+        {
+          "if": {
+            "properties": {"class": {"const": "tamper_meaningful_byte"}},
+            "required": ["class"]
+          },
+          "then": {"required": ["tamper"]},
+          "else": {"not": {"required": ["tamper"]}}
+        }
+      ]
+    },
+    "bound_profile": {
+      "oneOf": [
+        {"const": "maximum"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tightened"],
+          "properties": {
+            "tightened": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 64,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        }
+      ]
+    },
+    "input": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true,
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-bap-maximum-utf8-bytes": 8192
+        },
+        "base64url": {
+          "type": "string",
+          "maxLength": 8192,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "raw_file": {
+          "type": "string",
+          "pattern": "^cases/.+\\.raw$"
+        },
+        "sha256_base64url": {
+          "type": "string",
+          "minLength": 43,
+          "maxLength": 43,
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        }
+      },
+      "dependentSchemas": {
+        "raw_file": {"required": ["sha256_base64url"]}
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["verdict"],
+      "properties": {
+        "verdict": {"enum": ["valid", "invalid"]}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"verdict": {"const": "invalid"}},
+            "required": ["verdict"]
+          },
+          "then": {"maxProperties": 1}
+        }
+      ]
+    },
+    "tamper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_case", "target", "byte_index", "xor", "meaning"],
+      "properties": {
+        "base_case": {"type": "string", "minLength": 1, "maxLength": 512},
+        "target": {"type": "string", "minLength": 1, "maxLength": 128},
+        "byte_index": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "xor": {"type": "integer", "minimum": 0, "maximum": 255},
+        "meaning": {"type": "string", "minLength": 1, "maxLength": 512},
+        "text": {
+          "type": "string",
+          "maxLength": 8192,
+          "x-bap-maximum-utf8-bytes": 8192
+        },
+        "base64url": {
+          "type": "string",
+          "maxLength": 8192,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "raw_file": {
+          "type": "string",
+          "pattern": "^cases/.+\\.raw$"
+        },
+        "sha256_base64url": {
+          "type": "string",
+          "minLength": 43,
+          "maxLength": 43,
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        }
+      },
+      "anyOf": [
+        {"required": ["text"]},
+        {"required": ["base64url"]},
+        {"required": ["raw_file"]}
+      ],
+      "dependentSchemas": {
+        "raw_file": {"required": ["sha256_base64url"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "format": "bap-corpus-source/1",
+  "package": "bounded_authority_protocol",
+  "version": "1.0.0",
+  "checksum": "1e649c2dad18e5d37b8273b75170b9711d736de6481d07ac17a2d9d642391bd9",
+  "indexes": {
+    "application-profiles/local-loopback-http/v1": "EPxM8Fr_zdyeY0D_OSwkfiWrA4zZOPJVeCmnzmOxpeQ",
+    "attestation-profiles/content-assertion/v1": "FLdDbM98yR_s5SoVeMN2DfZyCpNJTRR-5atSPiziGHY",
+    "attestation-profiles/role-attestation/v1": "vlJ1xpU5oPMXNCQv8ApITC-FXzkYHFVonYsPZxGV1io",
+    "producer-canonicality": "me5vu_MnWLA9RjBkf3IdjU40nwYo2GBJPWZ_5udixgE",
+    "selector-float-zero": "l_16mc2_OswKePW6HGVW4jpj4K1m9TPjH9afgtxfMAM",
+    "strict-ed25519": "cyEX3-GIG1U5mBJqlSSpW_sRcSV-OI1UMKCgmfIofLk",
+    "v1/corpus": "TLUHKrQP_UsRFlnm1KsgIJICOAUF8fhCS5bSLlM8uRs",
+    "v2/corpus": "beYom39HsOCnjqRhDnhEoPHVJH2OrOAuyc-YQTCPE9A",
+    "v3/corpus": "pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/anchored-export-header.schema.json",
+  "title": "BAP v1 anchored-export binary header",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "chain_id",
+    "first_sequence",
+    "last_sequence",
+    "row_count",
+    "transition_count",
+    "previous_hash",
+    "last_hash"
+  ],
+  "properties": {
+    "v": {"const": 1},
+    "chain_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "first_sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "last_sequence": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+    "row_count": {"type": "integer", "minimum": 1, "maximum": 65536},
+    "transition_count": {"type": "integer", "minimum": 0, "maximum": 256},
+    "previous_hash": {"$ref": "#/$defs/sha256"},
+    "last_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

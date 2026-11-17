@@ -1450,7 +1450,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
 // Certified v2 headers keep the artifact kind valid while each payload is forged.
 {
   const readCase = (file: string, id: string): { compact: string } => {
-    const doc = JSON.parse(readFileSync(new URL(`../conformance/corpus-v2/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: { compact: string } }> };
+    const doc = JSON.parse(readFileSync(new URL(`../conformance/priv/conformance/v2/corpus/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: { compact: string } }> };
     const c = doc.cases.find((x) => x.id === id);
     if (!c) throw new Error(`case ${id} not found in ${file}`);
     return c.input;
@@ -1554,7 +1554,7 @@ function signP1363(message: Uint8Array, privateKey: nodeCrypto.KeyObject): Uint8
 
 // Full corpus-case reader for the v3 fixtures (the grant-verify signature-matrix inputs).
 function readV3Case(file: string, id: string): Record<string, unknown> {
-  const doc = JSON.parse(readFileSync(new URL(`../conformance/corpus-v3/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: Record<string, unknown> }> };
+  const doc = JSON.parse(readFileSync(new URL(`../conformance/priv/conformance/v3/corpus/cases/${file}`, import.meta.url), "utf8")) as { cases: Array<{ id: string; input: Record<string, unknown> }> };
   const c = doc.cases.find((x) => x.id === id);
   if (!c) throw new Error(`case ${id} not found in ${file}`);
   return c.input;
@@ -1697,8 +1697,8 @@ test("permissiveness: v3 rejects v1 and v2 bytes; v1 and v2 reject v3 bytes (mut
     if (!c) throw new Error(`case ${id} not found in ${url}`);
     return c.input.compact;
   };
-  const v1Grant = readCompact("../conformance/corpus/cases/grant-decode/decode.json", "grant-decode-valid");
-  const v2Grant = readCompact("../conformance/corpus-v2/cases/grant-decode/decode.json", "grant-decode-v2-valid");
+  const v1Grant = readCompact("../conformance/priv/conformance/v1/corpus/cases/grant-decode/decode.json", "grant-decode-valid");
+  const v2Grant = readCompact("../conformance/priv/conformance/v2/corpus/cases/grant-decode/decode.json", "grant-decode-v2-valid");
   const v3Grant = readV3Case("grant-decode/decode.json", "grant-decode-v3-valid").compact as string;
   assert.equal(v3.decodeGrant(strUtf8(v1Grant)).ok, false, "v3 must reject a v:1 grant payload");
   assert.equal(v3.decodeGrant(strUtf8(v2Grant)).ok, false, "v3 must reject a v:2 grant payload");

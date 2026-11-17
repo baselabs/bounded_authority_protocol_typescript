@@ -3,7 +3,7 @@
 // core runs on Node, Deno, Bun, and in a browser page. Loaders (conformance/node_source.ts for the
 // runtimes with node:fs, browser/loader.ts for pages) are the only I/O.
 
-// Every path is relative to the conformance/ directory and "/"-separated, e.g. "corpus-v2/index.json".
+// Paths are relative to conformance/, for example "priv/conformance/v2/corpus/index.json".
 export interface CorpusSource {
   // The exact bytes of one corpus file. Throws when the file is absent.
   read(path: string): Uint8Array;
@@ -20,8 +20,8 @@ export class CoreAbort extends Error {
   }
 }
 
-// One case's verdict projection: [case id, canonical text of the verdict the SDK computed].
-export type VerdictEntry = readonly [string, string];
+// The computed outcome in the exact JSON shape certified by that case's schema.
+export type VerdictEntry = readonly [string, unknown];
 
 export interface CoreReport {
   // The corpus name, stable across lanes ("v1", "v2", "v3", "local-loopback-http", ...).

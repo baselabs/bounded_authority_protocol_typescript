@@ -136,9 +136,14 @@ node --conditions=bap-portable --test
 
 ## Conformance vectors
 
-You do not need to vendor the protocol's conformance corpora to trust this package: its CI
-recomputes every certified verdict on every change (see the
-[README](../../README.md#certified-not-self-tested)). If you implement part of the protocol
-yourself, for example a signer in another language, the corpora are published in the
-[protocol repository](https://github.com/baselabs/bounded_authority_protocol/tree/main/priv/conformance/),
-each with an `index.json` whose SHA-256 you can pin.
+This repository certifies the verifier against Hex `bounded_authority_protocol` 1.0.0's
+`priv/conformance/` subtree, preserved at `conformance/priv/conformance/`. `conformance/SOURCE`
+pins the release checksum and all nine indexes. Tests verify the actual indexed files and complete
+execution offline, then compare computed and expected JCS verdict digests in index order.
+CI separately fetches and byte-compares the named release, verifying both Hex checksums.
+
+If you implement a protocol surface in another language, use the
+[certified Hex release](https://hex.pm/packages/bounded_authority_protocol/1.0.0) as the artifact.
+[Corpus adoption](corpus-adoption.md) explains SOURCE, vendoring, candidate commits, and the weekly
+adoption PR. The npm tarball contains runtime files only. Release workflows require the newest
+non-retired Hex release after its revert window; a new upstream release does not break push CI.

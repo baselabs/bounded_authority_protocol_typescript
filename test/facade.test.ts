@@ -1008,7 +1008,7 @@ test("bounds-parity: fractional/NaN key-validity endpoints reject at verify (cro
 test("bounds-parity: the ARCHIVE verify path guards key validity (round 7)", () => {
   // Use the vendored corpus signed export and change only caller-supplied keys.
   const { readFileSync } = fs as typeof import("node:fs");
-  const corpusPath = join(process.cwd(), "conformance/corpus/cases/anchored-export/verify.json");
+  const corpusPath = join(process.cwd(), "conformance/priv/conformance/v1/corpus/cases/anchored-export/verify.json");
   const cases = JSON.parse(readFileSync(corpusPath, "utf8")).cases as any[];
   const c = cases.find((x) => x.class === "valid")!;
   const dec = (s: string) => new Uint8Array(Buffer.from(s, "base64url"));

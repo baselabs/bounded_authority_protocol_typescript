@@ -1,10 +1,10 @@
 // Conformance runner for the strict-Ed25519 corpus (rule S1, bap-strict-ed25519/1) of
 // @bounded-authority-protocol/verifier. Loads the vendored byte-identical snapshot
-// (conformance/corpus-strict-ed25519), recomputes EVERY verdict from scratch by calling the SDK
+// (conformance/priv/conformance/strict-ed25519), recomputes EVERY verdict from scratch by calling the SDK
 // (the strict helpers, the contract-major v1 and v2 façades, the loopback, role-attestation and
 // content-assertion surfaces, the JWK and JCS primitives), and asserts agreement on all cases.
 //
-// The corpus index.json SHA-256 is pinned below and asserted at startup; the exact file set is
+// The corpus index.json SHA-256 is pinned in SOURCE and asserted at startup; the exact file set is
 // required; every file's recorded SHA-256 is verified; the per-family counts are checked against the
 // index BEFORE any case is trusted. The corpus is additive: the existing v1, v2, v3, loopback,
 // role-attestation and content-assertion corpora keep their own runners and pins unchanged.
@@ -13,6 +13,8 @@
 // [8]P = O, the cofactorless equation) in the corpus generator, with no backend and no blocklist; this
 // runner only consumes them. A verdict that disagrees aborts nonzero with the case id.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
+import { computedOutcome } from "../digest.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 
 import * as v1 from "../../src/v1.js";
@@ -35,11 +37,9 @@ const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toStrin
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = "corpus-strict-ed25519";
+const DIR = corpusDir("strict-ed25519");
 
-// The certified index.json SHA-256 (hex). Pinned here and in test/strict-ed25519-corpus.test.ts; rotate
-// every pin in the same change as any corpus revision.
-const CERTIFIED_INDEX_SHA256 = "732117dfe1881b553998126a9524a95bfb1171257e388d5430a0a099f2287cb9";
+// The profile identity and revision are part of the implemented contract.
 const PROFILE_IDENTITY = "bap-strict-ed25519/1";
 const CERTIFIED_REVISION = 1;
 const CERTIFIED_CASES = 2410;
@@ -82,11 +82,8 @@ interface Loaded {
 }
 
 function loadCorpus(source: CorpusSource): Loaded {
+  certifyCorpus(source, DIR);
   const indexBytes = source.read(`${DIR}/index.json`);
-  const indexSha = sha256Hex(indexBytes);
-  if (indexSha !== CERTIFIED_INDEX_SHA256) {
-    abort(`index.json SHA-256 mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA256}`);
-  }
   const index = JSON.parse(utf8(indexBytes)) as Loaded["index"] & { profile: string; revision: number; private_material_tracked: boolean };
   if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
@@ -367,7 +364,7 @@ const HANDLERS: Record<string, Handler> = {
 // These carry their own flag sets instead of a single verdict, so they are checked by dedicated
 // functions that compare every flag. Each returns an error string or null.
 
-function checkLoopback(c: CorpusCase): [string, string | null] {
+function checkLoopback(c: CorpusCase): [Record<string, unknown>, string | null] {
   const issuer = obj(c, "issuer");
   const request = obj(c, "request");
   const compact = strUtf8(str(c, "compact", c.id));
@@ -382,14 +379,14 @@ function checkLoopback(c: CorpusCase): [string, string | null] {
   const decodeLocal = v1.decodeLocalLoopbackHttpProof(compact).ok;
   const decodeStandard = v1.decodeProof(compact).ok;
   const envelopeLocal = v1.checkLocalLoopbackHttpEnvelope(strUtf8(str(c, "grant", c.id)), compact, expected).ok;
-  const projection = `decode_local=${decodeLocal};decode_standard=${decodeStandard};envelope_local=${envelopeLocal}`;
+  const projection = {decode_local: decodeLocal, decode_standard: decodeStandard, envelope_local: envelopeLocal};
   if (decodeLocal !== c.decode_local) return [projection, `decode_local: expected ${String(c.decode_local)}, got ${decodeLocal}`];
   if (decodeStandard !== c.decode_standard) return [projection, `decode_standard: expected ${String(c.decode_standard)}, got ${decodeStandard}`];
   if (envelopeLocal !== c.envelope_local) return [projection, `envelope_local: expected ${String(c.envelope_local)}, got ${envelopeLocal}`];
   return [projection, null];
 }
 
-function checkRoleAttestation(c: CorpusCase): [string, string | null] {
+function checkRoleAttestation(c: CorpusCase): [Record<string, unknown>, string | null] {
   const attestor = obj(c, "attestor");
   const subject = obj(c, "subject");
   const compact = strUtf8(str(c, "compact", c.id));
@@ -404,13 +401,13 @@ function checkRoleAttestation(c: CorpusCase): [string, string | null] {
   const verified = runThunk(() => ra.verifyAttestation(compact, expected));
   const d = decoded !== INVALID && decoded.ok;
   const v = verified !== INVALID && verified.ok;
-  const projection = `decode=${d};verify=${v}`;
+  const projection = {decode: d, verify: v};
   if (d !== c.decode) return [projection, `decode: expected ${String(c.decode)}, got ${d}`];
   if (v !== c.verify) return [projection, `verify: expected ${String(c.verify)}, got ${v}`];
   return [projection, null];
 }
 
-function checkContentAssertion(c: CorpusCase): [string, string | null] {
+function checkContentAssertion(c: CorpusCase): [Record<string, unknown>, string | null] {
   const attestor = obj(c, "attestor");
   const ctx = obj(c, "expected_context");
   const compact = strUtf8(str(c, "compact", c.id));
@@ -428,13 +425,13 @@ function checkContentAssertion(c: CorpusCase): [string, string | null] {
   const want = c.expected as { decode: string; verify: string };
   const d = decoded !== INVALID && decoded.ok ? "valid" : "invalid";
   const v = verified !== INVALID && verified.ok ? "valid" : "invalid";
-  const projection = `decode=${d};verify=${v}`;
+  const projection = {decode: d, verify: v};
   if (d !== want.decode) return [projection, `decode: expected ${want.decode}, got ${d}`];
   if (v !== want.verify) return [projection, `verify: expected ${want.verify}, got ${v}`];
   return [projection, null];
 }
 
-const FLAG_SURFACES: Record<string, (c: CorpusCase) => [string, string | null]> = {
+const FLAG_SURFACES: Record<string, (c: CorpusCase) => [Record<string, unknown>, string | null]> = {
   local_loopback_http: checkLoopback,
   role_attestation: checkRoleAttestation,
   content_assertion: checkContentAssertion,
@@ -456,14 +453,6 @@ function compareVerdict(c: CorpusCase, actual: Verdict): string | null {
   return null;
 }
 
-// Canonical JSON (sorted keys) of a computed verdict, for the cross-lane verdict digest.
-function canonicalJson(v: unknown): string {
-  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? String(v);
-  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(",")}]`;
-  const keys = Object.keys(v).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson((v as Record<string, unknown>)[k])}`).join(",")}}`;
-}
-
 // ---- the runtime-neutral entry ----
 
 function runAll(source: CorpusSource): { failures: string[]; verdicts: VerdictEntry[]; summary: string[] } {
@@ -475,13 +464,13 @@ function runAll(source: CorpusSource): { failures: string[]; verdicts: VerdictEn
     perSurface[c.surface] = (perSurface[c.surface] ?? 0) + 1;
     const flag = FLAG_SURFACES[c.surface];
     let problem: string | null;
-    let projection: string;
+    let projection: Record<string, unknown>;
     if (flag) [projection, problem] = flag(c);
     else {
       const handler = HANDLERS[c.surface];
       if (!handler) abort(`${c.id}: unknown surface ${c.surface}`);
       const actual = handler(c);
-      projection = actual === INVALID ? "invalid" : canonicalJson(actual);
+      projection = computedOutcome(c.expected as Json, actual === INVALID ? null : actual);
       problem = compareVerdict(c, actual);
     }
     verdicts.push([c.id, projection]);
@@ -490,9 +479,9 @@ function runAll(source: CorpusSource): { failures: string[]; verdicts: VerdictEn
   const pass = cases.length - failures.length;
   return {
     failures,
-    verdicts,
+    verdicts: completeVerdicts(source, DIR, verdicts),
     summary: [
-      `strict-ed25519 conformance: ${pass}/${cases.length} cases agree (profile ${PROFILE_IDENTITY}, revision ${CERTIFIED_REVISION}, index SHA-256 ${CERTIFIED_INDEX_SHA256.slice(0, 8)}…)`,
+      `strict-ed25519 conformance: ${pass}/${cases.length} cases agree (profile ${PROFILE_IDENTITY}, revision ${CERTIFIED_REVISION}, index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…)`,
       `families: ${Object.entries(index.families).map(([k, n]) => `${k} ${n}`).join(", ")}`,
       `surfaces: ${Object.entries(perSurface).sort().map(([k, n]) => `${k} ${n}`).join(", ")}`,
       "strict-ed25519 conformance: PASS (every case agrees)",

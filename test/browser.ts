@@ -14,7 +14,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { chromium, firefox, webkit, type BrowserType } from "playwright";
+import { chromium, firefox, webkit, type Browser, type BrowserType } from "playwright";
 import { assertLaneAgrees, summarize, type LaneCorpus } from "./support/lanes.js";
 import { MODULE, PAGE, documentedCommand, verifiedLine } from "./support/runtimes-guide.js";
 
@@ -42,8 +42,8 @@ function corpusManifest(): string[] {
     }
   };
   for (const name of readdirSync(CONFORMANCE).sort()) {
-    if (name.startsWith("corpus") && statSync(join(CONFORMANCE, name)).isDirectory()) walk(join(CONFORMANCE, name), `${name}/`);
-    else if (/^curated-inputs-.*\.json$/.test(name)) out.push(name);
+    if (name === "priv" && statSync(join(CONFORMANCE, name)).isDirectory()) walk(join(CONFORMANCE, name), `${name}/`);
+    else if (name === "SOURCE") out.push(name);
   }
   return out;
 }
@@ -152,8 +152,9 @@ for (const name of SELECTED) {
   test(`${name}: the bench demo (a deploy to staging) mints, verifies, and every tamper is refused`, async () => {
     const bench = await serveBench();
     const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
-    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    let browser: Browser | undefined;
     try {
+      browser = await engine.launch(executablePath ? { executablePath } : {});
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e)));
@@ -177,16 +178,16 @@ for (const name of SELECTED) {
       }
       assert.deepEqual(errors, []);
     } finally {
-      await browser.close();
-      bench.server.close();
+      try { await browser?.close(); } finally { bench.server.close(); }
     }
   });
 
   test(`${name}: the runtimes guide's page and bundle verify a grant under the strict CSP`, async () => {
     const guide = await serveRuntimesGuide();
     const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
-    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    let browser: Browser | undefined;
     try {
+      browser = await engine.launch(executablePath ? { executablePath } : {});
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e)));
@@ -199,16 +200,16 @@ for (const name of SELECTED) {
       assert.equal((await verified).text(), verifiedLine("portable"));
       assert.deepEqual(errors, []);
     } finally {
-      await browser.close();
-      guide.server.close();
+      try { await browser?.close(); } finally { guide.server.close(); }
     }
   });
 
   test(`${name}: BACKEND_ID portable in a secure context under the strict CSP, and every corpus agrees with its pin and with Node`, async (t) => {
     const served = await serve();
     const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
-    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    let browser: Browser | undefined;
     try {
+      browser = await engine.launch(executablePath ? { executablePath } : {});
       const page = await browser.newPage();
       const response = await page.goto(`${served.origin}/`);
       assert.equal(response?.headers()["content-security-policy"], CSP, "the page is served under the strict CSP");
@@ -221,16 +222,16 @@ for (const name of SELECTED) {
       assertLaneAgrees(name, result.corpora);
       t.diagnostic(`${name} ${browser.version()} (${result.userAgent}): ${summarize(result.corpora)}; total ${result.totalMs} ms`);
     } finally {
-      await browser.close();
-      served.server.close();
+      try { await browser?.close(); } finally { served.server.close(); }
     }
   });
 
   test(`${name}: red-proof: a page expecting the wrong backend runs no corpus`, async () => {
     const served = await serve();
     const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
-    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    let browser: Browser | undefined;
     try {
+      browser = await engine.launch(executablePath ? { executablePath } : {});
       const page = await browser.newPage();
       await page.goto(`${served.origin}/?expect=node`);
       await page.waitForFunction(pageDone, undefined, { timeout: 60_000 });
@@ -239,16 +240,16 @@ for (const name of SELECTED) {
       assert.deepEqual(result.corpora, {});
       assert.ok(!served.requests.some((p) => p.startsWith("/conformance/")), "no corpus file was fetched");
     } finally {
-      await browser.close();
-      served.server.close();
+      try { await browser?.close(); } finally { served.server.close(); }
     }
   });
 
   test(`${name}: red-proof: eval is blocked by the served CSP and the securitypolicyviolation listener records it`, async () => {
     const served = await serve();
     const executablePath = name === "chromium" ? process.env.BAP_CHROMIUM_EXECUTABLE : undefined;
-    const browser = await engine.launch(executablePath ? { executablePath } : {});
+    let browser: Browser | undefined;
     try {
+      browser = await engine.launch(executablePath ? { executablePath } : {});
       const page = await browser.newPage();
       await page.goto(`${served.origin}/eval-probe.html`);
       await page.waitForFunction(pageDone, undefined, { timeout: 60_000 });
@@ -256,8 +257,7 @@ for (const name of SELECTED) {
       assert.equal(probe.evalBlocked, true);
       assert.ok(probe.violations.some((v) => v.startsWith("script-src")), JSON.stringify(probe.violations));
     } finally {
-      await browser.close();
-      served.server.close();
+      try { await browser?.close(); } finally { served.server.close(); }
     }
   });
 }

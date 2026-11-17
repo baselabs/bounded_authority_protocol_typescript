@@ -13,15 +13,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build, type Plugin } from "esbuild";
 import { fsSource } from "../conformance/node_source.js";
-import type { Core } from "../conformance/core/types.js";
+import type { Core, VerdictEntry } from "../conformance/core/types.js";
+import { expectedVerdicts } from "../conformance/certification.js";
+import { verdictDigest } from "../conformance/digest.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const PORTABLE = `${REPO}src/crypto/portable.ts`;
-const PINS = JSON.parse(readFileSync(new URL("../conformance/verdict-digests.json", import.meta.url), "utf8")) as {
-  digests: Record<string, { sha256: string }>;
-};
 
-interface Built { v3: Core; strict: Core; verdictDigest(v: readonly (readonly [string, string])[]): string; BACKEND_ID: string }
+interface Built { v3: Core; strict: Core; verdictDigest(v: readonly VerdictEntry[]): string; BACKEND_ID: string }
 
 const LOW_S_GATE = 'if (s > HALF_N) fail("es256: high-s form (low-s required)");';
 
@@ -88,7 +87,7 @@ test("control: the real portable backend, built the same way, matches every pinn
   for (const core of [real.v3, real.strict]) {
     const report = core.run(source);
     assert.deepEqual(report.failures, []);
-    assert.equal(real.verdictDigest(report.verdicts), PINS.digests[core.corpus]!.sha256);
+    assert.equal(real.verdictDigest(report.verdicts), verdictDigest(expectedVerdicts(source, core.dir)));
   }
 });
 
@@ -96,7 +95,7 @@ for (const zip215 of [true, false]) {
   test(`noble verify (zip215: ${zip215}) in place of the cofactorless check changes the strict corpus digest`, async () => {
     const variant = await buildWith(nobleVerifyVariant(zip215), false);
     const report = variant.strict.run(source);
-    assert.notEqual(variant.verdictDigest(report.verdicts), PINS.digests["strict-ed25519"]!.sha256);
+    assert.notEqual(variant.verdictDigest(report.verdicts), verdictDigest(expectedVerdicts(source, variant.strict.dir)));
     assert.ok(report.failures.length > 0, "the strict corpus disagrees with a cofactored verify");
   });
 }

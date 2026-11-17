@@ -68,6 +68,9 @@ jobs:
       - name: Supply chain (registry signatures and attestations)
         run: npm audit signatures
 
+      - name: Require the newest non-retired Hex corpus after its revert window
+        run: pnpm check:corpus:release
+
       - name: Build
         run: pnpm build
 
@@ -123,6 +126,9 @@ jobs:
       # No dependency's install script runs in the job that holds the publish token.
       - name: Install (frozen lockfile, lifecycle scripts ignored)
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Require the newest non-retired Hex corpus after its revert window
+        run: pnpm check:corpus:release
 
       - name: Build
         run: pnpm build

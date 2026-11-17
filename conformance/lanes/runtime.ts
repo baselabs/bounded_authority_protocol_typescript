@@ -3,19 +3,19 @@
 // prints one JSON report on stdout: the runtime, the backend, and per corpus the case count, verdict
 // digest, wall time, failures and the full verdict list (so the Node-side test can name the first
 // differing cases). Exit status: 0 only if the backend matches --expect and every corpus agrees with
-// its corpus and with conformance/verdict-digests.json.
+// its corpus and with the corpus-derived expected digest.
 //
 // Run from the repository root after `pnpm build` (the "#crypto" import resolves to the built backend
 // under the deno and bun conditions):
 //   deno run --sloppy-imports --allow-read conformance/lanes/runtime.ts --expect=portable
 //   bun conformance/lanes/runtime.ts --expect=portable
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { BACKEND_ID } from "../../src/index.js";
 import { CORES } from "../core/index.js";
 import { CoreAbort } from "../core/types.js";
 import { fsSource } from "../node_source.js";
-import { verdictDigest } from "../digest.js";
+import { assertVerdictDigest } from "../certification.js";
+import type { VerdictEntry } from "../core/types.js";
 
 declare const Deno: { version: { deno: string } } | undefined;
 declare const Bun: { version: string } | undefined;
@@ -37,19 +37,15 @@ if (BACKEND_ID !== expect) {
   exit(1);
 }
 
-const pins = JSON.parse(readFileSync(new URL("../verdict-digests.json", import.meta.url), "utf8")) as {
-  digests: Record<string, { cases: number; sha256: string }>;
-};
 const source = fsSource(fileURLToPath(new URL("..", import.meta.url)));
-const corpora: Record<string, { cases: number; digest: string; ms: number; failures: string[]; pinned: boolean; verdicts: (readonly [string, string])[] }> = {};
+const corpora: Record<string, { cases: number; digest: string; ms: number; failures: string[]; pinned: boolean; verdicts: VerdictEntry[] }> = {};
 let ok = true;
 for (const core of CORES) {
   const start = performance.now();
   try {
     const report = core.run(source);
-    const digest = verdictDigest(report.verdicts);
-    const pin = pins.digests[core.corpus];
-    const pinned = pin !== undefined && pin.sha256 === digest && pin.cases === report.verdicts.length;
+    const digest = assertVerdictDigest(source, core.dir, report.verdicts);
+    const pinned = true;
     ok &&= pinned && report.failures.length === 0;
     corpora[core.corpus] = { cases: report.verdicts.length, digest, ms: Math.round(performance.now() - start), failures: [...report.failures], pinned, verdicts: [...report.verdicts] };
   } catch (e) {

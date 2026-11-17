@@ -2,7 +2,10 @@
 
 The [generated API reference](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
 provides searchable declarations, signatures and field contracts, built from the release tag matching npm latest and stamped with that release version.
-This page explains how to use those declarations with executable examples.
+This page explains how to use those declarations with executable examples. The verifier's
+certification binds to Hex `bounded_authority_protocol` 1.0.0 through `conformance/SOURCE` and the
+complete vendored `priv/conformance/` tree. See [Corpus adoption](guides/corpus-adoption.md) for the
+vendoring tool, candidate mode, weekly adoption PRs, release eligibility, and verdict digest contract.
 
 This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0, whose
 exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the

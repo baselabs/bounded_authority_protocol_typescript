@@ -1,10 +1,9 @@
-// The vendored strict-Ed25519 corpus snapshot (conformance/corpus-strict-ed25519), the way this
+// The vendored strict-Ed25519 corpus snapshot (conformance/priv/conformance/strict-ed25519), the way this
 // repository vendors every other corpus: byte-identical to the certified source, the index SHA-256
 // asserted at load, every listed file's SHA-256 recomputed, and the exact file set required. Every
 // verdict is then recomputed by the SDK in conformance/core/strict_ed25519.ts (pnpm
-// conformance:strict-ed25519); this suite pins the snapshot itself and the no-flip property: the
-// index of every EXISTING corpus is byte-identical to its certified pin, so adding this corpus rotated
-// none of them (the strict corpus is additive).
+// conformance:strict-ed25519). SOURCE binds all nine indexes, independently checked in
+// conformance-core.test.ts; this suite checks the strict profile's families and requirements.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -15,8 +14,7 @@ const ROOT = new URL("../conformance/", import.meta.url).pathname;
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const read = (path: string) => new Uint8Array(readFileSync(path));
 
-const STRICT = join(ROOT, "corpus-strict-ed25519");
-const STRICT_INDEX_SHA256 = "732117dfe1881b553998126a9524a95bfb1171257e388d5430a0a099f2287cb9";
+const STRICT = join(ROOT, "priv/conformance/strict-ed25519");
 
 function files(dir: string): string[] {
   const out: string[] = [];
@@ -27,10 +25,6 @@ function files(dir: string): string[] {
   }
   return out;
 }
-
-test("the strict corpus index matches its certified SHA-256 pin", () => {
-  assert.equal(sha(read(join(STRICT, "index.json"))), STRICT_INDEX_SHA256);
-});
 
 test("the strict corpus snapshot is exactly the files its index lists, each at its recorded SHA-256", () => {
   const index = JSON.parse(readFileSync(join(STRICT, "index.json"), "utf8")) as {
@@ -67,19 +61,3 @@ test("the strict corpus profile names the rule requirement ids, the torsion note
     assert.ok(profile.families.includes(family), family);
   }
 });
-
-// The existing corpora are certified artifacts. Their index SHA-256 pins are asserted here independently
-// of their runners; a byte change to any of them goes red.
-const EXISTING_INDEX_PINS: Array<[string, string]> = [
-  ["corpus", "4cb5072ab40ffd4b111659e6d4ab20209202380505f1f8424b96d22e533cb91b"],
-  ["corpus-v2", "6de6289b7f47b0e0a78ea4610e7844a0f1d5247d8eace02ec9cf9841308f13d0"],
-  ["corpus-v3", "a5c8075e7534345c3bb6611d0b40292904bcfa3af0702e07ae014fa66926433c"],
-  ["corpus-role-attestation", "be5275c69539a0f31734242ff00a484c2f855f39181c55689d8b0f671195d62a"],
-  ["corpus-content-assertion", "14b7436ccf7cc91fece52a1578c3760df6720a93494d147ee5ab523e2ce21876"],
-  ["corpus-local-loopback-http", "10fc4cf05affcddc9e6340ff392c247e25ab038cd938f2557829a7ce63b1a5e4"],
-];
-for (const [dir, pin] of EXISTING_INDEX_PINS) {
-  test(`existing corpus ${dir} keeps its certified index SHA-256 (the strict corpus is additive)`, () => {
-    assert.equal(sha(read(join(ROOT, dir, "index.json"))), pin);
-  });
-}

@@ -1,6 +1,7 @@
 // Independent public-spec consumer. No sibling SDK implementation is imported.
 // The frozen index pin and census are checked before trusting any corpus metadata.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as ca from "../../src/content_assertion.js";
 import * as sdk from "../../src/index.js";
@@ -9,9 +10,7 @@ import { base64urlDecode, base64urlEncode } from "../../src/base64url.js";
 import { strUtf8, utf8Str } from "../../src/json.js";
 import { trying } from "../../src/error.js";
 
-const DIR = "corpus-content-assertion";
-// Stable candidate; certification remains pending protocol-owner cross-SDK agreement.
-const INDEX_SHA256 = "14b7436ccf7cc91fece52a1578c3760df6720a93494d147ee5ab523e2ce21876";
+const DIR = corpusDir("content-assertion");
 const FILES = ["profile.json", "digest-cases.json", "assertion-structure-cases.json", "assertion-verification-cases.json", "successor-cases.json", "content-base.raw", "content-maximum.raw", "content-over-limit.raw"].sort();
 // The corpus integrity hash is @noble/hashes, independent of the package backend under test.
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
@@ -59,11 +58,11 @@ interface Profile {
   expected: {issuer: string; audience: string; subject: string; profile: string; profile_digest: string; content_digest: string; now: number};
 }
 function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry[] } {
+  certifyCorpus(source, DIR);
   const load = (path: string) => source.read(`${DIR}/${path}`);
   const json = <T>(path: string): T => JSON.parse(utf8Str(load(path))) as T;
   const verdicts: VerdictEntry[] = [];
   const indexBytes = load("index.json");
-  assert.equal(sha(indexBytes), INDEX_SHA256, "independently pinned corpus index");
   const index = JSON.parse(utf8Str(indexBytes)) as {profile: string; revision: number; assertion_cases: number; digest_cases: number; successor_cases: number; private_material_tracked: boolean; files: {path: string; sha256: string}[]};
   assert.equal(index.profile, "bap-content-assertion/1");
   assert.equal(index.revision, 1);
@@ -107,7 +106,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
     const d = b.ok ? ca.decodeAssertion(compact, b.value) : b;
     const v = b.ok ? ca.verifyAssertion(compact, expected(c, b.value)) : b;
     assert.equal(verdict(d.ok), c.expected.decode, `${c.id}: decode`);
-    verdicts.push([c.id, `decode=${verdict(d.ok)};verify=${verdict(v.ok)}`]);
+    verdicts.push([c.id, {decode: verdict(d.ok), verify: verdict(v.ok)}]);
     assert.equal(verdict(v.ok), c.expected.verify, `${c.id}: verify`);
     const digest = b.ok ? ca.assertionDigest(compact, b.value) : b;
     assert.equal(digest.ok, d.ok, `${c.id}: digest parse gate`);
@@ -138,7 +137,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
       bytes = load(c.input.content_file);
     } else { assert.equal(typeof c.input.content_base64url, "string"); bytes = raw(c.input.content_base64url!); }
     const r = b.ok ? ca.contentDigest(bytes, b.value) : b;
-    verdicts.push([c.id, r.ok ? `valid;digest=${encoded(r.value)}` : "invalid"]);
+    verdicts.push([c.id, r.ok ? {verdict: "valid", digest: encoded(r.value)} : {verdict: "invalid"}]);
     assert.equal(verdict(r.ok), c.expected.verdict, `${c.id}: content digest`);
     if (r.ok) assert.equal(encoded(r.value), c.expected.digest, `${c.id}: digest bytes`);
   }
@@ -156,10 +155,10 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
     assert.equal(verdict(p.ok), c.expected.predecessor, `${c.id}: predecessor verification`);
     assert.equal(verdict(s.ok), c.expected.successor, `${c.id}: successor verification`);
     const relation = p.ok && s.ok ? verdict(ca.verifySuccessor(facts(p.value, c.predecessor), facts(s.value, c.successor), MAXIMUM_BOUNDS).ok) : "not_run";
-    verdicts.push([c.id, `predecessor=${verdict(p.ok)};successor=${verdict(s.ok)};relation=${relation}`]);
+    verdicts.push([c.id, {predecessor: verdict(p.ok), successor: verdict(s.ok), relation}]);
     assert.equal(relation, c.expected.relation, `${c.id}: relation`);
   }
-  return { verdicts, summary: [`content-assertion conformance: ${assertions.length} assertions, ${digests.length} digests, ${successors.length} successors agree; ${producerChecks} producer/assembly byte checks; pinned index ${INDEX_SHA256}`] };
+  return { verdicts: completeVerdicts(source, DIR, verdicts), summary: [`content-assertion conformance: ${assertions.length} assertions, ${digests.length} digests, ${successors.length} successors agree; ${producerChecks} producer/assembly byte checks; pinned index ${certifyCorpus(source, DIR).indexSha}`] };
 }
 
 export const core: Core = {

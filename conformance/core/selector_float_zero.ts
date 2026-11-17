@@ -1,6 +1,6 @@
 // Conformance runner for the bap-selector-float-zero/1 corpus (erratum 6) of
 // @bounded-authority-protocol/verifier. Loads the vendored certified corpus snapshot
-// (conformance/corpus-selector-float-zero) and drives every case through its contract-major's own
+// (conformance/priv/conformance/selector-float-zero) and drives every case through its contract-major's own
 // surface: decode_grant, grant_signing_input (the package's grant producer) and check_envelope, for
 // majors 1, 2 and 3, asserting the certified verdict on all 161 cases.
 //
@@ -21,6 +21,8 @@
 //
 // Derivation: the corpus is the arbiter (BAP erratum 6); the SDK is the implementation under test.
 import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
+import { certifyCorpus, completeVerdicts, corpusDir } from "../certification.js";
+import { computedOutcome } from "../digest.js";
 import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./types.js";
 import * as v1 from "../../src/v1.js";
 import * as v2 from "../../src/v2.js";
@@ -35,14 +37,9 @@ const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toStrin
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = "corpus-selector-float-zero";
+const DIR = corpusDir("selector-float-zero");
 
-// The certified index.json SHA-256, revision 1 (161 cases), hex
-// 97fd7a99cdbf3acc0a78f5ba1c6556e23a63e0ad66f533e31fd69f82dc5f3003
-// (base64url l_16mc2_OswKePW6HGVW4jpj4K1m9TPjH9afgtxfMAM). Pinned independently here, in the
-// protocol repository, and in every SDK consumer; rotate every pin in the same change as any
-// corpus revision.
-const CERTIFIED_INDEX_SHA256 = "97fd7a99cdbf3acc0a78f5ba1c6556e23a63e0ad66f533e31fd69f82dc5f3003";
+// SOURCE carries the index pin; profile identity is checked independently.
 const PROFILE_IDENTITY = "bap-selector-float-zero/1";
 const CERTIFIED_REVISION = 1;
 const CERTIFIED_CASES = 161;
@@ -88,11 +85,8 @@ interface Family {
 }
 
 function loadCorpus(source: CorpusSource): Family[] {
+  certifyCorpus(source, DIR);
   const indexBytes = source.read(`${DIR}/index.json`);
-  const indexSha = sha256Hex(indexBytes);
-  if (indexSha !== CERTIFIED_INDEX_SHA256) {
-    abort(`index.json SHA-256 mismatch: got ${indexSha}, certified ${CERTIFIED_INDEX_SHA256}`);
-  }
   const index = JSON.parse(utf8(indexBytes)) as {
     profile: string; revision: number; total_cases: number;
     families: Record<string, number>;
@@ -342,7 +336,7 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
         abort(`${c.id}: an invalid case certifies only its verdict`);
       }
       const outcome = runCase(c);
-      verdicts.push([c.id, projection(outcome)]);
+      verdicts.push([c.id, computedOutcome(c.expected, outcome === INVALID ? null : outcome)]);
       if (agrees(c, outcome)) {
         if (outcome === INVALID) rejected++;
         else accepted++;
@@ -354,10 +348,10 @@ function main(source: CorpusSource): { summary: string[]; verdicts: VerdictEntry
   if (seen.size !== CERTIFIED_CASES) abort(`case census: ${seen.size} != ${CERTIFIED_CASES}`);
 
   const byFamily = sortedEntries(CERTIFIED_FAMILIES).map(([name, n]) => `${name} ${n}`).join(", ");
-  return { verdicts, failures, summary: [
-    `selector-float-zero conformance: PASS — ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
+  return { verdicts: completeVerdicts(source, DIR, verdicts), failures, summary: [
+    `selector-float-zero conformance: PASS: ${CERTIFIED_CASES}/${CERTIFIED_CASES} verdict agreement ` +
       `(${rejected} rejected, ${accepted} accepted with certified outputs; revision ${CERTIFIED_REVISION}, ` +
-      `index SHA-256 ${CERTIFIED_INDEX_SHA256.slice(0, 8)}…; ${byFamily}).`,
+      `index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…; ${byFamily}).`,
   ] };
 }
 

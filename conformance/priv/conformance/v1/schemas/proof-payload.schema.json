@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/baselabs/bounded_authority_protocol/priv/conformance/v1/schemas/proof-payload.schema.json",
+  "title": "BAP v1 proof payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "jti", "htm", "htu", "iat", "ba_inv", "ba_op", "ath", "ba_req"],
+  "properties": {
+    "v": {"const": 1},
+    "jti": {"$ref": "#/$defs/identifier"},
+    "htm": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "x-bap-maximum-utf8-bytes": 32,
+      "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+    },
+    "htu": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "x-bap-maximum-utf8-bytes": 8192,
+      "pattern": "^https://"
+    },
+    "iat": {"type": "integer"},
+    "nonce": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "ba_inv": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "ba_op": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "x-bap-maximum-utf8-bytes": 128,
+      "pattern": "^[ -~]+$"
+    },
+    "ath": {"$ref": "#/$defs/sha256"},
+    "ba_req": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-bap-maximum-utf8-bytes": 512
+    },
+    "sha256": {
+      "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+    }
+  }
+}

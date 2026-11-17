@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Every corpus in one run, after asserting which backend this process resolved. `pnpm
 // conformance:portable` runs it under --conditions=bap-portable, so the portable backend is held to the
-// same pinned verdict digests as the node backend. Usage: run_all.ts --backend=<node|portable>.
+// same corpus-derived expected verdict digests as the node backend. Usage: run_all.ts --backend=<node|portable>.
 import { BACKEND_ID } from "../src/index.js";
 import { runCore } from "./node_main.js";
 import { CORES } from "./core/index.js";
@@ -17,4 +17,4 @@ if (BACKEND_ID !== want) {
 }
 console.log(`run_all: BACKEND_ID ${BACKEND_ID}`);
 for (const core of CORES) runCore(core);
-console.log(`run_all: PASS (${CORES.length} corpora, every verdict digest equals conformance/verdict-digests.json)`);
+console.log(`run_all: PASS (${CORES.length} corpora, every verdict digest equals the corpus-derived expected digest)`);
