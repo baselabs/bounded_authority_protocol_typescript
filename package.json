@@ -132,6 +132,11 @@
   },
   "packageManager": "pnpm@10.20.0",
   "pnpm": {
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
+    },
     "overrides": {
       "typedoc>minimatch": "11.0.1"
     }
