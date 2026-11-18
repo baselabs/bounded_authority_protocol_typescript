@@ -25,6 +25,21 @@ test("candidate CI checks the named artifact and dispatch publication enforces f
   assert.doesNotMatch(commands(ci.jobs.package), /test:readback|tools\/readback/);
 });
 
+test("publication confirms the package exists before checking its version or staging", () => {
+  const steps = workflow("publish").jobs.publish.steps;
+  const gate = steps.findIndex(s => s.name === "Refuse a package name the registry has never had");
+  const version = steps.findIndex(s => s.name === "Refuse a published or tagged version");
+  assert.ok(gate >= 0 && version === gate + 1);
+  assert.ok(version < steps.findIndex(s => s.run?.includes("npm stage publish")));
+  const run = steps[gate].run;
+  assert.match(run, /const \{name\} = JSON\.parse\(readFileSync\('package\.json', 'utf8'\)\)/);
+  assert.match(run, /fetch\(`https:\/\/registry\.npmjs\.org\/\$\{encodeURIComponent\(name\)\}`/);
+  assert.match(run, /signal: AbortSignal\.timeout\(30_000\)/);
+  assert.match(run, /catch \{\s+throw new Error\(`npm registry could not be read for \$\{name\}`\)/);
+  assert.match(run, /assert\.notEqual\(packageResponse\.status, 404, `\$\{name\} has never been published to npm: this workflow publishes new versions of existing packages only\. A first publication is the owner's decision\.`\)/);
+  assert.match(run, /assert\.equal\(packageResponse\.status, 200, `npm registry could not be read/);
+});
+
 test("weekly adoption maintains one exact-title landing issue without dispatching qualification", () => {
   const job = workflow("corpus-adoption");
   assert.equal(job.on.schedule.length, 1);
