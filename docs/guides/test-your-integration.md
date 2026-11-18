@@ -155,7 +155,7 @@ pinned version fail the online artifact job closed.
 
 Documentation navigation: [Previous: Integration recipes](recipes.md) · [Next: Upgrade index](upgrading.md)
 
-Qualification installs this repository's own package only from the packed candidate.
+Candidate notebook and consumer journeys install this repository's package from the packed candidate.
 `publish.yml` runs published notebooks and the other registry checks after each upload in the
 keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
 version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand

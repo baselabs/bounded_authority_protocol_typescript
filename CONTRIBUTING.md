@@ -49,7 +49,7 @@ tested. Keep guides in `docs/manifest.json` and notebooks in `docs/notebooks/reg
 Every notebook must have saved safe semantic results and clean up its resources.
 
 Qualification runs once on `kci/**`; the last `qualified` job requires every candidate lane.
-Qualification installs this repository's own package only from the packed candidate.
+Candidate notebook and consumer journeys install this repository's package from the packed candidate.
 `publish.yml` runs published notebooks and the other registry checks after each upload in the
 keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
 version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
