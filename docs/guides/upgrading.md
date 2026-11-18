@@ -1,6 +1,6 @@
 # Upgrade index
 
-This guide targets verifier **2.0.0**. Only the current npm latest line receives fixes; earlier
+This guide targets verifier **2.0.1**. Only the current npm latest line receives fixes; earlier
 lines below are migration sources, not alternative parsers or compatibility modes.
 
 | Earlier release line | Route to the current API |
@@ -101,12 +101,12 @@ assert.deepEqual(affected, ["sensors.calibrate", "jobs.retry"]);
 
 1. Run a check like the one above over the selector values your issuers emit, and change each
    hit to an integer or to a float with a fractional part.
-2. Move the dependency to `^2.0.0` (for an exact migration trial, `npm install @bounded-authority-protocol/verifier@2.0.0`).
+2. Move the dependency to `^2.0.1` (for an exact migration trial, `npm install @bounded-authority-protocol/verifier@2.0.1`).
 3. Run your own tests. Nothing else in your code changes: no import, function name, parameter or
    result shape moved.
 
 If you use the companion [signer](https://www.npmjs.com/package/@bounded-authority-protocol/signer),
-it resolves the verifier through its own caret range, so installing verifier 2.0.0 in your project
+it resolves the verifier through its own caret range, so installing verifier 2.0.1 in your project
 does not change the verifier copy a signer 1.x release uses. The signer's changelog names the
 release that moves to `^2.0.0`.
 

@@ -27,7 +27,7 @@ A trusted host must verify raw credentials independently.
 
 ## Is package version 2 wire major 2?
 
-No. Package 2.0.0 supports wire majors 1, 2 and 3. Select the root, `v2` or `v3` explicitly;
+No. Package 2.0.1 supports wire majors 1, 2 and 3. Select the root, `v2` or `v3` explicitly;
 profiles do not negotiate or fall back. See [contract majors](contract-majors.md).
 
 ## Where are signing keys stored?

@@ -8,7 +8,7 @@ digest. The online artifact job and release gate bind that snapshot to the named
 Hex outages and retirement fail closed. See [Corpus adoption](guides/corpus-adoption.md) for the
 vendoring tool, candidate mode, weekly adoption branches, dispatched CI, and issues, release eligibility, and verdict digest contract.
 
-This page lists every export of `@bounded-authority-protocol/verifier` 2.0.0, whose
+This page lists every export of `@bounded-authority-protocol/verifier` 2.0.1, whose
 exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the
 [changelog](../CHANGELOG.md) records every earlier change. The task guides show
 the functions in context; every `ts` sample on this page and in the guides is typechecked and run

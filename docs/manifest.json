@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "package": "@bounded-authority-protocol/verifier",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "pages": [
     {
       "path": "docs/guides/getting-started.md",

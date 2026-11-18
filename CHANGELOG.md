@@ -2,7 +2,10 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## [Unreleased]
+## [2.0.1] (2026-11-18)
+
+2.0.1 is a patch release: API and behavior are unchanged; it ships the integrator guides,
+notebooks and packaged docs, and adopts the protocol 1.1.0 conformance corpus.
 
 - Resume held npm publication only when the served SHA-512 and archive bytes match; refuse
   deprecated, changed or pending staged versions. Preserve inspected archives and checksums

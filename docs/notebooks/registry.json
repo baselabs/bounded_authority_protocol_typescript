@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "package": "@bounded-authority-protocol/verifier",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "packages": {
-    "@bounded-authority-protocol/verifier": "2.0.0"
+    "@bounded-authority-protocol/verifier": "2.0.1"
   },
   "notebooks": [
     {

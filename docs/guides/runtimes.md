@@ -53,7 +53,7 @@ console.log(`verified ${result.value.grantId} with the ${BACKEND_ID} backend`);
 ## Deno
 
 ```bash
-deno add npm:@bounded-authority-protocol/verifier@2.0.0
+deno add npm:@bounded-authority-protocol/verifier@2.0.1
 deno run verify-anywhere.ts
 ```
 
@@ -65,7 +65,7 @@ unchanged; the run needs no permission flags. In a project that has a `package.j
 ## Bun
 
 ```bash
-bun add @bounded-authority-protocol/verifier@2.0.0
+bun add @bounded-authority-protocol/verifier@2.0.1
 bun verify-anywhere.ts
 ```
 

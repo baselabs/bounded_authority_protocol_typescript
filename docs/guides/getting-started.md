@@ -1,13 +1,13 @@
 # Getting started
 
-This guide targets verifier **2.0.0**. Install the exact registry package in a new ESM project,
+This guide targets verifier **2.0.1**. Install the exact registry package in a new ESM project,
 save the module below as `first-integration.ts`, and run `node first-integration.ts` on Node 22.18
 or later. The package needs Node 22 or later; CI pins exact Node versions in `.tool-versions`.
 
 ```bash
 npm init -y
 npm pkg set type=module
-npm install @bounded-authority-protocol/verifier@2.0.0
+npm install @bounded-authority-protocol/verifier@2.0.1
 ```
 
 The complete integration generates fresh issuer/holder keys, signs a restricted grant and per-call
