@@ -156,7 +156,8 @@ pinned version fail the online artifact job closed.
 Documentation navigation: [Previous: Integration recipes](recipes.md) · [Next: Upgrade index](upgrading.md)
 
 Candidate notebook and consumer journeys install this repository's package from the packed candidate.
-`publish.yml` runs published notebooks and the other registry checks after each upload in the
-keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
-version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+`publish.yml` waits up to ten minutes in the upload job for npm to serve the exact inspected
+archive. Pending owner approval fails that run clearly; dispatch the same commit after approval.
+The keyless `published-notebooks` job runs only after byte-for-byte registry read-back succeeds.
+A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
 once that version is available. The upload job and its environment gate are separate.

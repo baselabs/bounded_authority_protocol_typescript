@@ -14,6 +14,7 @@ test("candidate CI checks the named artifact and dispatch publication enforces f
   assert.doesNotMatch(ciRun, /check:corpus:release|check-corpus.mjs (release|adopt)/);
   assert.deepEqual(ci.on, {push: {branches: ["kci/**"]}});
   assert.equal(ci.jobs.qualified.if, "always()");
+  assert.equal(ci.jobs.qualified.name, undefined);
   assert.deepEqual(new Set(ci.jobs.qualified.needs), new Set(Object.keys(ci.jobs).filter(n => n !== "qualified")));
   assert.match(commands(ci.jobs.qualified), /job\['result'\] != 'success'/);
   assert.equal(existsSync(new URL("../.github/workflows/release.yml", import.meta.url)), false);
@@ -28,7 +29,7 @@ test("candidate CI checks the named artifact and dispatch publication enforces f
 test("publication confirms the package exists before checking its version or staging", () => {
   const steps = workflow("publish").jobs.publish.steps;
   const gate = steps.findIndex(s => s.name === "Refuse a package name the registry has never had");
-  const version = steps.findIndex(s => s.name === "Refuse a published or tagged version");
+  const version = steps.findIndex(s => s.name === "Refuse a tagged version");
   assert.ok(gate >= 0 && version === gate + 1);
   assert.ok(version < steps.findIndex(s => s.run?.includes("npm stage publish")));
   const run = steps[gate].run;
@@ -45,6 +46,9 @@ test("weekly adoption maintains one exact-title landing issue without dispatchin
   assert.equal(job.on.schedule.length, 1);
   assert.equal(job.on.push, undefined);
   assert.equal(job.jobs.adopt["runs-on"], "ubuntu-24.04");
+  assert.equal(job.jobs.adopt["timeout-minutes"], 90);
+  assert.match(job.jobs.adopt.steps[0].run, /test "\$GITHUB_REF" = "refs\/heads\/\$DEFAULT_BRANCH"/);
+  assert.equal(job.jobs.adopt.steps[0].env.DEFAULT_BRANCH, "${{ github.event.repository.default_branch }}");
   const run = commands(job.jobs.adopt);
   assert.match(run, /check-corpus.mjs adopt/);
   assert.match(run, /gh issue create/); assert.match(run, /gh issue edit/);

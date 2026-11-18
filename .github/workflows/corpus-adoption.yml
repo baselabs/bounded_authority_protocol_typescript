@@ -15,9 +15,14 @@ concurrency:
 
 jobs:
   adopt:
-    timeout-minutes: 5 # no green run yet
+    timeout-minutes: 90 # no green run yet
     runs-on: ubuntu-24.04
     steps:
+      - name: Refuse a ref outside the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" || { echo "::error::Adoption requires the default branch"; exit 1; }
       - name: Check out main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

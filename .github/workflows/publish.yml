@@ -15,7 +15,7 @@ jobs:
     name: Publish the inspected archive with provenance
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
     runs-on: ubuntu-24.04
-    timeout-minutes: 5 # Run 42807453625: the former publication job took 25s.
+    timeout-minutes: 90 # no green run yet
     environment: publish
     permissions:
       contents: read
@@ -73,16 +73,13 @@ jobs:
           assert.notEqual(packageResponse.status, 404, `${name} has never been published to npm: this workflow publishes new versions of existing packages only. A first publication is the owner's decision.`);
           assert.equal(packageResponse.status, 200, `npm registry could not be read for ${name} (HTTP ${packageResponse.status})`);
           JAVASCRIPT
-      - name: Refuse a published or tagged version
+      - name: Refuse a tagged version
         run: |
           node --input-type=module <<'JAVASCRIPT'
           import assert from 'node:assert/strict';
           import {readFileSync} from 'node:fs';
-          import {execFileSync, spawnSync} from 'node:child_process';
-          const {name, version} = JSON.parse(readFileSync('package.json', 'utf8'));
-          const result = spawnSync('npm', ['view', `${name}@${version}`, 'version', '--json', '--registry=https://registry.npmjs.org/'], {encoding: 'utf8'});
-          assert.notEqual(result.status, 0, `${name}@${version} is already published`);
-          assert.equal(JSON.parse(result.stdout).error?.code, 'E404', 'registry lookup failed without confirming an unpublished version');
+          import {execFileSync} from 'node:child_process';
+          const {version} = JSON.parse(readFileSync('package.json', 'utf8'));
           const tags = execFileSync('git', ['ls-remote', '--tags', 'origin', `refs/tags/v${version}`, `refs/tags/v${version}^{}`], {encoding: 'utf8'});
           assert.equal(tags.trim(), '', `v${version} is already tagged`);
           JAVASCRIPT
@@ -97,6 +94,7 @@ jobs:
           mkdir -p artifacts
           node tools/pack.mjs --out artifacts > artifacts/pack.json
       - name: Inspect the exact package archive
+        id: inspect
         run: |
           python3 - <<'PYTHON'
           import hashlib, json, tarfile
@@ -146,8 +144,103 @@ jobs:
       - name: Verify the inspected archive checksum
         working-directory: artifacts
         run: sha256sum --check SHA256SUMS
+      - name: Compare any served version with the inspected archive
+        id: registry
+        run: |
+          python3 - <<'PYTHON'
+          import base64, hashlib, json, os
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+          package = json.loads(Path('package.json').read_text())
+          name, version = package['name'], package['version']
+          archive = Path('artifacts/package.tgz').read_bytes()
+          integrity = 'sha512-' + base64.b64encode(hashlib.sha512(archive).digest()).decode()
+          url = 'https://registry.npmjs.org/' + quote(name, safe='') + '/' + quote(version, safe='')
+          request = Request(url, headers={'Cache-Control': 'no-cache'})
+          try:
+              with urlopen(request, timeout=30) as response:
+                  release = json.load(response)
+          except HTTPError as error:
+              if error.code != 404:
+                  raise
+              stage = True
+          else:
+              assert (release.get('name'), release.get('version')) == (name, version), 'registry identity differs'
+              assert not release.get('deprecated'), f'{name}@{version} is deprecated; refusing publication'
+              assert release.get('dist', {}).get('integrity') == integrity, 'served SHA-512 differs from inspected archive'
+              stage = False
+              print(f'npm already serves the inspected {name}@{version}; skipping staging')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'stage={str(stage).lower()}\n')
+          PYTHON
       - name: Stage the inspected archive with trusted publishing
-        run: npm stage publish ./artifacts/package.tgz --provenance
+        if: steps.registry.outputs.stage == 'true'
+        run: |
+          # npm 11.19.0: staged versions share the published-version unique index.
+          # OIDC cannot list stages; preserve npm's refusal and never replace one.
+          if output="$(npm stage publish ./artifacts/package.tgz --provenance 2>&1)"; then
+            printf '%s\n' "$output"
+          else
+            printf '%s\n' "$output"
+            if printf '%s\n' "$output" | grep -Eqi 'already staged|previously staged|staged.*(already|exist)'; then
+              echo "::error::Version is already staged, awaiting owner approval on npmjs.com. Approve the existing stage, then dispatch this commit again. Nothing was replaced."
+            else
+              echo "::error::npm refused staging. Review its error above; an existing stage must be approved on npmjs.com, never replaced or unpublished."
+            fi
+            exit 1
+          fi
+      - name: Read back the exact inspected bytes or report pending approval
+        env:
+          STAGED: ${{ steps.registry.outputs.stage }}
+        run: |
+          python3 - <<'PYTHON'
+          import base64, hashlib, json, os, time
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import quote, urlsplit
+          from urllib.request import Request, urlopen
+          package = json.loads(Path('package.json').read_text())
+          name, version = package['name'], package['version']
+          archive = Path('artifacts/package.tgz').read_bytes()
+          integrity = 'sha512-' + base64.b64encode(hashlib.sha512(archive).digest()).decode()
+          url = 'https://registry.npmjs.org/' + quote(name, safe='') + '/' + quote(version, safe='')
+          deadline = time.monotonic() + 600
+          while time.monotonic() < deadline:
+              request = Request(url, headers={'Cache-Control': 'no-cache'})
+              try:
+                  with urlopen(request, timeout=max(1, min(30, deadline - time.monotonic()))) as response:
+                      release = json.load(response)
+              except HTTPError as error:
+                  if error.code != 404 or os.environ['STAGED'] != 'true':
+                      raise
+                  time.sleep(max(0, min(10, deadline - time.monotonic())))
+                  continue
+              assert (release.get('name'), release.get('version')) == (name, version), 'registry identity differs'
+              assert not release.get('deprecated'), f'{name}@{version} is deprecated; refusing publication'
+              assert release.get('dist', {}).get('integrity') == integrity, 'served SHA-512 differs from inspected archive'
+              tarball = urlsplit(release['dist']['tarball'])
+              assert tarball.scheme == 'https' and tarball.netloc == 'registry.npmjs.org', 'unexpected tarball origin'
+              request = Request(tarball.geturl(), headers={'Cache-Control': 'no-cache'})
+              with urlopen(request, timeout=30) as response:
+                  served = response.read()
+              assert served == archive, 'registry tarball differs from inspected archive'
+              print(f'Read back exact inspected bytes for {name}@{version}; SHA-512 {integrity}')
+              break
+          else:
+              raise SystemExit(f'::error::{name}@{version} staged, awaiting owner approval on npmjs.com. '
+                               'Release is incomplete. Approve the existing stage, then dispatch this commit again.')
+          PYTHON
+      - name: Upload the inspected release assets
+        if: ${{ !cancelled() && steps.inspect.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: |
+            artifacts/package.tgz
+            artifacts/SHA256SUMS
+          if-no-files-found: error
 
   published-notebooks:
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
@@ -162,32 +255,29 @@ jobs:
           persist-credentials: false
       - name: Install exact notebook toolchain and frozen dependencies
         uses: ./.github/actions/notebook-tools
-      - name: Wait for the exact npm release
-        run: |
-          python - <<'PYTHON'
-          import json, time
-          from pathlib import Path
-          from urllib.parse import quote
-          from urllib.request import Request, urlopen
-          package = json.loads(Path('package.json').read_text())
-          name, version = package['name'], package['version']
-          url = 'https://registry.npmjs.org/' + quote(name, safe='') + '/' + quote(version, safe='')
-          deadline = time.monotonic() + 600
-          while time.monotonic() < deadline:
-              try:
-                  request = Request(url, headers={'Cache-Control': 'no-cache'})
-                  with urlopen(request, timeout=max(1, min(30, deadline - time.monotonic()))) as response:
-                      release = json.load(response)
-                  if (release.get('name'), release.get('version')) == (name, version):
-                      print(f'npm serves {name}@{version}')
-                      break
-              except (OSError, ValueError):
-                  pass
-              time.sleep(max(0, min(10, deadline - time.monotonic())))
-          else:
-              raise SystemExit(f'::error::npm did not serve {name}@{version} within ten minutes')
-          PYTHON
       - name: Execute notebooks against the exact npm releases
         run: pnpm notebooks:published
+      - name: Wait for infra's tag on the published commit
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, subprocess, time
+          from pathlib import Path
+          version = json.loads(Path('package.json').read_text())['version']
+          tag = f'refs/tags/v{version}'
+          deadline = time.monotonic() + 600
+          while time.monotonic() < deadline:
+              result = subprocess.run(['git', 'ls-remote', '--exit-code', '--tags', 'origin', tag, tag + '^{}'],
+                                      capture_output=True, text=True, timeout=30)
+              if result.returncode == 0:
+                  refs = dict(line.split()[::-1] for line in result.stdout.splitlines())
+                  commit = refs.get(tag + '^{}', refs.get(tag))
+                  assert commit == os.environ['GITHUB_SHA'], 'release tag differs from the published commit'
+                  print(f'Infra tagged v{version} on the published commit')
+                  break
+              assert result.returncode == 2, f'could not read the release tag: {result.stderr}'
+              time.sleep(max(0, min(10, deadline - time.monotonic())))
+          else:
+              raise SystemExit(f'::error::Registry read-back passed, but infra has not tagged v{version}; release checks are incomplete')
+          PYTHON
       - name: Run the remaining published documentation checks
         run: pnpm docs:checks:published

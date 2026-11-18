@@ -73,11 +73,13 @@ Every notebook must have saved safe semantic results and clean up its resources.
 
 Qualification runs once on `kci/**`; the last `qualified` job requires every candidate lane.
 Candidate notebook and consumer journeys install this repository's package from the packed candidate.
-`publish.yml` runs published notebooks and the other registry checks after each upload in the
-keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
-version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
-once that version is available. Released API checks also need the immutable release tag that
-infra creates after publication. The upload job and its environment gate are separate.
+`publish.yml` waits up to ten minutes in the upload job for npm to serve the exact inspected
+archive. Pending owner approval fails that run clearly; dispatch the same commit after approval.
+The keyless `published-notebooks` job runs only after byte-for-byte registry read-back succeeds.
+A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+once that version is available. Before the released API checks, the job waits up to ten minutes
+for infra's immutable release tag and refuses a tag on a different commit.
+The upload job and its environment gate are separate.
 
 Publication
 and Pages are maintainer-dispatched on the default branch with their existing environment gates.

@@ -48,4 +48,8 @@ that a verified result was acted on without those host checks is about the host,
 Releases from 0.2.1 on carry npm trusted-publishing provenance. The owner dispatches
 `publish.yml` from the default branch in environment `publish` to build, inspect and stage the
 archive with provenance; approval on npmjs.com completes publication before infra tags it.
-For an installed copy, `npm audit signatures` verifies the registry signatures and attestations of an install.
+Verify npm registry provenance for the installed package with `npm audit signatures`.
+Download `package.tgz` and `SHA256SUMS` from the corresponding
+[GitHub release](https://github.com/baselabs/bounded_authority_protocol_typescript/releases),
+named `v<version>`, and run `sha256sum --check SHA256SUMS` in their download directory.
+Infra creates that release only after comparing its archive with the npm registry bytes.

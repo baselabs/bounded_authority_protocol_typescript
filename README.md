@@ -437,7 +437,7 @@ self-consistency against `conformance/SOURCE`: its complete-tree SHA-256 and ind
 all snapshot bytes, while each core checks indexed digests, counts, applicability, and unique,
 complete execution. These checks cannot establish the snapshot's origin by themselves.
 
-The online `corpus-artifact` job on every push and PR, and the release gate, establish the Hex
+The online `corpus-artifact` job on every qualification run, and the release gate, establish the Hex
 binding: they fetch the named release, verify both archive checksums, and compare the whole tree
 in both directions. A Hex outage or retirement of the pinned release fails closed by design.
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
@@ -483,10 +483,13 @@ the packed tarball; and `npm audit signatures`.
 Releases from 0.2.1 on carry npm trusted-publishing provenance (GitHub Actions OIDC, no
 long-lived tokens). The owner dispatches `publish.yml` from the default branch in environment
 `publish`. It installs the exact `.tool-versions` runtime and declared pnpm with frozen
-dependencies, refuses an already published or tagged version and a stale corpus, builds the
-library and API docs, packs and inspects one archive, verifies its SHA-256, and stages those
-bytes with `npm stage publish --provenance`. Qualification has already passed before landing;
-the publication workflow does not rerun it or create a tag.
+dependencies, refuses a tagged version and a stale corpus, builds the library and API docs,
+packs and inspects one archive, and verifies its SHA-256. If npm already serves the version,
+its SHA-512 must match and it must not be deprecated; staging is skipped. Otherwise it stages
+the archive with `npm stage publish --provenance`. An existing pending stage is refused without
+replacement. The job reads back the exact archive bytes before succeeding; pending approval
+after ten minutes fails the run. Qualification has already passed before landing; publication
+does not rerun it or create a tag.
 
 The publication workflow publishes new versions of existing npm packages only and
 refuses a package name the registry has never had. A first publication is the owner's decision.
@@ -495,6 +498,12 @@ Staging success is not publication: the owner approves the version on npmjs.com.
 the publication back and tags the published commit. The owner then dispatches `pages.yml` from
 the default branch in environment `github-pages`; it rebuilds the bench from that branch and
 the API reference from the tag matching npm latest. Registry or Pages read failures fail closed.
+
+Verify npm registry provenance for the installed package with `npm audit signatures`.
+Download `package.tgz` and `SHA256SUMS` from the corresponding
+[GitHub release](https://github.com/baselabs/bounded_authority_protocol_typescript/releases),
+named `v<version>`, and run `sha256sum --check SHA256SUMS` in their download directory.
+Infra creates that release only after comparing its archive with the npm registry bytes.
 
 ## Versioning
 
@@ -573,7 +582,8 @@ see [SECURITY.md](SECURITY.md).
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 Candidate notebook and consumer journeys install this repository's package from the packed candidate.
-`publish.yml` runs published notebooks and the other registry checks after each upload in the
-keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
-version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+`publish.yml` waits up to ten minutes in the upload job for npm to serve the exact inspected
+archive. Pending owner approval fails that run clearly; dispatch the same commit after approval.
+The keyless `published-notebooks` job runs only after byte-for-byte registry read-back succeeds.
+A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
 once that version is available. The upload job and its environment gate are separate.
