@@ -280,7 +280,7 @@ jobs:
         run: pnpm test:tarball
 
   browser-conformance:
-    timeout-minutes: 5 # Run 44123105381: slowest green lane 79s.
+    timeout-minutes: 5 # Run 44211491286: slowest green lane 73s in the pinned Playwright image.
     # Real engines through Playwright under the strict CSP (an engine axis, not an OS axis: Linux only).
     # Linux WebKit is evidence for this pure-JS verifier only, never for Safari.
     name: browser conformance lane on ${{ matrix.engine }}
@@ -413,7 +413,7 @@ jobs:
     if: always()
     needs: [secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5 # no green run yet
+    timeout-minutes: 5 # Run 44211491286: green job 5s.
     steps:
       - name: Require every qualification job to succeed
         env:
