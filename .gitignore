@@ -14,3 +14,6 @@ build-pack/
 # Isolated notebook tool environment
 .venv/
 __pycache__/
+
+# Development documentation is never a Pages artifact
+build-docs/

@@ -10,8 +10,12 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name: string; version: string; files: string[] };
 const manifest = JSON.parse(readFileSync(join(root, "docs/manifest.json"), "utf8")) as {
   package: string; version: string; pages: { path: string; title: string }[]; extras: string[];
-  notebooks: { path: string; version: string; title: string }[]; runnableSources: string[]; previousReleaseLines: string[];
+  runnableSources: string[]; previousReleaseLines: string[];
 };
+const notebookRegistry = JSON.parse(readFileSync(join(root, "docs/notebooks/registry.json"), "utf8")) as {
+  schema: number; package: string; version: string; packages: Record<string, string>; notebooks: { file: string; title: string }[];
+};
+const notebooks = notebookRegistry.notebooks.map((item) => ({ ...item, path: `docs/notebooks/${item.file}` }));
 function tokens(source: string): Token[] {
   const flatten = (items: Token[]): Token[] => items.flatMap((item) => [item, ...flatten(item.children ?? [])]);
   return flatten(markdown.parse(source, {}));
@@ -42,7 +46,7 @@ function checkLinks(source: string, file: string): void {
     if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) continue;
     const [target, fragment] = href.split("#");
     // Build output references on the bench are checked by its real browser lane.
-    if (file.endsWith("web/index.html") && /^(?:\.\/)?(?:api\/|api-development\/|app\.|styles\.)/.test(target ?? "")) continue;
+    if (file.endsWith("web/index.html") && /^(?:\.\/)?(?:api\/|app\.|styles\.)/.test(target ?? "")) continue;
     const path = target ? resolve(dirname(file), decodeURIComponent(target.split("?")[0]!)) : file;
     assert.ok(existsSync(path), `${relative(root, file)}: missing ${href}`);
     if (!fragment) continue;
@@ -54,13 +58,15 @@ function checkLinks(source: string, file: string): void {
 
 test("ordered manifest covers every guide, notebook and runnable source", () => {
   assert.equal(manifest.package, pkg.name); assert.equal(manifest.version, pkg.version);
+  assert.equal(notebookRegistry.schema, 1); assert.equal(notebookRegistry.package, pkg.name);
+  assert.equal(notebookRegistry.packages[pkg.name], pkg.version);
   const registered = manifest.pages.map((page) => page.path);
   const typedoc = JSON.parse(readFileSync(join(root, "typedoc.json"), "utf8")) as { projectDocuments: string[]; requiredToBeDocumented: string[] };
   assert.deepEqual(typedoc.projectDocuments, [...registered, ...manifest.extras]);
   assert.ok(typedoc.requiredToBeDocumented.includes("Constructor"));
   assert.equal(new Set(registered).size, registered.length);
   assert.deepEqual([...registered].sort(), filesUnder(join(root, "docs/guides")).filter((p) => p.endsWith(".md")).map((p) => relative(root, p)).sort());
-  assert.deepEqual(manifest.notebooks.map((n) => n.path).sort(), filesUnder(join(root, "docs/notebooks")).filter((p) => p.endsWith(".ipynb")).map((p) => relative(root, p)).sort());
+  assert.deepEqual(notebooks.map((n) => n.path).sort(), filesUnder(join(root, "docs/notebooks")).filter((p) => p.endsWith(".ipynb")).map((p) => relative(root, p)).sort());
   assert.deepEqual(manifest.runnableSources, filesUnder(join(root, "docs/examples")).filter((p) => p.endsWith(".ts")).map((p) => relative(root, p)).sort());
   const overview = readFileSync(join(root, "README.md"), "utf8");
   assert.ok(Buffer.byteLength(overview) < 60_000, "registry README must stay below npm truncation");
@@ -75,14 +81,14 @@ test("ordered manifest covers every guide, notebook and runnable source", () => 
     if (index + 1 < manifest.pages.length) assert.ok(text.includes(`](${manifest.pages[index + 1]!.path.split("/").at(-1)})`));
   }
   const start = readFileSync(join(root, "docs/guides/getting-started.md"), "utf8");
-  for (const item of manifest.notebooks) {
-    assert.equal(item.version, pkg.version);
+  for (const item of notebooks) {
+    assert.equal(notebookRegistry.version, pkg.version);
     assert.ok(overview.includes(`](${item.path})`));
     assert.ok(start.includes(`](../notebooks/${item.path.split("/").at(-1)})`));
     const notebook = JSON.parse(readFileSync(join(root, item.path), "utf8")) as {
-      metadata: { kernelspec: { name: string }; bap: { version: string } }; cells: { cell_type: string; source: string[] | string; outputs?: unknown[] }[];
+      metadata: { kernelspec: { name: string } }; cells: { cell_type: string; source: string[] | string; outputs?: unknown[] }[];
     };
-    assert.equal(notebook.metadata.kernelspec.name, "deno"); assert.equal(notebook.metadata.bap.version, pkg.version);
+    assert.equal(notebook.metadata.kernelspec.name, "deno");
     const cells = notebook.cells.filter((cell) => cell.cell_type === "code"); assert.ok(cells.length >= 2);
     for (const cell of cells) {
       const code = Array.isArray(cell.source) ? cell.source.join("") : cell.source;
@@ -96,7 +102,7 @@ test("ordered manifest covers every guide, notebook and runnable source", () => 
 test("all authored relative links and anchors resolve", () => {
   for (const file of docFiles(root)) checkLinks(readFileSync(file, "utf8"), file);
   checkLinks(readFileSync(join(root, "web/index.html"), "utf8"), join(root, "web/index.html"));
-  for (const item of manifest.notebooks) {
+  for (const item of notebooks) {
     const notebook = JSON.parse(readFileSync(join(root, item.path), "utf8")) as { cells: { cell_type: string; source: string[] | string }[] };
     for (const cell of notebook.cells.filter((c) => c.cell_type === "markdown")) checkLinks(Array.isArray(cell.source) ? cell.source.join("") : cell.source, join(root, item.path));
   }

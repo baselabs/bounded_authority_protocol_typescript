@@ -55,10 +55,11 @@ test("weekly adoption maintains one exact-title landing issue without dispatchin
   assert.doesNotMatch(run, /gh pr|gh workflow run|--force|reset --hard|stash/);
 });
 
-test("publication and every Pages job require both owners and refuse nondefault refs first", () => {
+test("the upload and every Pages job require both owners and refuse nondefault refs first", () => {
   for (const name of ["publish", "pages"]) {
     assert.deepEqual(workflow(name).on, {workflow_dispatch: null});
-    for (const job of Object.values(workflow(name).jobs)) {
+    for (const [id, job] of Object.entries(workflow(name).jobs)) {
+      if (name === "publish" && id !== "publish") continue;
       assert.equal(job.if, owners);
       assert.equal(typeof job.environment === "string" ? job.environment : job.environment.name,
         name === "publish" ? "publish" : "github-pages");

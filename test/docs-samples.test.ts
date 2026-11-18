@@ -1,14 +1,13 @@
 // CommonMark docs, complete recipe sources and public TSDoc examples are checked against both
-// source and published declarations, then executed with real keys, requests and stores.
+// source, then executed with real keys, requests and stores. Installed artifacts use test/reader.ts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
-import semver from "semver";
 import { commentProse } from "./comments.js";
 import { authoredSamples, docFiles as discoverDocs, type Sample } from "./support/documents.js";
 
@@ -208,85 +207,3 @@ for (const sample of SAMPLES) {
     }
   });
 }
-
-// Release step for the docs: replace every "2.0.0 (unreleased)" (the version being released) with
-// the bare version. The `since=` fences stay; once that version is published they run here against it.
-//
-// The reader path: every sample that does not need an unreleased version runs exactly as a reader runs
-// it, against the PUBLISHED package from npm, so the docs cannot claim published behavior that is not
-// published. A sample that needs a newer release is fenced `ts since=<version>` and its prose says
-// "new in <version> (unreleased)"; once that version is published, the same sample runs here against
-// it. The consumer is a fresh directory with "type": "module", the published verifier and the signer
-// version this repository tests with, installed by npm; each sample runs with Node's own TypeScript
-// type stripping, under the backend condition of this run (bap-portable under test:portable).
-const PUBLISHED = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version;
-assert.equal(execFileSync("npm", ["view", `@bounded-authority-protocol/verifier@${PUBLISHED}`, "version"], { encoding: "utf8" }).trim(), PUBLISHED);
-const SIGNER_VERSION = (JSON.parse(readFileSync(join(SIGNER_ENTRY, "..", "..", "..", "package.json"), "utf8")) as { version: string }).version;
-const READER = SAMPLES.filter((s) => s.since === undefined || semver.lte(s.since, PUBLISHED));
-let consumer = "";
-const readerFiles = new Map<Sample, string>();
-
-test("reader path: install the published package in a fresh consumer", () => {
-  assert.ok(semver.valid(PUBLISHED), `npm reports a published version (${PUBLISHED})`);
-  assert.ok(READER.some((s) => s.doc === "README.md"), "the README quickstart is on the reader path");
-  consumer = mkdtempSync(join(tmpdir(), "bap-docs-reader-"));
-  writeFileSync(join(consumer, "package.json"), JSON.stringify({
-    name: "bap-docs-reader", private: true, type: "module",
-    dependencies: { "@bounded-authority-protocol/verifier": PUBLISHED, "@bounded-authority-protocol/signer": SIGNER_VERSION },
-  }));
-  execFileSync("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"], { cwd: consumer, stdio: "ignore" });
-  for (const [i, sample] of READER.entries()) {
-    const file = join(consumer, `sample-${i}.mts`);
-    writeFileSync(file, sample.code);
-    readerFiles.set(sample, file);
-  }
-  // One strict program checks every eligible module before any sample is executed. Neither
-  // module paths nor conditions can resolve the source tree from this fresh consumer.
-  const diagnostics = publishedDiagnostics([...readerFiles.values()]).map((diagnostic) => {
-    const file = diagnostic.file?.fileName;
-    const sample = READER.find((item) => readerFiles.get(item) === file);
-    return `${sample ? label(sample) : file ?? "declaration"}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`;
-  });
-  assert.deepEqual(diagnostics, [], "all reader samples must typecheck against published declarations before execution");
-});
-
-function publishedDiagnostics(files: string[]): readonly ts.Diagnostic[] {
-  // No paths map, source conditions or declaration substitution. Resolution starts in the fresh
-  // consumer, so every verifier symbol comes from the registry package's own exports and .d.ts.
-  return ts.getPreEmitDiagnostics(ts.createProgram(files, {
-    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    strict: true, noUncheckedIndexedAccess: true, exactOptionalPropertyTypes: true, skipLibCheck: false,
-    noEmit: true, lib: ["lib.es2022.d.ts"], types: ["node"], typeRoots: [join(REPO, "node_modules/@types")],
-  }));
-}
-
-test("published declaration gate rejects an import of a type absent from the release", () => {
-  const file = join(consumer, "unreleased-type-probe.mts");
-  writeFileSync(file, 'import type { DocumentationTypeNotInThePublishedRelease } from "@bounded-authority-protocol/verifier";\n');
-  const candidate = join(consumer, "candidate-only.d.mts");
-  writeFileSync(candidate, "export interface DocumentationTypeNotInThePublishedRelease { candidate: true }\n");
-  const sourceMapped = ts.createProgram([file], {
-    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
-    noEmit: true, strict: true, skipLibCheck: false,
-    paths: { "@bounded-authority-protocol/verifier": [candidate] },
-  });
-  assert.deepEqual(ts.getPreEmitDiagnostics(sourceMapped), [], "a candidate source mapping accepts this unshipped type (positive control)");
-  const diagnostics = publishedDiagnostics([file]);
-  assert.ok(diagnostics.some((diagnostic) => diagnostic.code === 2305 &&
-    ts.flattenDiagnosticMessageText(diagnostic.messageText, " ").includes("DocumentationTypeNotInThePublishedRelease")),
-  "the same checker used for samples must reject an unshipped type");
-  writeFileSync(file, 'import type { ExpectedRequest } from "@bounded-authority-protocol/verifier";\n');
-  assert.deepEqual(publishedDiagnostics([file]), [], "a shipped type is the positive control");
-});
-
-for (const sample of READER) {
-  test(`docs sample on the published package (reader path): ${label(sample)}`, () => {
-    assert.ok(consumer !== "", "the consumer was installed");
-    const file = readerFiles.get(sample)!;
-    const conditions = process.execArgv.filter((a) => a === "--conditions=bap-portable");
-    const child = spawnSync(process.execPath, [...conditions, file], { cwd: consumer, encoding: "utf8" });
-    assert.equal(child.status, 0, `${label(sample)} fails on the published ${PUBLISHED}:\n${child.stderr}`);
-  });
-}
-
-test.after(() => { if (consumer !== "") rmSync(consumer, { recursive: true, force: true }); });

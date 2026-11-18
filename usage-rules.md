@@ -14,3 +14,9 @@
 - Browser results are display-only. Trusted hosts verify raw credentials themselves.
 - Generate demonstration keys only in example code; private keys never enter verifier functions.
 - Validate signed content against the application's schema and persist rollback/fork protection separately.
+
+Qualification installs this repository's own package only from the packed candidate.
+`publish.yml` runs published notebooks and the other registry checks after each upload in the
+keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
+version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+once that version is available. The upload job and its environment gate are separate.

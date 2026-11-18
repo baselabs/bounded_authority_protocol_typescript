@@ -1,12 +1,11 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "tsconfig": "tsconfig.build.json",
-  "out": "site-dist/api",
+  "out": "build-docs/api",
   "includeVersion": true,
   "readme": "none",
   "navigationLinks": {
     "Released documentation": "../api/",
-    "Development documentation": "../api-development/",
     "Verifier bench": "../"
   },
   "validation": {

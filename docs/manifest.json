@@ -100,43 +100,6 @@
     "SECURITY.md",
     "CHANGELOG.md"
   ],
-  "notebooks": [
-    {
-      "path": "docs/notebooks/verify-requests.ipynb",
-      "title": "Request verification with nonces",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/http-server.ipynb",
-      "title": "HTTP endpoint protection and replay",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/local-loopback.ipynb",
-      "title": "Local-loopback development",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/rotate-keys.ipynb",
-      "title": "Key enrollment and rotation",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/chains-and-archives.ipynb",
-      "title": "Chains and anchored archives",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/role-attestations.ipynb",
-      "title": "Role attestations",
-      "version": "2.0.0"
-    },
-    {
-      "path": "docs/notebooks/content-assertions.ipynb",
-      "title": "Content assertions and successors",
-      "version": "2.0.0"
-    }
-  ],
   "runnableSources": [
     "docs/examples/durable-replay.ts",
     "docs/examples/local-loopback.ts",

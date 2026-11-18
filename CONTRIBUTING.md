@@ -3,8 +3,8 @@
 ```bash
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
-pnpm docs:api                # strict TypeDoc reference in site-dist/api-development, stamped with package version
-pnpm test:network            # real npm release API, normative spec anchors and built-site version checks
+pnpm docs:api                # strict TypeDoc reference in build-docs/api, stamped with package version
+pnpm test:network            # normative spec anchors; released registry checks run after upload
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
 pnpm conformance                       # vendored contract-major v1, including its key census
@@ -34,20 +34,28 @@ pnpm readback <version> --sha256 <hex>  # read back a release: registry, bytes, 
 ```
 
 TypeDoc discovers entry points from `package.json`'s `exports` map; `typedoc.json` deliberately
-leaves `entryPoints` unset so a new public subpath cannot bypass documentation coverage. Build the
-bench with `pnpm build:site` before `pnpm docs:api`: the site builder recreates `site-dist`, and the
-development API build adds `site-dist/api-development`. CI rejects undocumented declarations and warnings. The Pages
-workflow uploads both outputs together. `pnpm docs:api` is the local, strict source-tree build.
-The hosted `/api-development/` uses that strict source build. The hosted `/api/` uses `pnpm docs:api:release`, built from the npm-latest release tag and stamped
-"released vX.Y.Z", with version, tag and commit recorded in `release.json`.
+leaves `entryPoints` unset so a new public subpath cannot bypass documentation coverage.
+`pnpm docs:api` is the strict development-source check, writing only `build-docs/api` outside
+the Pages artifact. CI rejects undocumented declarations and warnings. Pages builds `/api/`
+from the immutable tag matching npm latest, using that tag's documentation and declarations.
+Its version, tag and commit are recorded in `release.json`.
 
-Run `pnpm notebooks:local` and `pnpm notebooks:published` with the pinned Deno and Python
-versions and `uv sync --frozen`. Both use the real Deno Jupyter kernel. Install it with
-`uv run --frozen deno jupyter --install`. Every authored TypeScript fence, TSDoc example and
-`docs/examples/` module is discovered and tested. Keep the ordered docs manifest current; every
-notebook must have persisted safe semantic output and clean up its resources.
+For notebooks, run `uv lock --check`, `uv sync --frozen` and `pnpm notebooks:local`
+with the exact tool pins. The shared runner is
+`scripts/check_notebooks.py`; it installs an isolated real Deno Jupyter kernel. See
+[notebook checks](docs/notebooks/README.md) for archive-origin and saved-output checks.
+Every authored TypeScript fence, TSDoc example and `docs/examples/` module is discovered and
+tested. Keep guides in `docs/manifest.json` and notebooks in `docs/notebooks/registry.json`.
+Every notebook must have saved safe semantic results and clean up its resources.
 
-Qualification runs once on `kci/**`; the last `qualified` job requires every lane. Publication
+Qualification runs once on `kci/**`; the last `qualified` job requires every candidate lane.
+Qualification installs this repository's own package only from the packed candidate.
+`publish.yml` runs published notebooks and the other registry checks after each upload in the
+keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
+version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+once that version is available. The upload job and its environment gate are separate.
+
+Publication
 and Pages are maintainer-dispatched on the default branch with their existing environment gates.
 Contributors do not publish, tag or dispatch workflows. Report vulnerabilities through the
 [security policy](SECURITY.md). Use real services and real signatures in integration tests.

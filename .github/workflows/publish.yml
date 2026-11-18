@@ -141,3 +141,45 @@ jobs:
         run: sha256sum --check SHA256SUMS
       - name: Stage the inspected archive with trusted publishing
         run: npm stage publish ./artifacts/package.tgz --provenance
+
+  published-notebooks:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90 # no green run yet
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install exact notebook toolchain and frozen dependencies
+        uses: ./.github/actions/notebook-tools
+      - name: Wait for the exact npm release
+        run: |
+          python - <<'PYTHON'
+          import json, time
+          from pathlib import Path
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+          package = json.loads(Path('package.json').read_text())
+          name, version = package['name'], package['version']
+          url = 'https://registry.npmjs.org/' + quote(name, safe='') + '/' + quote(version, safe='')
+          deadline = time.monotonic() + 600
+          while time.monotonic() < deadline:
+              try:
+                  request = Request(url, headers={'Cache-Control': 'no-cache'})
+                  with urlopen(request, timeout=max(1, min(30, deadline - time.monotonic()))) as response:
+                      release = json.load(response)
+                  if (release.get('name'), release.get('version')) == (name, version):
+                      print(f'npm serves {name}@{version}')
+                      break
+              except (OSError, ValueError):
+                  pass
+              time.sleep(max(0, min(10, deadline - time.monotonic())))
+          else:
+              raise SystemExit(f'::error::npm did not serve {name}@{version} within ten minutes')
+          PYTHON
+      - name: Execute notebooks against the exact npm releases
+        run: pnpm notebooks:published
+      - name: Run the remaining published documentation checks
+        run: pnpm docs:checks:published

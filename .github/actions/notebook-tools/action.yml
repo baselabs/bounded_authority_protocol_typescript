@@ -1,0 +1,61 @@
+name: Exact notebook toolchain
+description: Install pinned Node, Deno, Python and uv tools and frozen dependencies without cache writes.
+runs:
+  using: composite
+  steps:
+    - name: Read exact tool pins
+      id: pins
+      shell: bash
+      run: |
+        while read -r tool version compatibility; do
+          test -n "$tool" && test -n "$version"
+          printf '%s=%s\n' "$tool" "$version" >> "$GITHUB_OUTPUT"
+        done < .tool-versions
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ steps.pins.outputs.nodejs }}
+        package-manager-cache: false
+    - name: Set up Deno
+      uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      with:
+        deno-version: ${{ steps.pins.outputs.deno }}
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ${{ steps.pins.outputs.python }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        version: ${{ steps.pins.outputs.uv }}
+        enable-cache: false
+        save-cache: false
+    - name: Refuse differing tool versions
+      shell: bash
+      env:
+        EXPECTED_NODE: ${{ steps.pins.outputs.nodejs }}
+        EXPECTED_DENO: ${{ steps.pins.outputs.deno }}
+        EXPECTED_PYTHON: ${{ steps.pins.outputs.python }}
+        EXPECTED_UV: ${{ steps.pins.outputs.uv }}
+      run: |
+        test "$(node --version)" = "v$EXPECTED_NODE"
+        test "$(deno --version | awk 'NR == 1 {print $2}')" = "$EXPECTED_DENO"
+        test "$(python --version | awk '{print $2}')" = "$EXPECTED_PYTHON"
+        test "$(uv --version | awk '{print $2}')" = "$EXPECTED_UV"
+    - name: Activate the declared package manager
+      shell: bash
+      run: |
+        manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
+        case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
+        corepack enable
+        corepack prepare "$manager" --activate
+        test "pnpm@$(pnpm --version)" = "$manager"
+    - name: Install JavaScript dependencies frozen
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Check the Python lock
+      shell: bash
+      run: uv lock --check
+    - name: Install Python dependencies frozen
+      shell: bash
+      run: uv sync --frozen

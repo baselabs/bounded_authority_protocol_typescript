@@ -4,6 +4,15 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## [Unreleased]
 
+- Qualify only the packed candidate; run exact-version npm notebook, sample and registry checks
+  after upload in a separate keyless publication job.
+- Standardize notebook execution on `scripts/check_notebooks.py`, a versioned notebook registry,
+  inspected candidate or registry archives, real Deno kernels and saved Jupyter golden outputs.
+- Split notebook journeys into explained, asserted steps with computed semantic results.
+- Pin Python 3.15.2, uv 0.13.9, nbclient 0.11.0, nbformat 5.11.1 and jupyter-client 8.10.0;
+  generate locks with pinned uv and install the notebook toolchain through one composite action.
+- Read both exact Node lanes from the valid multi-version asdf line and compare tool version fields.
+
 ### Changed
 
 - Run every browser conformance lane in the digest-pinned official Playwright 1.65.1 Noble image with preinstalled browsers and OS packages; refuse a different installed Playwright version before testing.
@@ -39,7 +48,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 ### Fixed
 
 - Reconcile Pages with npm latest after staged-release approval and validate every built-site
-  version claim. Network documentation checks run in their own required CI and release lane.
+  version claim. Network documentation checks run in their own keyless post-upload lane.
 - The HTTP guide gives replay stores their own authoritative expiry clock so caller clocks
   cannot evict live entries, and explains how hosts can cap accepted grant lifetimes.
 - Spec citations are checked against real normative headings, including wrapped comments.

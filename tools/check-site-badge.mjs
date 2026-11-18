@@ -34,8 +34,7 @@ function check(dir) {
         .replace(/node_modules\/\.pnpm\/([^/<>"'\s]+)\/node_modules\//g,
           (dependencyPath, coordinate) => coordinate.startsWith(packageCoordinate)
             ? dependencyPath : dependencyPath.replace(/[^\r\n]/g, " "));
-      const documentRoot = relative(join(root, "site-dist"), path).split(/[\\/]/)[0] === "api-development" ? "api-development" : "api";
-      const metadataPath = join(root, "site-dist", documentRoot, "documentation.json");
+      const metadataPath = join(root, "site-dist/api/documentation.json");
       if (existsSync(metadataPath)) {
         const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
         assert.equal(metadata.version, latest, "site documentation must target npm latest");

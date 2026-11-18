@@ -149,9 +149,8 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 ## Documentation
 
 The [released learning path](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
-contains the guides, notebooks and API for the registry release. The separately labeled
-[development documentation](https://baselabs.github.io/bounded_authority_protocol_typescript/api-development/)
-describes the checkout. The following sources ship with the npm package.
+contains only documentation from the registry release. The checkout's strict development API
+build is checked in CI and is never published. The following sources ship with the npm package.
 
 1. [Getting started](docs/guides/getting-started.md)
 2. [Verify requests](docs/guides/verify-requests.md)
@@ -572,3 +571,9 @@ see [SECURITY.md](SECURITY.md).
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Qualification installs this repository's own package only from the packed candidate.
+`publish.yml` runs published notebooks and the other registry checks after each upload in the
+keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
+version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+once that version is available. The upload job and its environment gate are separate.

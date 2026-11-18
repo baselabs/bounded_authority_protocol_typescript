@@ -163,3 +163,9 @@ non-corpus fixture exceptions still require exact matched bytes and paths.
 ---
 
 Documentation navigation: [Previous: Upgrade index](upgrading.md) · [Next: FAQ](faq.md)
+
+Qualification installs this repository's own package only from the packed candidate.
+`publish.yml` runs published notebooks and the other registry checks after each upload in the
+keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
+version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
+once that version is available. The upload job and its environment gate are separate.

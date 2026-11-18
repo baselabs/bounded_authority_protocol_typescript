@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "package": "@bounded-authority-protocol/verifier",
+  "version": "2.0.0",
+  "packages": {
+    "@bounded-authority-protocol/verifier": "2.0.0"
+  },
+  "notebooks": [
+    {
+      "file": "verify-requests.ipynb",
+      "title": "Request verification with nonces"
+    },
+    {
+      "file": "http-server.ipynb",
+      "title": "HTTP endpoint protection and replay"
+    },
+    {
+      "file": "local-loopback.ipynb",
+      "title": "Local-loopback development"
+    },
+    {
+      "file": "rotate-keys.ipynb",
+      "title": "Key enrollment and rotation"
+    },
+    {
+      "file": "chains-and-archives.ipynb",
+      "title": "Chains and anchored archives"
+    },
+    {
+      "file": "role-attestations.ipynb",
+      "title": "Role attestations"
+    },
+    {
+      "file": "content-assertions.ipynb",
+      "title": "Content assertions and successors"
+    }
+  ]
+}

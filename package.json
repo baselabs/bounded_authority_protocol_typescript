@@ -77,7 +77,7 @@
     "test": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/*.test.ts test/*.test.mjs",
     "test:permissiveness": "node --test --conditions=bap-source --import tsx/esm test/permissiveness.ts",
     "test:portable": "pnpm build && node --test --conditions=bap-source --conditions=bap-portable --import tsx/esm test/*.test.ts test/*.test.mjs test/permissiveness.ts",
-    "test:tarball": "pnpm build && node --test --import tsx/esm test/tarball.ts",
+    "test:tarball": "pnpm build && BAP_SAMPLE_MODE=candidate node --test --import tsx/esm test/tarball.ts test/reader.ts && BAP_SAMPLE_MODE=candidate node --test --conditions=bap-portable --import tsx/esm test/reader.ts",
     "test:runtimes": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/runtimes.ts",
     "test:browser": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/browser.ts",
     "test:readback": "node --test --import tsx/esm test/readback.ts",
@@ -107,7 +107,11 @@
     "notebooks:local": "pnpm build && uv run --frozen python scripts/check_notebooks.py --local",
     "notebooks:published": "uv run --frozen python scripts/check_notebooks.py --published",
     "docs:check": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/docs-*.test.ts",
-    "test:docs-replay": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/docs-durable-replay.test.ts"
+    "test:docs-replay": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/docs-durable-replay.test.ts",
+    "docs:samples:local": "BAP_SAMPLE_MODE=candidate node --test --import tsx/esm test/reader.ts && BAP_SAMPLE_MODE=candidate node --test --conditions=bap-portable --import tsx/esm test/reader.ts",
+    "docs:samples:published": "BAP_SAMPLE_MODE=published node --test --import tsx/esm test/reader.ts && BAP_SAMPLE_MODE=published node --test --conditions=bap-portable --import tsx/esm test/reader.ts",
+    "test:network:published": "node --test --import tsx/esm test/*.published.ts",
+    "docs:checks:published": "pnpm docs:samples:published && pnpm test:network:published"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

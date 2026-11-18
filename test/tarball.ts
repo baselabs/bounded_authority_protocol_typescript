@@ -110,10 +110,11 @@ test("the tarball ships the built backends and integrator sources, with no libra
   }
   assert.ok(!files.some((f) => f.startsWith("package/src/") || f.startsWith("package/test/") || f.startsWith("package/conformance/")), "no source, tests or corpora");
   const documentation = JSON.parse(readFileSync(join(REPO, "docs/manifest.json"), "utf8")) as {
-    pages: { path: string }[]; extras: string[]; notebooks: { path: string }[]; runnableSources: string[];
+    pages: { path: string }[]; extras: string[]; runnableSources: string[];
   };
-  for (const path of ["docs/manifest.json", ...documentation.pages.map((page) => page.path),
-    ...documentation.extras, ...documentation.notebooks.map((notebook) => notebook.path), ...documentation.runnableSources]) {
+  const notebooks = JSON.parse(readFileSync(join(REPO, "docs/notebooks/registry.json"), "utf8")) as { notebooks: { file: string }[] };
+  for (const path of ["docs/manifest.json", "docs/notebooks/registry.json", ...documentation.pages.map((page) => page.path),
+    ...documentation.extras, ...notebooks.notebooks.map((notebook) => `docs/notebooks/${notebook.file}`), ...documentation.runnableSources]) {
     assert.ok(files.includes(`package/${path}`), `${path}: integrator source must survive packing`);
   }
 });
