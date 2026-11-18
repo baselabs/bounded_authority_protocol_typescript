@@ -1,8 +1,9 @@
 {
   "format": "bap-corpus-source/1",
   "package": "bounded_authority_protocol",
-  "version": "1.0.0",
-  "checksum": "1e649c2dad18e5d37b8273b75170b9711d736de6481d07ac17a2d9d642391bd9",
+  "version": "1.1.0",
+  "checksum": "dbfaaffc8f558306e9d4b9185921e023777937ae359b4883c472dca30277324a",
+  "tree_sha256": "82f437e7cbe711973f2a36bf49c29ed83735b88c73bae50fac14c730c9fba8de",
   "indexes": {
     "application-profiles/local-loopback-http/v1": "EPxM8Fr_zdyeY0D_OSwkfiWrA4zZOPJVeCmnzmOxpeQ",
     "attestation-profiles/content-assertion/v1": "FLdDbM98yR_s5SoVeMN2DfZyCpNJTRR-5atSPiziGHY",
@@ -13,6 +14,5 @@
     "v1/corpus": "TLUHKrQP_UsRFlnm1KsgIJICOAUF8fhCS5bSLlM8uRs",
     "v2/corpus": "beYom39HsOCnjqRhDnhEoPHVJH2OrOAuyc-YQTCPE9A",
     "v3/corpus": "pcgHXnU0NFw7tmEdC0ApKQS8-jrwcC4HrgFPpmkmQzw"
-  },
-  "tree_sha256": "6e0e9316baade1216698f47cc34d0bc50167f51067ca13811ad6b2599302245d"
+  }
 }

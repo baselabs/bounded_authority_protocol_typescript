@@ -67,8 +67,8 @@ test("transaction stages completely and removes its own residue on failure and s
   assert.equal(existsSync(dir), false);
 });
 test("stale SOURCE and candidate SOURCE fail release and main gates, then release pin is green", () => {
-  const newest = {version: "1.0.0", checksum: source.checksum};
-  red("stale SOURCE", () => assertCurrent({...source, version: "0.9.1"}, newest), /stale SOURCE/);
+  const newest = {version: "1.1.0", checksum: source.checksum};
+  red("stale SOURCE", () => assertCurrent({...source, version: "1.0.0"}, newest), /stale SOURCE/);
   const candidate = sourceFor(files, {candidate: "a".repeat(40)});
   red("candidate SOURCE on main", () => assertReleaseSource(candidate, true), /candidate SOURCE refused on main/);
   red("candidate release", () => assertCurrent(candidate, newest), /candidate SOURCE refused by release gate/);

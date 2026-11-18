@@ -443,7 +443,7 @@ in both directions. A Hex outage or retirement of the pinned release fails close
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
 
 <!-- corpus-source:start -->
-Pinned Hex corpus: [bounded_authority_protocol 1.0.0](https://hex.pm/packages/bounded_authority_protocol/1.0.0).
+Pinned Hex corpus: [bounded_authority_protocol 1.1.0](https://hex.pm/packages/bounded_authority_protocol/1.1.0).
 
 | Corpus | Cases |
 |---|---|
