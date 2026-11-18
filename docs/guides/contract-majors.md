@@ -213,3 +213,7 @@ gives deterministic signatures; major 2 adds the range selectors; major 3 fits k
 signs with P-256 but not Ed25519.
 Never try one major and then another on the same bytes: the namespace is part of the trust
 decision, and each major already rejects the others' artifacts.
+
+---
+
+Documentation navigation: [Previous: Verify requests](verify-requests.md) · [Next: Protect an HTTP endpoint](http-server.md)

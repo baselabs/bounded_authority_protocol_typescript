@@ -14,6 +14,7 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
  * integers, floats are finite binary64, and both have magnitude at most 2^53 - 1. Decoding rejects
  * duplicate names and invalid Unicode without normalization.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
+ * @category Canonical bytes
  */
 export type Tagged =
   | {
@@ -84,6 +85,14 @@ interface DecodeCtx {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
  * @returns One tagged JSON value retaining number tags and object member order.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.jsonDecode(api.strUtf8("1.0")).t, "float");
+ * assert.throws(() => api.jsonDecode(api.strUtf8('{"a":1,"a":2}')), api.InvalidError);
+ * ```
  */
 export function jsonDecode(src: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Tagged {
   const maxJsonBytes = resolve(bounds, "json_bytes" as MaximaKey);
@@ -478,6 +487,14 @@ const ENCODER = new TextEncoder();
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
  * @returns The decoded Unicode scalar string, retaining any leading U+FEFF.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.utf8Str(new Uint8Array([104, 105])), "hi");
+ * assert.throws(() => api.utf8Str(new Uint8Array([255])), api.InvalidError);
+ * ```
  */
 export function utf8Str(bytes: Uint8Array): string {
   try {
@@ -490,6 +507,13 @@ export function utf8Str(bytes: Uint8Array): string {
  * Encodes a string as UTF-8 bytes.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
  * @returns UTF-8 bytes using TextEncoder semantics, including replacement of unpaired UTF-16 surrogates. This helper does not validate protocol claims.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.deepEqual([...api.strUtf8("hi")], [104, 105]);
+ * ```
  */
 export function strUtf8(s: string): Uint8Array {
   return ENCODER.encode(s);

@@ -35,6 +35,7 @@ const ROLES = ["issuer", "holder"] as const;
  * An already-trusted Ed25519 attestor key and its half-open historical validity window. Raw keys are
  * 32 bytes; endpoints are integer Unix seconds, with null for an unbounded upper endpoint.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @category Keys and trust
  */
 export type AttestorKey = HistoricalPublicKey;
 
@@ -42,6 +43,7 @@ export type AttestorKey = HistoricalPublicKey;
  * Explicit attestor trust, subject identity and evaluation time for role verification. Success proves
  * a signature and window, but does not enroll the subject or operationally authorize its role.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @category Role attestations
  */
 export interface ExpectedAttestation {
   /** Already-trusted attestor public key and its half-open validity window. */
@@ -60,6 +62,7 @@ export interface ExpectedAttestation {
  * Unsigned, grant-unbound role attestation for a distinct subject key. Verification requires
  * [notBefore, expiresAt) to fit within the attestor window. Signing remains external.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @category Role attestations
  */
 export interface AttestationProducer {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -82,6 +85,7 @@ export interface AttestationProducer {
  * Canonical role-attestation claims after bounded decoding only. Signature, key window and expected
  * subject remain unverified. These values cannot enroll a key or authorize a role.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @category Role attestations
  */
 export interface AttestationDecoded {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -106,6 +110,7 @@ export interface AttestationDecoded {
  * Role facts after signature, subject and validity-window checks. Fingerprints are raw 32-byte RFC
  * 7638 thumbprints. Trust remains unevaluated; there is no authorization marker or execution meaning.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#3-verification-contract
+ * @category Role attestations
  */
 export interface AttestationFacts {
   /** Role-attestation profile version 1, not the npm package version. */
@@ -275,6 +280,29 @@ function validateExpected(expected: ExpectedAttestation): Bounds {
  * key to the `issuer` or `holder` role for `[notBefore, expiresAt)`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
  * @returns Canonical protected and payload base64url segments for the role attestation in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Role attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign } from "node:crypto";
+ * import { roleAttestation } from "@bounded-authority-protocol/verifier";
+ *
+ * const subject = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * const input = roleAttestation.attestationSigningInput({
+ *   keyId: "root-1", jti: "att-7", subjectKeyId: "agent-key-3", subjectPublicKey: subject,
+ *   role: "holder", notBefore: 100, expiresAt: 200,
+ * });
+ * assert.ok(input.ok);
+ * const attestor = generateKeyPairSync("ed25519");
+ * const signature = sign(null, Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), attestor.privateKey);
+ * const compact = roleAttestation.assembleAttestationCompact(input.value, signature);
+ * assert.ok(compact.ok);
+ *
+ * const decoded = roleAttestation.decodeAttestation(compact.value);
+ * assert.ok(decoded.ok);
+ * assert.equal(decoded.value.role, "holder");
+ * assert.equal(decoded.value.verification, "not_evaluated");
+ * ```
  */
 export function attestationSigningInput(attestation: AttestationProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -348,6 +376,29 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
  * it. It does not verify the signature.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
  * @returns Exact ASCII role-attestation compact bytes in a success Result, without signature verification. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Role attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign } from "node:crypto";
+ * import { roleAttestation } from "@bounded-authority-protocol/verifier";
+ *
+ * const subject = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * const input = roleAttestation.attestationSigningInput({
+ *   keyId: "root-1", jti: "att-7", subjectKeyId: "agent-key-3", subjectPublicKey: subject,
+ *   role: "holder", notBefore: 100, expiresAt: 200,
+ * });
+ * assert.ok(input.ok);
+ * const attestor = generateKeyPairSync("ed25519");
+ * const signature = sign(null, Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), attestor.privateKey);
+ * const compact = roleAttestation.assembleAttestationCompact(input.value, signature);
+ * assert.ok(compact.ok);
+ *
+ * const decoded = roleAttestation.decodeAttestation(compact.value);
+ * assert.ok(decoded.ok);
+ * assert.equal(decoded.value.role, "holder");
+ * assert.equal(decoded.value.verification, "not_evaluated");
+ * ```
  */
 export function assembleAttestationCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -373,6 +424,13 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
  * signature, historical-key-window or current-time verification (`verification: "not_evaluated"`).
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
  * @returns Canonical attestation claims in a success Result, with verification not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Role attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.deepEqual(api.roleAttestation.decodeAttestation(api.strUtf8("invalid")), { ok: false });
+ * ```
  */
 export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<AttestationDecoded> {
   return trying(() => {
@@ -398,6 +456,60 @@ export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<
  * Facts carry `trust: "not_evaluated"`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md#4-public-verification-contract
  * @returns Redacted AttestationFacts in a success Result after signature, subject and window checks; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Role attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { roleAttestation, verifyGrant } from "@bounded-authority-protocol/verifier";
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
+ * const root = generateKeyPairSync("ed25519"); // the attestor, for example an organization's root key
+ * const issuerKey = generateKeyPairSync("ed25519"); // the subject
+ *
+ * // The root key attests that "issuer-2026-10" may act as an issuer from t=1000 until t=2000.
+ * const input = roleAttestation.attestationSigningInput({
+ *   keyId: "root-2026",
+ *   jti: "attestation-0001",
+ *   subjectKeyId: "issuer-2026-10",
+ *   subjectPublicKey: raw(issuerKey.publicKey),
+ *   role: "issuer",
+ *   notBefore: 1_000,
+ *   expiresAt: 2_000,
+ * });
+ * assert.ok(input.ok);
+ * const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ * const attestation = roleAttestation.assembleAttestationCompact(input.value, sign(null, message, root.privateKey));
+ * assert.ok(attestation.ok);
+ *
+ * // The verifier supplies the attestor key it trusts (with its validity window), the subject it
+ * // expects, and the time.
+ * const expected = {
+ *   attestor: { keyId: "root-2026", publicKey: raw(root.publicKey), validFrom: 0, validBefore: null },
+ *   subjectKeyId: "issuer-2026-10",
+ *   subjectPublicKey: raw(issuerKey.publicKey),
+ *   now: 1_500,
+ * };
+ * const facts = roleAttestation.verifyAttestation(attestation.value, expected);
+ * assert.ok(facts.ok);
+ * assert.equal(facts.value.role, "issuer");
+ * assert.equal(facts.value.verification, "signature_and_window");
+ * assert.equal(facts.value.trust, "not_evaluated");
+ *
+ * // The window is half-open: [notBefore, expiresAt).
+ * assert.deepEqual(roleAttestation.verifyAttestation(attestation.value, { ...expected, now: 2_000 }), { ok: false });
+ * // A different subject key under the same key id rejects.
+ * assert.deepEqual(
+ *   roleAttestation.verifyAttestation(attestation.value, { ...expected, subjectPublicKey: raw(generateKeyPairSync("ed25519").publicKey) }),
+ *   { ok: false },
+ * );
+ * // An attestation is not a grant, and a grant verifier refuses it.
+ * assert.deepEqual(
+ *   verifyGrant(attestation.value, { keyId: "root-2026", publicKey: raw(root.publicKey) },
+ *     { issuer: "root-2026", audience: "x", evaluationTime: 1_500, clockSkew: 0 }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttestation): Result<AttestationFacts> {
   return trying(() => {

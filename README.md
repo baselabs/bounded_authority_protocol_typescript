@@ -47,11 +47,9 @@ for delegated, scoped access. BAP complements it by binding a holder's authority
 URI, operation and JCS typed projection of `cast_arguments`. Authorization mechanisms can
 overlap; successful BAP verification returns facts, while the host applies authorization policy.
 
-The hosted `/api/` reference is built with `pnpm docs:api:release` from the immutable tag
-matching npm latest. Its `release.json` records the version, tag and commit; source links point
-to that commit. `pnpm docs:api` checks current-source documentation strictly in CI. Historical
-release rendering preserves the comments shipped at the tag without retroactive coverage checks.
-The bench runs development source and identifies it as such. Only esbuild may run install scripts.
+The [released documentation](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
+identifies npm's exact release tag and commit. The development site is labeled separately.
+Guides, searchable API field contracts and notebook transcripts share one TypeDoc site.
 
 ## Install
 
@@ -150,24 +148,45 @@ walks through the full issuer, holder and resource flow with `checkEnvelope`.
 
 ## Documentation
 
-Browse the [versioned API reference](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
-for signatures, searchable symbols and field contracts. Its header displays the package version.
-The guides below show complete tasks with executable examples.
+The [released learning path](https://baselabs.github.io/bounded_authority_protocol_typescript/api/)
+contains the guides, notebooks and API for the registry release. The separately labeled
+[development documentation](https://baselabs.github.io/bounded_authority_protocol_typescript/api-development/)
+describes the checkout. The following sources ship with the npm package.
 
-| Guide | What it covers |
-|---|---|
-| [Verify requests](docs/guides/verify-requests.md) | Grants, holder proofs, `checkEnvelope`, selectors, nonces, picking the issuer key |
-| [Protect an HTTP endpoint](docs/guides/http-server.md) | A Node.js server recipe: middleware that verifies the envelope and reserves each invocation once |
-| [Deno, Bun and browsers](docs/guides/runtimes.md) | One module that runs on every runtime, and how to bundle it for a page |
-| [Contract-majors 2 and 3](docs/guides/contract-majors.md) | `lte`/`gte` range selectors (v2) and the ES256 suite with low-S signatures (v3) |
-| [Rotate keys](docs/guides/rotate-keys.md) | Key enrollment checks, several trusted issuer keys, authenticated key transitions |
-| [Consumption chains and archives](docs/guides/chains-and-archives.md) | Consumption rows, boundary anchors, anchored exports |
-| [Role attestations](docs/guides/role-attestations.md) | `bap-role-attestation/1`: binding a key to the issuer or holder role |
-| [Content assertions](docs/guides/content-assertions.md) | `bap-content-assertion/1`: signed digests of exact content, with successor checks |
-| [Handle errors](docs/guides/handle-errors.md) | The closed result, the functions that throw, and finding why an input rejects |
-| [Test your integration](docs/guides/test-your-integration.md) | Building real fixtures and negative cases without mocks |
-| [Upgrading from 1.x](docs/guides/upgrading.md) | What 2.0.0 changes, who is affected, and the steps |
-| [API reference](docs/reference.md) | Every export: parameters, return shape, errors, examples |
+1. [Getting started](docs/guides/getting-started.md)
+2. [Verify requests](docs/guides/verify-requests.md)
+3. [Contract-majors 2 and 3](docs/guides/contract-majors.md)
+4. [Protect an HTTP endpoint](docs/guides/http-server.md)
+5. [Request adapters in every kind of host](docs/guides/framework-integration.md)
+6. [Deno, Bun and browsers](docs/guides/runtimes.md)
+7. [Local-loopback development](docs/guides/local-loopback.md)
+8. [Rotate keys](docs/guides/rotate-keys.md)
+9. [Consumption chains and archives](docs/guides/chains-and-archives.md)
+10. [Role attestations](docs/guides/role-attestations.md)
+11. [Content assertions](docs/guides/content-assertions.md)
+12. [Durable replay reservations](docs/guides/durable-replay.md)
+13. [Integration security](docs/guides/integration-security.md)
+14. [Operations and observability](docs/guides/operations-observability.md)
+15. [Handle errors](docs/guides/handle-errors.md)
+16. [Integration recipes](docs/guides/recipes.md)
+17. [Test your integration](docs/guides/test-your-integration.md)
+18. [Upgrade index](docs/guides/upgrading.md)
+19. [Adopt a certified corpus](docs/guides/corpus-adoption.md)
+20. [FAQ](docs/guides/faq.md)
+21. [Glossary](docs/guides/glossary.md)
+22. [Cheatsheet](docs/guides/cheatsheet.md)
+
+[API overview](docs/reference.md) · [Usage rules](usage-rules.md)
+
+Interactive notebooks (Jupyter with the Deno kernel; exact published package):
+
+- [Request verification with nonces](docs/notebooks/verify-requests.ipynb)
+- [HTTP endpoint protection and replay](docs/notebooks/http-server.ipynb)
+- [Local-loopback development](docs/notebooks/local-loopback.ipynb)
+- [Key enrollment and rotation](docs/notebooks/rotate-keys.ipynb)
+- [Chains and anchored archives](docs/notebooks/chains-and-archives.ipynb)
+- [Role attestations](docs/notebooks/role-attestations.ipynb)
+- [Content assertions and successors](docs/notebooks/content-assertions.ipynb)
 
 ## Strict Ed25519 (rule S1)
 
@@ -541,53 +560,9 @@ boundary; the [changelog](CHANGELOG.md) lists each release's verdict and API cha
   the issuer and holder companion that signs grants, proofs, boundary anchors and key transitions
   through a caller-owned key handle (see [Pairing with the signer](#pairing-with-the-signer)).
 
-## Development
+## Contributing
 
-```bash
-pnpm install
-pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
-pnpm docs:api                # strict TypeDoc reference in site-dist/api, stamped with package version
-pnpm test:network            # real npm release API, normative spec anchors and built-site version checks
-pnpm test                    # builds, then unit, struct and facade tests and every docs sample
-pnpm test:permissiveness     # the mutation gate
-pnpm conformance                       # vendored contract-major v1, including its key census
-pnpm conformance:v2                    # vendored contract-major v2
-pnpm conformance:v3                    # vendored contract-major v3
-pnpm conformance:role-attestation      # and the cross-profile legs
-pnpm conformance:content-assertion     # and producer/assembly byte agreement
-pnpm conformance:strict-ed25519        # strict-Ed25519 verdicts
-pnpm conformance:local-loopback-http   # local-loopback proof verdicts
-pnpm conformance:producer-canonicality # producer-surface canonicality verdicts
-pnpm conformance:selector-float-zero   # selector float-zero verdicts (decode, producer, envelope)
-pnpm test:portable           # unit tests and the mutation gate under --conditions=bap-portable
-pnpm conformance:portable              # every corpus under the portable backend (same verdict digests)
-pnpm typecheck:browser       # src/ under DOM + ES2022, no ambient types
-pnpm guard:browser           # browser bundle: portable backend only, no unresolved globals or eval
-pnpm size                    # browser bundle-size budget
-pnpm pack:release            # the release tarball, packed from a staging copy (build first)
-pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/Bun runs
-pnpm test:runtimes           # Deno and Bun conformance lanes (BAP_RUNTIMES=deno,bun)
-pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)
-pnpm check:corpus            # complete snapshot and documentation self-consistency (offline)
-pnpm check:corpus:artifact   # real Hex identity, both checksums, and whole-tree byte comparison
-pnpm secrets                 # full-history, sensitivity, staged and unstaged secret scans
-pnpm check:currency          # dependency-currency gate (latest-first)
-pnpm test:readback           # the post-publish read-back, held to the published 1.0.0
-pnpm readback <version> --sha256 <hex>  # read back a release: registry, bytes, provenance, signatures, fresh consumers
-```
-
-TypeDoc discovers entry points from `package.json`'s `exports` map; `typedoc.json` deliberately
-leaves `entryPoints` unset so a new public subpath cannot bypass documentation coverage. Build the
-bench with `pnpm build:site` before `pnpm docs:api`: the site builder recreates `site-dist`, and the
-API build adds `site-dist/api`. CI rejects undocumented declarations and warnings. The Pages
-workflow uploads both outputs together. `pnpm docs:api` is the local, strict source-tree build.
-The hosted `/api/` uses `pnpm docs:api:release`, built from the npm-latest release tag and stamped
-"released vX.Y.Z", with version, tag and commit recorded in `release.json`.
-
-The built-site check rejects every standalone semantic version in HTML, including metadata,
-badges, headers, footers and API pages, unless it equals npm latest. Development-source labels
-and release tags do not exempt claims. Dependency source paths, SVG drawing coordinates and
-four-part addresses are not package-version claims.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and qualification commands.
 
 ## Security
 

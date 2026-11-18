@@ -184,3 +184,7 @@ assert.deepEqual(verifyKeyTransition(transition.value, keyB, keyA, expected), { 
 `trust: "not_evaluated"`: the transition proves the old key signed the handover, and whether you
 trusted the old key at that time is still your decision. An anchored export verifies a whole
 sequence of transitions in order; see [Consumption chains and archives](chains-and-archives.md).
+
+---
+
+Documentation navigation: [Previous: Local-loopback development](local-loopback.md) · [Next: Consumption chains and archives](chains-and-archives.md)

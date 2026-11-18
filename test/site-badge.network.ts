@@ -41,6 +41,16 @@ test("built site claims fail closed against the real npm latest, anywhere on any
       assert.equal(result.status, 1, result.output);
       assert.match(result.output, /site-dist[\/\\]api[\/\\]index.html:1: 99\.0\.0/);
     }
+
+    const metadata = join(scratch, "site-dist/api/documentation.json");
+    writeFileSync(metadata, JSON.stringify({ version: latest, historicalVersions: ["1.0.0"] }));
+    writeFileSync(nested, '<section class="tsd-typography"><h2>Upgrade from 1.0.0</h2></section>');
+    assert.equal(run().status, 0, "authored historical versions belong in the learning path");
+    for (const text of ['<header>1.0.0</header>', '<footer>1.0.0</footer>', '<meta content="1.0.0">',
+      '<section class="tsd-typography">99.0.0</section>']) {
+      writeFileSync(nested, text); assert.equal(run().status, 1, "article history must not excuse stale release claims");
+    }
+    rmSync(metadata);
     writeFileSync(nested, "<p>API</p>");
     execFileSync("git", ["init", "-q", scratch]);
     execFileSync("git", ["-c", "user.name=badge-test", "-c", "user.email=badge-test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "fixture"], { cwd: scratch });

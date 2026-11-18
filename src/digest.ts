@@ -9,6 +9,7 @@ import { resolve, coerceBounds, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } fr
  * Exact 13-byte ASCII domain separator `BAP1-REQUEST\0` for request hashing. Treat these bytes as
  * immutable; mutation changes the wire contract.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ * @category Canonical bytes
  */
 export const REQUEST_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x31, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00, // "BAP1-REQUEST\0"
@@ -20,6 +21,13 @@ export const REQUEST_PREFIX = new Uint8Array([
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
  * @returns The recursively tagged projection; null projects to ["null"] and other variants to [tag, value].
  * @throws InvalidError for an unknown variant tag. This low-level projection requires a well-formed Tagged value; it does not validate bounds.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.typedProject({ t: "null" }).t, "array");
+ * ```
  */
 export function typedProject(value: Tagged): Tagged {
   switch (value.t) {

@@ -4,7 +4,7 @@
 // Development-source labels and local release tags never exempt a claim from npm latest.
 import assert from "node:assert/strict";
 import spawn from "cross-spawn";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = process.argv[2] ?? process.cwd();
@@ -28,12 +28,41 @@ function check(dir) {
       pages++;
       const text = readFileSync(path, "utf8");
       // SVG drawing coordinates can look like versions, but carry no package claim. Retain offsets.
-      const claims = text.replace(/(<(?:path|polygon|polyline)\b[^>]*?\b(?:d|points)\s*=\s*)(["'])([\s\S]*?)\2/gi,
+      let claims = text.replace(/(<(?:path|polygon|polyline)\b[^>]*?\b(?:d|points)\s*=\s*)(["'])([\s\S]*?)\2/gi,
         (_match, prefix, quote, coordinates) => prefix + quote + coordinates.replace(/[^\r\n]/g, " ") + quote)
         // TypeDoc includes inherited dependency declarations with pnpm versioned source paths.
         .replace(/node_modules\/\.pnpm\/([^/<>"'\s]+)\/node_modules\//g,
           (dependencyPath, coordinate) => coordinate.startsWith(packageCoordinate)
             ? dependencyPath : dependencyPath.replace(/[^\r\n]/g, " "));
+      const documentRoot = relative(join(root, "site-dist"), path).split(/[\\/]/)[0] === "api-development" ? "api-development" : "api";
+      const metadataPath = join(root, "site-dist", documentRoot, "documentation.json");
+      if (existsSync(metadataPath)) {
+        const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+        assert.equal(metadata.version, latest, "site documentation must target npm latest");
+        const allowed = new Set(metadata.historicalVersions);
+        // Only text in an authored TypeDoc article can mention earlier releases or dependencies.
+        // Site titles, metadata, footers and arbitrary HTML remain claims about npm latest.
+        // TypeDoc also repeats authored historical headings in its article outline.
+        const scopes = []; const articles = []; let start;
+        for (const token of claims.matchAll(/<!--[\s\S]*?-->|<(\/?)([a-z][\w:-]*)\b[^>]*>/gi)) {
+          if (!token[2]) continue;
+          const closing = token[1] === "/"; const tag = token[2].toLowerCase();
+          if (closing) {
+            const index = scopes.map((scope) => scope.tag).lastIndexOf(tag);
+            if (index < 0) continue;
+            const removed = scopes.splice(index);
+            if (removed.some((scope) => scope.article) && !scopes.some((scope) => scope.article)) {
+              articles.push([start, token.index]); start = undefined;
+            }
+          } else if (!/^(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/.test(tag) && !token[0].endsWith("/>")) {
+            const article = /\bclass=["'][^"']*\b(?:tsd-typography|tsd-page-navigation)\b/.test(token[0]);
+            if (article && !scopes.some((scope) => scope.article)) start = token.index + token[0].length;
+            scopes.push({ tag, article });
+          }
+        }
+        claims = claims.replace(versions, (claim, version, offset) => allowed.has(version) &&
+          articles.some(([from, to]) => offset >= from && offset < to) ? " ".repeat(claim.length) : claim);
+      }
       for (const match of claims.matchAll(versions)) {
         if (match[1] !== latest) stale.push(`${relative(root, path)}:${text.slice(0, match.index).split("\n").length}: ${match[1]}`);
       }

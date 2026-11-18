@@ -85,8 +85,9 @@ most 8,192 bytes, and content at most 65,536 bytes (`content_bytes`, which you c
 facts as `#BoundedAuthorityProtocol.ContentAssertion.V1.ContentAssertionFacts<redacted>`, and
 `JSON.stringify` and `String()` of the facts throw (see the
 [reference](../reference.md#facts-and-decoded-types)). To keep facts for a later `verifySuccessor`,
-store a copy of their fields (`{ ...facts }`); a reconstructed plain object with those fields is
-accepted.
+persist an explicitly enumerated lineage record in a protected store, including all required
+`ContentAssertionFacts` fields and copies of digest arrays; reconstruct that typed record on load.
+Do not use object spreading into logs, responses or general event payloads.
 
 ## Successors
 
@@ -156,3 +157,7 @@ assertion cannot roll you back), and handle forks, first-version bootstrap and r
 own policy. The verifier does not derive key windows or walk key transitions. The full rules are
 in the
 [content-assertion profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md).
+
+---
+
+Documentation navigation: [Previous: Role attestations](role-attestations.md) · [Next: Durable replay reservations](durable-replay.md)

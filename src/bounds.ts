@@ -3,6 +3,7 @@ import { fail } from "./error.js";
 /**
  * The profile maxima, one entry per limit name. `boundsNew` can only tighten these.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @category Canonical bytes
  */
 export const MAXIMA = {
   /** Maximum compact size in bytes. */
@@ -89,6 +90,7 @@ export const MAXIMA = {
  * A recognized MAXIMA limit name. Names ending in bytes count octets; clock_skew and proof_max_age use
  * seconds; other entries count structures or bound numeric magnitude.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @category Canonical bytes
  */
 export type MaximaKey = keyof typeof MAXIMA;
 
@@ -96,6 +98,7 @@ export type MaximaKey = keyof typeof MAXIMA;
  * Immutable-view resource limits. Use boundsNew to tighten positive ceilings. Digest, public-key and
  * signature widths are fixed suite constants. Public boundaries revalidate caller-constructed values.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @category Canonical bytes
  */
 export interface Bounds {
   /** Fixed profile ceiling table. Raw digests and signatures are 32 and 64 bytes; Ed25519 keys are 32 bytes. Major 3 checks its 65-byte P-256 keys separately. */
@@ -108,6 +111,7 @@ export interface Bounds {
  * The shared untightened `Bounds` value. Do not mutate it; build tightened bounds with
  * `boundsNew`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
+ * @category Canonical bytes
  */
 export const MAXIMUM_BOUNDS: Bounds = { maximum: MAXIMA, overrides: new Map() };
 
@@ -115,6 +119,13 @@ export const MAXIMUM_BOUNDS: Bounds = { maximum: MAXIMA, overrides: new Map() };
  * A new, untightened `Bounds` value (the profile maxima).
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
  * @returns Fresh untightened bounds using the profile ceiling table. No input is accepted and no protocol rejection occurs.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.boundsMaximum().maximum.digest_bytes, 32);
+ * ```
  */
 export function boundsMaximum(): Bounds {
   // Return a FRESH Bounds each call so a caller cannot mutate a shared singleton's overrides Map
@@ -137,6 +148,14 @@ const FIXED_WIDTH_KEYS: ReadonlySet<MaximaKey> = new Set<MaximaKey>([
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#maxima
  * @returns Bounds containing the validated tighten-only overrides; omitted input returns MAXIMUM_BOUNDS.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.boundsNew({ json_bytes: 1024 }).overrides.get("json_bytes"), 1024);
+ * assert.throws(() => api.boundsNew({ digest_bytes: 31 }), api.InvalidError);
+ * ```
  */
 export function boundsNew(tightening?: Readonly<Record<string, number>>): Bounds {
   if (tightening === undefined) return MAXIMUM_BOUNDS;

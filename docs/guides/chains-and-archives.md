@@ -200,3 +200,7 @@ these can be tightened per call with `boundsNew` (see the [reference](../referen
 an export, the nested `chain`, anchor and transition contexts must resolve to the same limits as
 `expected.bounds`: with no tightening, leave every `bounds` unset; when you tighten, set the same
 `Bounds` value on `expected` and on each nested context. Any difference rejects.
+
+---
+
+Documentation navigation: [Previous: Rotate keys](rotate-keys.md) · [Next: Role attestations](role-attestations.md)

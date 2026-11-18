@@ -362,3 +362,7 @@ For local development servers, `localLoopbackHttpProofSigningInput`,
 "ba+loopback-proof"`) whose target URIs are `http://127.0.0.1` or `http://[::1]` (optional port,
 `:80` dropped) and whose nonce is mandatory. A standard `checkEnvelope` rejects these proofs, and
 `checkLocalLoopbackHttpEnvelope` rejects standard ones. The grant is an ordinary major-1 grant.
+
+---
+
+Documentation navigation: [Previous: Getting started](getting-started.md) · [Next: Contract-majors 2 and 3](contract-majors.md)

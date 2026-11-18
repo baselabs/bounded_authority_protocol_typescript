@@ -47,12 +47,12 @@
     <p class="kicker"><span class="wordmark hero-mark"><i>[</i>BAP<i>]</i></span> Bounded Authority Protocol · the verifier package</p>
     <h1>The resource’s side of BAP:<br><em>check the envelope, keep the facts</em>.</h1>
     <p class="lede">Somewhere between your MCP server and the caller, a question has to be answered
-    without trusting anyone: <strong>does this request carry a valid grant and proof for exactly this call?</strong> The verifier
+    using issuer keys, time and request context selected by the host: <strong>does this request carry a valid grant and proof for exactly this call?</strong> The verifier
     package answers it deterministically: issuer signature, holder binding, operation match, time
     window. Success returns cryptographic facts; failure carries no reason code. This page runs the real package.</p>
     <div class="hero-actions">
       <a class="btn primary" href="#bench"><svg class="ic"><use href="#i-terminal"/></svg> Open the bench</a>
-      <a class="btn ghost" href="#install">npm i @bounded-authority-protocol/verifier</a>
+      <a class="btn ghost" href="#install">npm i @bounded-authority-protocol/verifier@2.0.0</a>
     </div>
     <p class="custody-note"><svg class="ic"><use href="#i-lock"/></svg> The verifier accepts public keys and bytes. It never sees private keys. The demo envelope below is minted
     in your browser by the signer package; this package just judges it.</p>
@@ -66,8 +66,8 @@
 <section id="why" class="wrap why">
   <div class="why-head">
     <h2>What verification owes you</h2>
-    <p>Authorization decisions get audited, disputed, and attacked. A verifier that explains
-    itself becomes an oracle. This one doesn’t.</p>
+    <p>Verification checks signatures and bindings against explicit trusted inputs. The host owns key trust,
+    replay reservation, revocation and the decision to execute.</p>
   </div>
   <div class="grid3">
     <article class="whycard">
@@ -78,11 +78,10 @@
       A refusal is <strong>exactly {"ok":false}</strong>.</p>
     </article>
     <article class="whycard">
-      <h3>No oracle for attackers.</h3>
-      <p class="pain">Verbose verifiers reveal which check failed, giving reconnaissance to anyone
-      probing your boundary.</p>
+      <h3>Value-free refusals.</h3>
+      <p class="pain">The public failure result contains neither a reason nor partially verified claims.</p>
       <p class="answer"><svg class="ic"><use href="#i-check"/></svg> The result is closed: one invalid, <strong>no reason, no partial</strong>.
-      Your logs record what YOU choose; the caller learns nothing.</p>
+      This is not a timing or side-channel guarantee. The host controls response mapping, rate limits and safe logging.</p>
     </article>
     <article class="whycard">
       <h3>Pure and deterministic.</h3>
@@ -133,6 +132,7 @@
         <span class="verdict-mark"><svg class="ic"><use href="#i-terminal"/></svg></span>
         <span class="verdict-text">verify an envelope to see the fact sheet</span>
       </div>
+      <p class="panel-sub">Display only: page scripts and extensions can change inputs and results. The host must verify independently with trusted keys and enforce replay, revocation and policy.</p>
       <div id="facts-body">Verify an envelope to see its facts</div>
     </article>
   </div>
@@ -211,7 +211,7 @@
 
 <section class="wrap" id="install">
   <div class="sec-head"><h2>Install</h2></div>
-  <pre class="code slim">npm i @bounded-authority-protocol/verifier    # Node >= 22, browsers, Deno, Bun; three pinned @noble dependencies</pre>
+  <pre class="code slim">npm i @bounded-authority-protocol/verifier@2.0.0    # Node >= 22, browsers, Deno, Bun; three pinned @noble dependencies</pre>
 </section>
 </main>
 

@@ -1,17 +1,5 @@
-// Every TypeScript sample in the public docs runs here: each ```ts fence in README.md and docs/**/*.md
-// is a complete module that is typechecked (strict, against this repository's source) and then executed
-// on the backend the test run selects (node by default, portable under test:portable). A sample asserts
-// its own result with node:assert, so a sample that silently stops verifying fails here. No mocks: the
-// samples generate real keys with node:crypto, sign real bytes and verify them through the package.
-//
-// The two package specifiers a sample may import are rewritten to this repository's source
-// (@bounded-authority-protocol/verifier) and to the installed signer dev dependency
-// (@bounded-authority-protocol/signer). A sample that imports the signer runs in a child Node process
-// against this repository's BUILT package (dist/, so pnpm test builds first) without the bap-source
-// condition: the signer loads its own published verifier, whose "#crypto" map would send bap-source to
-// source files a published package does not ship. A fence tagged anything other than `ts` (bash, json, text) is
-// not executed; `typescript`, `js` and `javascript` fences are refused so no sample can escape this
-// harness by its tag.
+// CommonMark docs, complete recipe sources and public TSDoc examples are checked against both
+// source and published declarations, then executed with real keys, requests and stores.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -22,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import semver from "semver";
 import { commentProse } from "./comments.js";
+import { authoredSamples, docFiles as discoverDocs, type Sample } from "./support/documents.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const VERIFIER_SOURCE = join(REPO, "src", "index.ts");
@@ -33,53 +22,8 @@ const SPECIFIERS: Record<string, { run: string; types: string }> = {
   "@bounded-authority-protocol/signer": { run: pathToFileURL(SIGNER_ENTRY).href, types: SIGNER_TYPES },
 };
 
-interface Sample { readonly doc: string; readonly line: number; readonly code: string; readonly since?: string }
-
-function docFiles(): string[] {
-  const out = [join(REPO, "README.md")];
-  const walk = (dir: string): void => {
-    for (const name of readdirSync(dir).sort()) {
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (name.endsWith(".md")) out.push(full);
-    }
-  };
-  walk(join(REPO, "docs"));
-  return out;
-}
-
-// A fence opens with three or more backticks or tildes and an info string, at any indent (a sample
-// inside a list item is indented); its content is dedented by that indent, and it closes at a line of
-// the same character, at least as long, with the same indent (CommonMark). The first word of the
-// info string is the language; `ts since=<version>` marks a sample that needs that release (see the
-// reader-path test below).
-function samplesOf(file: string): Sample[] {
-  const lines = readFileSync(file, "utf8").split("\n");
-  const samples: Sample[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const open = /^( *)(`{3,}|~{3,})(.*)$/.exec(lines[i]!);
-    if (open === null) continue;
-    const indent = open[1]!;
-    const marker = open[2]!;
-    const [tag = "", ...attributes] = open[3]!.trim().split(/\s+/);
-    const closes = new RegExp(`^${indent}${marker[0] === "\`" ? "\`" : "~"}{${marker.length},}\\s*$`);
-    const start = i;
-    i++;
-    while (i < lines.length && !closes.test(lines[i]!)) i++;
-    assert.ok(i < lines.length, `${relative(REPO, file)}:${start + 1}: unterminated fence`);
-    assert.ok(!["typescript", "js", "javascript", "mjs", "mts", "tsx"].includes(tag),
-      `${relative(REPO, file)}:${start + 1}: tag code samples \`ts\` so they are executed`);
-    if (tag !== "ts") continue;
-    const since = attributes.find((a) => a.startsWith("since="))?.slice("since=".length);
-    assert.ok(attributes.every((a) => a.startsWith("since=")) && (since === undefined || /^\d+\.\d+\.\d+$/.test(since)),
-      `${relative(REPO, file)}:${start + 1}: the only fence attribute is since=<version>`);
-    const code = lines.slice(start + 1, i).map((l) => (l.startsWith(indent) ? l.slice(indent.length) : l)).join("\n");
-    samples.push({ doc: relative(REPO, file), line: start + 1, code, ...(since === undefined ? {} : { since }) });
-  }
-  return samples;
-}
-
-const SAMPLES = docFiles().flatMap(samplesOf);
+const docFiles = (): string[] => discoverDocs(REPO);
+const SAMPLES = authoredSamples(REPO);
 const label = (s: Sample): string => `${s.doc}:${s.line}`;
 
 function rewrite(code: string, target: "run" | "built" | "types"): string {
@@ -95,7 +39,7 @@ const usesSigner = (s: Sample): boolean => s.code.includes('from "@bounded-autho
 
 test("the docs carry samples (a known-positive for the fence scan)", () => {
   assert.ok(SAMPLES.some((s) => s.doc === "README.md"), "README.md has no ts sample");
-  assert.ok(SAMPLES.length >= 20, `only ${SAMPLES.length} samples found`);
+  assert.ok(SAMPLES.length >= 37, `only ${SAMPLES.length} samples found`);
 });
 
 test("every docs sample typechecks under strict settings against the source", () => {
@@ -248,7 +192,7 @@ for (const sample of SAMPLES) {
     const dir = mkdtempSync(join(tmpdir(), "bap-docs-run-"));
     try {
       const file = join(dir, "sample.mts");
-      if (!usesSigner(sample)) {
+      if (!usesSigner(sample) && !sample.doc.endsWith(".ts")) {
         writeFileSync(file, rewrite(sample.code, "run"));
         await import(pathToFileURL(file).href);
         return;
@@ -275,10 +219,12 @@ for (const sample of SAMPLES) {
 // it. The consumer is a fresh directory with "type": "module", the published verifier and the signer
 // version this repository tests with, installed by npm; each sample runs with Node's own TypeScript
 // type stripping, under the backend condition of this run (bap-portable under test:portable).
-const PUBLISHED = execFileSync("npm", ["view", "@bounded-authority-protocol/verifier", "version"], { encoding: "utf8" }).trim();
+const PUBLISHED = (JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as { version: string }).version;
+assert.equal(execFileSync("npm", ["view", `@bounded-authority-protocol/verifier@${PUBLISHED}`, "version"], { encoding: "utf8" }).trim(), PUBLISHED);
 const SIGNER_VERSION = (JSON.parse(readFileSync(join(SIGNER_ENTRY, "..", "..", "..", "package.json"), "utf8")) as { version: string }).version;
 const READER = SAMPLES.filter((s) => s.since === undefined || semver.lte(s.since, PUBLISHED));
 let consumer = "";
+const readerFiles = new Map<Sample, string>();
 
 test("reader path: install the published package in a fresh consumer", () => {
   assert.ok(semver.valid(PUBLISHED), `npm reports a published version (${PUBLISHED})`);
@@ -289,13 +235,54 @@ test("reader path: install the published package in a fresh consumer", () => {
     dependencies: { "@bounded-authority-protocol/verifier": PUBLISHED, "@bounded-authority-protocol/signer": SIGNER_VERSION },
   }));
   execFileSync("npm", ["install", "--no-audit", "--no-fund", "--loglevel=error"], { cwd: consumer, stdio: "ignore" });
+  for (const [i, sample] of READER.entries()) {
+    const file = join(consumer, `sample-${i}.mts`);
+    writeFileSync(file, sample.code);
+    readerFiles.set(sample, file);
+  }
+  // One strict program checks every eligible module before any sample is executed. Neither
+  // module paths nor conditions can resolve the source tree from this fresh consumer.
+  const diagnostics = publishedDiagnostics([...readerFiles.values()]).map((diagnostic) => {
+    const file = diagnostic.file?.fileName;
+    const sample = READER.find((item) => readerFiles.get(item) === file);
+    return `${sample ? label(sample) : file ?? "declaration"}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`;
+  });
+  assert.deepEqual(diagnostics, [], "all reader samples must typecheck against published declarations before execution");
+});
+
+function publishedDiagnostics(files: string[]): readonly ts.Diagnostic[] {
+  // No paths map, source conditions or declaration substitution. Resolution starts in the fresh
+  // consumer, so every verifier symbol comes from the registry package's own exports and .d.ts.
+  return ts.getPreEmitDiagnostics(ts.createProgram(files, {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    strict: true, noUncheckedIndexedAccess: true, exactOptionalPropertyTypes: true, skipLibCheck: false,
+    noEmit: true, lib: ["lib.es2022.d.ts"], types: ["node"], typeRoots: [join(REPO, "node_modules/@types")],
+  }));
+}
+
+test("published declaration gate rejects an import of a type absent from the release", () => {
+  const file = join(consumer, "unreleased-type-probe.mts");
+  writeFileSync(file, 'import type { DocumentationTypeNotInThePublishedRelease } from "@bounded-authority-protocol/verifier";\n');
+  const candidate = join(consumer, "candidate-only.d.mts");
+  writeFileSync(candidate, "export interface DocumentationTypeNotInThePublishedRelease { candidate: true }\n");
+  const sourceMapped = ts.createProgram([file], {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    noEmit: true, strict: true, skipLibCheck: false,
+    paths: { "@bounded-authority-protocol/verifier": [candidate] },
+  });
+  assert.deepEqual(ts.getPreEmitDiagnostics(sourceMapped), [], "a candidate source mapping accepts this unshipped type (positive control)");
+  const diagnostics = publishedDiagnostics([file]);
+  assert.ok(diagnostics.some((diagnostic) => diagnostic.code === 2305 &&
+    ts.flattenDiagnosticMessageText(diagnostic.messageText, " ").includes("DocumentationTypeNotInThePublishedRelease")),
+  "the same checker used for samples must reject an unshipped type");
+  writeFileSync(file, 'import type { ExpectedRequest } from "@bounded-authority-protocol/verifier";\n');
+  assert.deepEqual(publishedDiagnostics([file]), [], "a shipped type is the positive control");
 });
 
 for (const sample of READER) {
   test(`docs sample on the published package (reader path): ${label(sample)}`, () => {
     assert.ok(consumer !== "", "the consumer was installed");
-    const file = join(consumer, `sample-${sample.doc.replace(/[^A-Za-z0-9]/g, "_")}-${sample.line}.mts`);
-    writeFileSync(file, sample.code);
+    const file = readerFiles.get(sample)!;
     const conditions = process.execArgv.filter((a) => a === "--conditions=bap-portable");
     const child = spawnSync(process.execPath, [...conditions, file], { cwd: consumer, encoding: "utf8" });
     assert.equal(child.status, 0, `${label(sample)} fails on the published ${PUBLISHED}:\n${child.stderr}`);

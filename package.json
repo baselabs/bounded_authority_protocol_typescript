@@ -53,7 +53,12 @@
     "dist",
     "LICENSE",
     "NOTICE",
-    "README.md"
+    "README.md",
+    "docs",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "usage-rules.md"
   ],
   "engines": {
     "node": ">=22"
@@ -95,10 +100,14 @@
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs",
-    "docs:api": "typedoc",
+    "docs:api": "node tools/build-docs.mjs",
     "docs:api:release": "node tools/build-release-api.mjs",
     "test:network": "node --test --import tsx/esm test/*.network.ts",
-    "check:site": "node tools/check-site-badge.mjs"
+    "check:site": "node tools/check-site-badge.mjs",
+    "notebooks:local": "pnpm build && uv run --frozen python scripts/check_notebooks.py --local",
+    "notebooks:published": "uv run --frozen python scripts/check_notebooks.py --published",
+    "docs:check": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/docs-*.test.ts",
+    "test:docs-replay": "pnpm build && node --test --conditions=bap-source --import tsx/esm test/docs-durable-replay.test.ts"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",
@@ -119,7 +128,8 @@
     "typedoc": "^0.28.20",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.73.0",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "markdown-it": "14.3.3"
   },
   "repository": {
     "type": "git",

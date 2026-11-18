@@ -39,6 +39,9 @@ importers:
       globals:
         specifier: ^17.14.0
         version: 17.14.0
+      markdown-it:
+        specifier: 14.3.3
+        version: 14.3.3
       playwright:
         specifier: ^1.65.1
         version: 1.65.1

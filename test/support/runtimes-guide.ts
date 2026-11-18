@@ -3,12 +3,14 @@
 // and the commands it tells the reader to run. test/docs-samples.test.ts runs the same module on Node.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { markdown } from "./documents.js";
 
 const GUIDE = readFileSync(new URL("../../docs/guides/runtimes.md", import.meta.url), "utf8");
 
 // The content of every top-level fence tagged exactly `tag`, in order.
 function fences(tag: string): string[] {
-  return [...GUIDE.matchAll(new RegExp("^```" + tag + "\\n([\\s\\S]*?)^```$", "gm"))].map((m) => m[1]!);
+  return markdown.parse(GUIDE, {}).filter((token) => token.type === "fence" && token.info.trim() === tag)
+    .map((token) => token.content);
 }
 
 const modules = fences("ts");

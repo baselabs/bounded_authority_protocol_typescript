@@ -44,6 +44,7 @@ const DOT = 0x2e;
  * Exact 13-byte ASCII domain separator `BAP3-REQUEST\0` for request hashing. Treat these bytes as
  * immutable; mutation changes the wire contract.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Canonical bytes
  */
 export const REQUEST_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x33, 0x2d, 0x52, 0x45, 0x51, 0x55, 0x45, 0x53, 0x54, 0x00, // "BAP3-REQUEST\0"
@@ -53,6 +54,7 @@ export const REQUEST_PREFIX = new Uint8Array([
  * Exact 11-byte ASCII domain separator `BAP3-CHAIN\0` for consumption-row hashing. Treat these bytes
  * as immutable; mutation changes the wire contract.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Canonical bytes
  */
 export const ROW_PREFIX = new Uint8Array([
   0x42, 0x41, 0x50, 0x33, 0x2d, 0x43, 0x48, 0x41, 0x49, 0x4e, 0x00, // "BAP3-CHAIN\0"
@@ -62,6 +64,7 @@ export const ROW_PREFIX = new Uint8Array([
  * Exact 20-byte ASCII archive magic `BAP3-ARCHIVE\0EXPORT\0`. Both NUL bytes are included; this prefix
  * is never length-framed. Treat these bytes as immutable; mutation changes the wire contract.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Canonical bytes
  */
 export const ARCHIVE_PREFIX = strUtf8("BAP3-ARCHIVE\0EXPORT\0");
 
@@ -79,6 +82,7 @@ const DEFAULT_HASH = new Uint8Array(32);
  * An issuer key already trusted by the caller for this contract major. The key id binds a lookup
  * result, but does not discover trust. No private key is accepted.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Keys and trust
  */
 export interface TrustedIssuer {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -90,6 +94,7 @@ export interface TrustedIssuer {
  * Caller-owned issuer, audience and evaluation context for grant verification. Supply time from the
  * verifying service, never from a presented claim. Malformed context fails closed.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Request verification
  */
 export interface ExpectedGrant {
   /** Expected or verified issuer StringOrURI, 1 to 512 UTF-8 bytes, compared exactly. */
@@ -108,6 +113,7 @@ export interface ExpectedGrant {
  * An already-trusted archive or attestor public key with the half-open validity interval [validFrom,
  * validBefore). A null upper endpoint is unbounded. Verification never discovers or enrolls this key.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Keys and trust
  */
 export interface HistoricalPublicKey {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -124,6 +130,7 @@ export interface HistoricalPublicKey {
  * Independently retained expectations for one signed consumption-chain boundary. Matching an anchor
  * proves a signature and key window; it establishes no trust or absence of deleted history.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ExpectedAnchor {
   /** Boundary-anchor StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -148,6 +155,7 @@ export interface ExpectedAnchor {
  * Caller-retained identity, time and fingerprints for an archive-key handover. The old key signs the
  * next key; both validity windows must contain effectiveAt.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ExpectedKeyTransition {
   /** Transition StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -172,6 +180,7 @@ export interface ExpectedKeyTransition {
  * One consumption-chain row before canonical encoding. Its commitment is an opaque 32-byte
  * caller-supplied digest. The verifier neither records execution nor interprets that commitment.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ConsumptionEntry {
   /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -188,6 +197,7 @@ export interface ConsumptionEntry {
  * Canonical consumption rows and their claimed boundaries. checkChain revalidates every row and
  * compares this range with independently supplied ExpectedChain values.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ChainInput {
   /** Ordered canonical UTF-8 JSON rows, at most 65,536 rows, each at most 4,096 bytes. */
@@ -210,6 +220,7 @@ export interface ChainInput {
  * Independently retained boundaries of an exact contiguous chain range. Matching them does not prove
  * global completeness, execution or absence of deletion.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ExpectedChain {
   /** Consumption-chain StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -233,6 +244,7 @@ export interface ExpectedChain {
  * match. Success yields non-authorizing facts; replay reservation, revocation and execution policy
  * remain host responsibilities.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Request verification
  */
 export interface ExpectedRequest {
   /** Already-enrolled issuer kid and raw public key; never trust a presenter-supplied key. */
@@ -278,6 +290,7 @@ export interface ExpectedRequest {
  * their meaning. This major adds inclusive lte and gte numeric bounds. Both operands must share the
  * int or float tag; non-numeric and cross-tag operands never match.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#selectors
+ * @category Request verification
  */
 export type SelectorInput = "all" | {
     /** Unrestricted selector; other recognized wire members are inert. */
@@ -320,6 +333,7 @@ export type SelectorInput = "all" | {
  * One named operation and its nonempty conjunction of selectors. Every selector must match the
  * server-cast request arguments. Duplicate operation names are invalid.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Request verification
  */
 export interface OperationInput {
   /** Operation name, 1 to 128 printable ASCII bytes, unique within a grant. */
@@ -332,6 +346,7 @@ export interface OperationInput {
  * Public fields for a canonical issuer-grant signing input. Construction validates the major-specific
  * wire form but performs no signing, key custody or issuance-policy decision.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Request verification
  */
 export interface GrantProducer {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -358,6 +373,7 @@ export interface GrantProducer {
  * Public fields for a holder proof binding one invocation and exact typed request arguments. The
  * holder signs externally. Construction does not authenticate the supplied grant.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
+ * @category Request verification
  */
 export interface ProofProducer {
   /** Raw 65-byte uncompressed SEC1 P-256 holder public key; the holder signs the proof externally. */
@@ -386,6 +402,7 @@ export interface ProofProducer {
  * Unsigned chain-boundary fields for external signing by an archive key. Sequence zero denotes the
  * genesis boundary and requires an all-zero chain hash.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface BoundaryAnchorProducer {
   /** Boundary-anchor StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -408,6 +425,7 @@ export interface BoundaryAnchorProducer {
  * Unsigned handover from the current archive public key to its successor. The current key signs
  * externally. Construction does not enroll either key or evaluate trust.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface KeyTransitionProducer {
   /** Transition StringOrURI identifier, 1 to 512 UTF-8 bytes. */
@@ -430,6 +448,7 @@ export interface KeyTransitionProducer {
  * Rows, signed boundary anchors and ordered signed key transitions to frame as an archive. Encoding
  * checks canonical structures and consistency without verifying embedded signatures.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
+ * @category Chains and archives
  */
 export interface AnchoredExportInput {
   /** Ordered canonical UTF-8 JSON rows, at most 65,536 rows, each at most 4,096 bytes. */
@@ -459,6 +478,7 @@ export interface AnchoredExportInput {
  * is an encoding output. Verification additionally requires ExpectedAnchoredExport with a retained
  * digest and object version.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
+ * @category Chains and archives
  */
 export interface ExpectedExport {
   /** Independently retained expected contiguous-row boundaries. */
@@ -477,6 +497,7 @@ export interface ExpectedExport {
  * Archive verification expectations, adding a mandatory independently retained digest and
  * stored-object version to the construction context. Both must match before acceptance.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ExpectedAnchoredExport extends ExpectedExport {
   /** Raw 32-byte SHA-256 digest of the exact complete archive bytes. */
@@ -489,6 +510,7 @@ export interface ExpectedAnchoredExport extends ExpectedExport {
  * An archived object supplied as arbitrary raw chunks and its storage version. Concatenation must
  * equal the exact archive bytes. Verification reads no filesystem or object store.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ArchivedObject {
   /** Raw chunks whose concatenation is the exact archive. Boundaries have no wire meaning. */
@@ -502,6 +524,7 @@ export interface ArchivedObject {
  * verifies the end anchor, and each transition advances one position. This is explicit trust input,
  * not key discovery.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface HistoricalKeyChain {
   /** Ordered trusted historical public keys, one more than the number of transitions. */
@@ -516,6 +539,7 @@ export interface HistoricalKeyChain {
  * Diagnostic facts for a contiguous, boundary-consistent consumption-row range. Hash consistency
  * establishes neither trust, execution, global completeness nor absence of deletion.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ChainFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -542,6 +566,7 @@ export interface ChainFacts {
  * Diagnostic facts after an anchor signature and historical key window match. The caller still owns
  * trust selection; fingerprints identify keys without carrying raw key material.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface AnchorFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -568,6 +593,7 @@ export interface AnchorFacts {
  * Diagnostic facts after a signed handover and both historical key windows match. Authenticated
  * succession does not establish operational trust or authorization.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface KeyTransitionFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -592,6 +618,7 @@ export interface KeyTransitionFacts {
  * Facts after archive framing, digest, storage version, anchors, transitions and every row match
  * explicit expectations. Neither trust nor authorization is evaluated.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface AnchoredExportFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -647,6 +674,7 @@ export interface AnchoredExportFacts {
  * bounds. Both operands must share the int or float tag; non-numeric and cross-tag operands never
  * match.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#selectors
+ * @category Request verification
  */
 export type Selector = {
     /** Unrestricted selector; other recognized wire members are inert. */
@@ -700,6 +728,15 @@ function isNumericTag(v: Tagged): boolean {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#selectors
  * @returns The validated selector with its closed discriminant and typed operands.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { v3, jsonDecode, strUtf8 } from "@bounded-authority-protocol/verifier";
+ * const selector = v3.parseSelector(jsonDecode(strUtf8('{"kind":"lte","path":["temperature"],"value":24}')));
+ * assert.equal(v3.selectorMatches(selector, jsonDecode(strUtf8('{"temperature":24}'))), true);
+ * assert.equal(v3.selectorMatches(selector, jsonDecode(strUtf8('{"temperature":25}'))), false);
+ * ```
  */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
@@ -782,6 +819,15 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#selectors
  * @returns Whether the parsed selector matches. A missing path or a value/tag mismatch returns `false`.
  * @throws InvalidError if computing tagged identity violates the bounded JSON contract.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { v3, jsonDecode, strUtf8 } from "@bounded-authority-protocol/verifier";
+ * const selector = v3.parseSelector(jsonDecode(strUtf8('{"kind":"lte","path":["temperature"],"value":24}')));
+ * assert.equal(v3.selectorMatches(selector, jsonDecode(strUtf8('{"temperature":24}'))), true);
+ * assert.equal(v3.selectorMatches(selector, jsonDecode(strUtf8('{"temperature":25}'))), false);
+ * ```
  */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;
@@ -1150,6 +1196,13 @@ function closedShape(args: unknown[], shapes: Shape[]): void {
  * is a lookup hint (`trust: "not_evaluated"`), never trust.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns An untrusted protected-header key identifier in a success Result; no signature or trust is evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.deepEqual(api.v3.untrustedKeyLocator(api.strUtf8("invalid")), { ok: false });
+ * ```
  */
 export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Result<KeyLocator> {
   return trying(() => {
@@ -1192,6 +1245,13 @@ export function untrustedKeyLocator(compact: Uint8Array, bounds?: Bounds): Resul
  * any context (`verification: "not_evaluated"`). For display and debugging, never for a decision.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Structurally validated grant claims with verification not_evaluated in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.deepEqual(api.v3.decodeGrant(api.strUtf8("invalid")), { ok: false });
+ * ```
  */
 export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantDecoded> {
   return trying(() => {
@@ -1226,6 +1286,13 @@ export function decodeGrant(compact: Uint8Array, bounds?: Bounds): Result<GrantD
  * or any context (`verification: "not_evaluated"`).
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Structurally validated proof claims with verification not_evaluated in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.deepEqual(api.v3.decodeProof(api.strUtf8("invalid")), { ok: false });
+ * ```
  */
 export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofDecoded> {
   return trying(() => {
@@ -1245,6 +1312,32 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
  * time. Facts carry `authorization: "not_evaluated"`: verification is not authority.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Redacted GrantFacts in a success Result, with authorization not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign } from "node:crypto";
+ * import { v3 } from "@bounded-authority-protocol/verifier";
+ * const keys = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const jwk = keys.publicKey.export({ format: "jwk" });
+ * const publicKey = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * const input = v3.grantSigningInput({ keyId: "issuer", issuer: "urn:example:issuer", grantId: "grant-1",
+ *   audiences: ["urn:example:service"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
+ *   holderThumbprint: v3.thumbprint(v3.jwkFromPublicKey(publicKey)),
+ *   operations: [{ name: "records.read", selectors: ["all"] }] });
+ * assert.ok(input.ok);
+ * const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ * const signature = sign("sha256", message, { key: keys.privateKey, dsaEncoding: "ieee-p1363" });
+ * const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const scalar = BigInt("0x" + signature.subarray(32).toString("hex"));
+ * if (scalar > n / 2n) signature.set(Buffer.from((n - scalar).toString(16).padStart(64, "0"), "hex"), 32);
+ * const grant = v3.assembleCompact(input.value, signature);
+ * assert.ok(grant.ok);
+ * const result = v3.verifyGrant(grant.value, { keyId: "issuer", publicKey },
+ *   { issuer: "urn:example:issuer", audience: "urn:example:service", evaluationTime: 1500, clockSkew: 0 });
+ * assert.ok(result.ok);
+ * assert.equal(result.value.authorization, "not_evaluated");
+ * ```
  */
 export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expected: ExpectedGrant): Result<GrantFacts> {
   return trying(() => {
@@ -1301,6 +1394,86 @@ export function verifyGrant(compact: Uint8Array, trusted: TrustedIssuer, expecte
  * nonce and every selector of the operation.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Redacted EnvelopeFacts for the matched request in a success Result. Authorization remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, randomUUID, sign, verify, type KeyObject } from "node:crypto";
+ * import { es256VerifyStrict, jsonDecode, strUtf8, v3, type SigningInput } from "@bounded-authority-protocol/verifier";
+ *
+ * // The P-256 group order n.
+ * const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const toHex32 = (v: bigint): string => v.toString(16).padStart(64, "0");
+ *
+ * // Sign with node:crypto in the raw r || s form, then normalize to low-S.
+ * function es256Sign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const signature = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const s = BigInt(`0x${signature.subarray(32).toString("hex")}`);
+ *   if (s > (N - 1n) / 2n) signature.set(Buffer.from(toHex32(N - s), "hex"), 32);
+ *   return signature;
+ * }
+ * // The 65-byte uncompressed SEC1 point and the EC JWK of a P-256 public key.
+ * function p256Public(key: KeyObject): { raw: Uint8Array; jwk: v3.EcPublic } {
+ *   const { x, y } = key.export({ format: "jwk" });
+ *   const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
+ *   return { raw, jwk: v3.jwkFromPublicKey(raw) }; // refuses a point that is not an acceptable P-256 key
+ * }
+ * const message = (i: SigningInput): Uint8Array => Buffer.concat([i.protectedSegment, Buffer.from("."), i.payloadSegment]);
+ *
+ * const issuer = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const holder = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const issuerKey = p256Public(issuer.publicKey);
+ * const holderKey = p256Public(holder.publicKey);
+ *
+ * // A robot arm may move at up to 250 mm/s.
+ * const grantInput = v3.grantSigningInput({
+ *   keyId: "fleet-p256",
+ *   issuer: "https://fleet.example",
+ *   grantId: "grant-arm-3",
+ *   audiences: ["https://cell-7.example"],
+ *   issuedAt: 1_000,
+ *   notBefore: 1_000,
+ *   expiresAt: 5_000,
+ *   holderThumbprint: v3.thumbprint(holderKey.jwk),
+ *   operations: [{ name: "arm.move", selectors: [{ kind: "lte", path: ["speed_mm_s"], value: { t: "int", v: 250 } }] }],
+ * });
+ * assert.ok(grantInput.ok);
+ * const grantSignature = es256Sign(message(grantInput.value), issuer.privateKey);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), grantSignature, issuerKey.raw), true);
+ * const grant = v3.assembleCompact(grantInput.value, grantSignature);
+ * assert.ok(grant.ok);
+ *
+ * const castArguments = jsonDecode(strUtf8('{"speed_mm_s":200,"target":"bin-3"}'));
+ * const invocationId = randomUUID();
+ * const proofInput = v3.proofSigningInput({
+ *   holderPublicKey: holderKey.raw, proofId: "proof-arm-1", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", issuedAt: 1_100, invocationId,
+ *   operation: "arm.move", grantCompact: grant.value, castArguments,
+ * });
+ * assert.ok(proofInput.ok);
+ * const proof = v3.assembleCompact(proofInput.value, es256Sign(message(proofInput.value), holder.privateKey));
+ * assert.ok(proof.ok);
+ *
+ * const expected = {
+ *   trustedIssuer: { keyId: "fleet-p256", publicKey: issuerKey.raw },
+ *   issuer: "https://fleet.example", audience: "https://cell-7.example", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", invocationId, operation: "arm.move", castArguments,
+ *   evaluationTime: 1_150, clockSkew: 60, proofMaxAge: 300, nonce: { kind: "not_required" as const },
+ * };
+ * const result = v3.checkEnvelope(grant.value, proof.value, expected);
+ * assert.ok(result.ok);
+ * assert.equal(result.value.version, 3);
+ *
+ * // The high-S twin of the grant signature: node:crypto accepts it, the v3 profile does not.
+ * const s = BigInt(`0x${Buffer.from(grantSignature.subarray(32)).toString("hex")}`);
+ * const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32(N - s), "hex")]);
+ * assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
+ * // Compact assembly is a producer surface: it refuses the twin with the closed error rather
+ * // than framing a signature no conforming signer emits.
+ * const twin = v3.assembleCompact(grantInput.value, highS);
+ * assert.deepEqual(twin, { ok: false });
+ * ```
  */
 export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array, expected: ExpectedRequest): Result<EnvelopeFacts> {
   return trying(() => {
@@ -1437,6 +1610,15 @@ export function checkEnvelope(grantCompact: Uint8Array, proofCompact: Uint8Array
  * JCS of `[operation, typed(castArguments)]`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
  * @returns The raw 32-byte SHA-256 request digest in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { v3, jsonDecode, strUtf8 } from "@bounded-authority-protocol/verifier";
+ * const digest = v3.requestDigest("sensors.read", jsonDecode(strUtf8("{}")));
+ * assert.ok(digest.ok);
+ * assert.equal(digest.value.length, 32);
+ * ```
  */
 export function requestDigest(operation: string, castArguments: Tagged, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -1449,6 +1631,7 @@ export function requestDigest(operation: string, castArguments: Tagged, bounds?:
  * Successful row encoding: canonical UTF-8 JSON and its major-specific SHA-256 chain-link digest.
  * Encoding is not an execution receipt.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface EncodedConsumptionEntry {
   /** Complete canonical consumption-row UTF-8 JSON bytes. */
@@ -1461,6 +1644,108 @@ export interface EncodedConsumptionEntry {
  * `BAP3-CHAIN\0` and the bytes.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Canonical row bytes and their raw 32-byte chain-link hash in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function encodeConsumptionEntry(entry: ConsumptionEntry, bounds?: Bounds): Result<EncodedConsumptionEntry> {
   return trying(() => {
@@ -1506,6 +1791,44 @@ function canonicalRowBytes(chainId: string, sequence: number, previousHash: Uint
  * count, predecessor hash and head hash. Facts carry `trust: "not_evaluated"`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Boundary-consistent ChainFacts in a success Result, with trust not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash } from "node:crypto";
+ * import { v3 } from "@bounded-authority-protocol/verifier";
+ * const { checkChain, encodeConsumptionEntry } = v3;
+ *
+ *
+ * const chainId = "ledger:documents";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * const hashes: Uint8Array[] = [];
+ * let previousHash: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 4; sequence++) {
+ *   const commitment = createHash("sha256").update(`execution record ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   hashes.push(entry.value.hash);
+ *   previousHash = entry.value.hash;
+ * }
+ *
+ * // The whole chain, from genesis.
+ * const whole = { chainId, firstSequence: 1, lastSequence: 4, rowCount: 4, previousHash: zero, lastHash: hashes[3]! };
+ * const facts = checkChain({ rows, ...whole }, whole);
+ * assert.ok(facts.ok);
+ * assert.equal(facts.value.verification, "boundary_consistent");
+ *
+ * // Any contiguous range: rows 2 to 4 hang off the hash of row 1.
+ * const tail = { chainId, firstSequence: 2, lastSequence: 4, rowCount: 3, previousHash: hashes[0]!, lastHash: hashes[3]! };
+ * assert.ok(checkChain({ rows: rows.slice(1), ...tail }, tail).ok);
+ *
+ * // Reordered rows, a dropped row, or a wrong head all reject.
+ * assert.deepEqual(checkChain({ rows: [rows[0]!, rows[2]!, rows[1]!, rows[3]!], ...whole }, whole), { ok: false });
+ * assert.deepEqual(checkChain({ rows: rows.slice(0, 3), ...whole, rowCount: 3 }, { ...whole, rowCount: 3 }), { ok: false });
+ * assert.deepEqual(checkChain({ rows, ...whole }, { ...whole, lastHash: hashes[2]! }), { ok: false });
+ * ```
  */
 export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<ChainFacts> {
   return trying(() => {
@@ -1579,6 +1902,86 @@ export function checkChain(chain: ChainInput, expected: ExpectedChain): Result<C
  * `payloadSegment` with the issuer key, then call `assembleCompact`; the package never signs.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Canonical protected and payload base64url segments for the grant in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, randomUUID, sign, verify, type KeyObject } from "node:crypto";
+ * import { es256VerifyStrict, jsonDecode, strUtf8, v3, type SigningInput } from "@bounded-authority-protocol/verifier";
+ *
+ * // The P-256 group order n.
+ * const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const toHex32 = (v: bigint): string => v.toString(16).padStart(64, "0");
+ *
+ * // Sign with node:crypto in the raw r || s form, then normalize to low-S.
+ * function es256Sign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const signature = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const s = BigInt(`0x${signature.subarray(32).toString("hex")}`);
+ *   if (s > (N - 1n) / 2n) signature.set(Buffer.from(toHex32(N - s), "hex"), 32);
+ *   return signature;
+ * }
+ * // The 65-byte uncompressed SEC1 point and the EC JWK of a P-256 public key.
+ * function p256Public(key: KeyObject): { raw: Uint8Array; jwk: v3.EcPublic } {
+ *   const { x, y } = key.export({ format: "jwk" });
+ *   const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
+ *   return { raw, jwk: v3.jwkFromPublicKey(raw) }; // refuses a point that is not an acceptable P-256 key
+ * }
+ * const message = (i: SigningInput): Uint8Array => Buffer.concat([i.protectedSegment, Buffer.from("."), i.payloadSegment]);
+ *
+ * const issuer = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const holder = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const issuerKey = p256Public(issuer.publicKey);
+ * const holderKey = p256Public(holder.publicKey);
+ *
+ * // A robot arm may move at up to 250 mm/s.
+ * const grantInput = v3.grantSigningInput({
+ *   keyId: "fleet-p256",
+ *   issuer: "https://fleet.example",
+ *   grantId: "grant-arm-3",
+ *   audiences: ["https://cell-7.example"],
+ *   issuedAt: 1_000,
+ *   notBefore: 1_000,
+ *   expiresAt: 5_000,
+ *   holderThumbprint: v3.thumbprint(holderKey.jwk),
+ *   operations: [{ name: "arm.move", selectors: [{ kind: "lte", path: ["speed_mm_s"], value: { t: "int", v: 250 } }] }],
+ * });
+ * assert.ok(grantInput.ok);
+ * const grantSignature = es256Sign(message(grantInput.value), issuer.privateKey);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), grantSignature, issuerKey.raw), true);
+ * const grant = v3.assembleCompact(grantInput.value, grantSignature);
+ * assert.ok(grant.ok);
+ *
+ * const castArguments = jsonDecode(strUtf8('{"speed_mm_s":200,"target":"bin-3"}'));
+ * const invocationId = randomUUID();
+ * const proofInput = v3.proofSigningInput({
+ *   holderPublicKey: holderKey.raw, proofId: "proof-arm-1", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", issuedAt: 1_100, invocationId,
+ *   operation: "arm.move", grantCompact: grant.value, castArguments,
+ * });
+ * assert.ok(proofInput.ok);
+ * const proof = v3.assembleCompact(proofInput.value, es256Sign(message(proofInput.value), holder.privateKey));
+ * assert.ok(proof.ok);
+ *
+ * const expected = {
+ *   trustedIssuer: { keyId: "fleet-p256", publicKey: issuerKey.raw },
+ *   issuer: "https://fleet.example", audience: "https://cell-7.example", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", invocationId, operation: "arm.move", castArguments,
+ *   evaluationTime: 1_150, clockSkew: 60, proofMaxAge: 300, nonce: { kind: "not_required" as const },
+ * };
+ * const result = v3.checkEnvelope(grant.value, proof.value, expected);
+ * assert.ok(result.ok);
+ * assert.equal(result.value.version, 3);
+ *
+ * // The high-S twin of the grant signature: node:crypto accepts it, the v3 profile does not.
+ * const s = BigInt(`0x${Buffer.from(grantSignature.subarray(32)).toString("hex")}`);
+ * const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32(N - s), "hex")]);
+ * assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
+ * // Compact assembly is a producer surface: it refuses the twin with the closed error rather
+ * // than framing a signature no conforming signer emits.
+ * const twin = v3.assembleCompact(grantInput.value, highS);
+ * assert.deepEqual(twin, { ok: false });
+ * ```
  */
 export function grantSigningInput(grant: GrantProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1759,6 +2162,86 @@ function checkNode(v: Tagged, depth: number, b: Bounds): void {
  * the holder key, then call `assembleCompact`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Canonical protected and payload base64url segments for the holder proof in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, randomUUID, sign, verify, type KeyObject } from "node:crypto";
+ * import { es256VerifyStrict, jsonDecode, strUtf8, v3, type SigningInput } from "@bounded-authority-protocol/verifier";
+ *
+ * // The P-256 group order n.
+ * const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const toHex32 = (v: bigint): string => v.toString(16).padStart(64, "0");
+ *
+ * // Sign with node:crypto in the raw r || s form, then normalize to low-S.
+ * function es256Sign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const signature = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const s = BigInt(`0x${signature.subarray(32).toString("hex")}`);
+ *   if (s > (N - 1n) / 2n) signature.set(Buffer.from(toHex32(N - s), "hex"), 32);
+ *   return signature;
+ * }
+ * // The 65-byte uncompressed SEC1 point and the EC JWK of a P-256 public key.
+ * function p256Public(key: KeyObject): { raw: Uint8Array; jwk: v3.EcPublic } {
+ *   const { x, y } = key.export({ format: "jwk" });
+ *   const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
+ *   return { raw, jwk: v3.jwkFromPublicKey(raw) }; // refuses a point that is not an acceptable P-256 key
+ * }
+ * const message = (i: SigningInput): Uint8Array => Buffer.concat([i.protectedSegment, Buffer.from("."), i.payloadSegment]);
+ *
+ * const issuer = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const holder = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const issuerKey = p256Public(issuer.publicKey);
+ * const holderKey = p256Public(holder.publicKey);
+ *
+ * // A robot arm may move at up to 250 mm/s.
+ * const grantInput = v3.grantSigningInput({
+ *   keyId: "fleet-p256",
+ *   issuer: "https://fleet.example",
+ *   grantId: "grant-arm-3",
+ *   audiences: ["https://cell-7.example"],
+ *   issuedAt: 1_000,
+ *   notBefore: 1_000,
+ *   expiresAt: 5_000,
+ *   holderThumbprint: v3.thumbprint(holderKey.jwk),
+ *   operations: [{ name: "arm.move", selectors: [{ kind: "lte", path: ["speed_mm_s"], value: { t: "int", v: 250 } }] }],
+ * });
+ * assert.ok(grantInput.ok);
+ * const grantSignature = es256Sign(message(grantInput.value), issuer.privateKey);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), grantSignature, issuerKey.raw), true);
+ * const grant = v3.assembleCompact(grantInput.value, grantSignature);
+ * assert.ok(grant.ok);
+ *
+ * const castArguments = jsonDecode(strUtf8('{"speed_mm_s":200,"target":"bin-3"}'));
+ * const invocationId = randomUUID();
+ * const proofInput = v3.proofSigningInput({
+ *   holderPublicKey: holderKey.raw, proofId: "proof-arm-1", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", issuedAt: 1_100, invocationId,
+ *   operation: "arm.move", grantCompact: grant.value, castArguments,
+ * });
+ * assert.ok(proofInput.ok);
+ * const proof = v3.assembleCompact(proofInput.value, es256Sign(message(proofInput.value), holder.privateKey));
+ * assert.ok(proof.ok);
+ *
+ * const expected = {
+ *   trustedIssuer: { keyId: "fleet-p256", publicKey: issuerKey.raw },
+ *   issuer: "https://fleet.example", audience: "https://cell-7.example", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", invocationId, operation: "arm.move", castArguments,
+ *   evaluationTime: 1_150, clockSkew: 60, proofMaxAge: 300, nonce: { kind: "not_required" as const },
+ * };
+ * const result = v3.checkEnvelope(grant.value, proof.value, expected);
+ * assert.ok(result.ok);
+ * assert.equal(result.value.version, 3);
+ *
+ * // The high-S twin of the grant signature: node:crypto accepts it, the v3 profile does not.
+ * const s = BigInt(`0x${Buffer.from(grantSignature.subarray(32)).toString("hex")}`);
+ * const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32(N - s), "hex")]);
+ * assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
+ * // Compact assembly is a producer surface: it refuses the twin with the closed error rather
+ * // than framing a signature no conforming signer emits.
+ * const twin = v3.assembleCompact(grantInput.value, highS);
+ * assert.deepEqual(twin, { ok: false });
+ * ```
  */
 export function proofSigningInput(proof: ProofProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1832,6 +2315,86 @@ function jwkToTagged(jwk: { crv: string; kty: string; x: string; y: string }): T
  * does not verify the signature.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#substitutions
  * @returns Exact ASCII compact JWS bytes in a success Result; no signature verification is performed. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, randomUUID, sign, verify, type KeyObject } from "node:crypto";
+ * import { es256VerifyStrict, jsonDecode, strUtf8, v3, type SigningInput } from "@bounded-authority-protocol/verifier";
+ *
+ * // The P-256 group order n.
+ * const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const toHex32 = (v: bigint): string => v.toString(16).padStart(64, "0");
+ *
+ * // Sign with node:crypto in the raw r || s form, then normalize to low-S.
+ * function es256Sign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const signature = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const s = BigInt(`0x${signature.subarray(32).toString("hex")}`);
+ *   if (s > (N - 1n) / 2n) signature.set(Buffer.from(toHex32(N - s), "hex"), 32);
+ *   return signature;
+ * }
+ * // The 65-byte uncompressed SEC1 point and the EC JWK of a P-256 public key.
+ * function p256Public(key: KeyObject): { raw: Uint8Array; jwk: v3.EcPublic } {
+ *   const { x, y } = key.export({ format: "jwk" });
+ *   const raw = Buffer.concat([Buffer.from([0x04]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]);
+ *   return { raw, jwk: v3.jwkFromPublicKey(raw) }; // refuses a point that is not an acceptable P-256 key
+ * }
+ * const message = (i: SigningInput): Uint8Array => Buffer.concat([i.protectedSegment, Buffer.from("."), i.payloadSegment]);
+ *
+ * const issuer = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const holder = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const issuerKey = p256Public(issuer.publicKey);
+ * const holderKey = p256Public(holder.publicKey);
+ *
+ * // A robot arm may move at up to 250 mm/s.
+ * const grantInput = v3.grantSigningInput({
+ *   keyId: "fleet-p256",
+ *   issuer: "https://fleet.example",
+ *   grantId: "grant-arm-3",
+ *   audiences: ["https://cell-7.example"],
+ *   issuedAt: 1_000,
+ *   notBefore: 1_000,
+ *   expiresAt: 5_000,
+ *   holderThumbprint: v3.thumbprint(holderKey.jwk),
+ *   operations: [{ name: "arm.move", selectors: [{ kind: "lte", path: ["speed_mm_s"], value: { t: "int", v: 250 } }] }],
+ * });
+ * assert.ok(grantInput.ok);
+ * const grantSignature = es256Sign(message(grantInput.value), issuer.privateKey);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), grantSignature, issuerKey.raw), true);
+ * const grant = v3.assembleCompact(grantInput.value, grantSignature);
+ * assert.ok(grant.ok);
+ *
+ * const castArguments = jsonDecode(strUtf8('{"speed_mm_s":200,"target":"bin-3"}'));
+ * const invocationId = randomUUID();
+ * const proofInput = v3.proofSigningInput({
+ *   holderPublicKey: holderKey.raw, proofId: "proof-arm-1", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", issuedAt: 1_100, invocationId,
+ *   operation: "arm.move", grantCompact: grant.value, castArguments,
+ * });
+ * assert.ok(proofInput.ok);
+ * const proof = v3.assembleCompact(proofInput.value, es256Sign(message(proofInput.value), holder.privateKey));
+ * assert.ok(proof.ok);
+ *
+ * const expected = {
+ *   trustedIssuer: { keyId: "fleet-p256", publicKey: issuerKey.raw },
+ *   issuer: "https://fleet.example", audience: "https://cell-7.example", method: "POST",
+ *   targetUri: "https://cell-7.example/arm/move", invocationId, operation: "arm.move", castArguments,
+ *   evaluationTime: 1_150, clockSkew: 60, proofMaxAge: 300, nonce: { kind: "not_required" as const },
+ * };
+ * const result = v3.checkEnvelope(grant.value, proof.value, expected);
+ * assert.ok(result.ok);
+ * assert.equal(result.value.version, 3);
+ *
+ * // The high-S twin of the grant signature: node:crypto accepts it, the v3 profile does not.
+ * const s = BigInt(`0x${Buffer.from(grantSignature.subarray(32)).toString("hex")}`);
+ * const highS = Buffer.concat([grantSignature.subarray(0, 32), Buffer.from(toHex32(N - s), "hex")]);
+ * assert.equal(verify("sha256", message(grantInput.value), { key: issuer.publicKey, dsaEncoding: "ieee-p1363" }, highS), true);
+ * assert.equal(es256VerifyStrict(message(grantInput.value), highS, issuerKey.raw), false);
+ * // Compact assembly is a producer surface: it refuses the twin with the closed error rather
+ * // than framing a signature no conforming signer emits.
+ * const twin = v3.assembleCompact(grantInput.value, highS);
+ * assert.deepEqual(twin, { ok: false });
+ * ```
  */
 export function assembleCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -1876,6 +2439,108 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
  * of a consumption chain under an archive key.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Canonical protected and payload base64url segments for the boundary anchor in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1923,6 +2588,108 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
  * next one; the current key signs it.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Canonical protected and payload base64url segments for the key transition in a success Result. Sign their exact dot-separated ASCII bytes externally. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -1969,6 +2736,7 @@ export function keyTransitionSigningInput(t: KeyTransitionProducer, bounds?: Bou
  * Successful archive encoding: complete framed bytes and their SHA-256 digest. Encoding checks
  * structure and consistency but verifies no signatures and grants no authority.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
+ * @category Chains and archives
  */
 export interface EncodedAnchoredExport {
   /** Complete binary archive including the unframed 20-byte magic prefix. */
@@ -1981,6 +2749,108 @@ export interface EncodedAnchoredExport {
  * the archive bytes and their SHA-256 digest.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  * @returns Framed archive bytes and their raw 32-byte SHA-256 digest in a success Result, without signature verification. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function encodeAnchoredExport(input: AnchoredExportInput, expected: ExpectedExport): Result<EncodedAnchoredExport> {
   return trying(() => {
@@ -2152,6 +3022,108 @@ function frame(bytes: Uint8Array): Uint8Array {
  * validBefore`. Facts carry `trust: "not_evaluated"`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Redacted AnchorFacts in a success Result after signature and key-window checks; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPublicKey, expected: ExpectedAnchor): Result<AnchorFacts> {
   return trying(() => {
@@ -2209,6 +3181,53 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
  * validity windows. Facts carry `trust: "not_evaluated"`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
  * @returns Redacted KeyTransitionFacts in a success Result after both key-window checks and the old-key signature; trust remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3 } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyKeyTransition } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ *
+ * // The windows overlap so the handover time can sit inside both.
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ *
+ * const input = keyTransitionSigningInput({
+ *   transitionId: "rotation-2026-10", chainId: "audit:records", effectiveAt: 2_500,
+ *   currentKeyId: keyA.keyId, currentPublicKey: keyA.publicKey,
+ *   nextKeyId: keyB.keyId, nextPublicKey: keyB.publicKey,
+ * });
+ * assert.ok(input.ok);
+ * const rawSignature = sign("sha256", Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]), { key: a.privateKey, dsaEncoding: "ieee-p1363" });
+ * const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ * const highS = BigInt("0x" + rawSignature.subarray(32).toString("hex"));
+ * if (highS > n / 2n) rawSignature.set(Buffer.from((n - highS).toString(16).padStart(64, "0"), "hex"), 32);
+ * const signature = rawSignature;
+ * const transition = assembleCompact(input.value, signature);
+ * assert.ok(transition.ok);
+ *
+ * const expected = {
+ *   transitionId: "rotation-2026-10", chainId: "audit:records", effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: publicKeyThumbprintRaw(keyA.publicKey),
+ *   nextKeyId: "archive-b", nextKeyFingerprint: publicKeyThumbprintRaw(keyB.publicKey),
+ * };
+ * const facts = verifyKeyTransition(transition.value, keyA, keyB, expected);
+ * assert.ok(facts.ok);
+ * assert.equal(facts.value.verification, "authenticated_transition");
+ * assert.equal(facts.value.trust, "not_evaluated");
+ *
+ * // The handover time must sit inside both windows.
+ * assert.deepEqual(verifyKeyTransition(transition.value, { ...keyA, validBefore: 2_400 }, keyB, expected), { ok: false });
+ * // The new key cannot sign its own introduction.
+ * assert.deepEqual(verifyKeyTransition(transition.value, keyB, keyA, expected), { ok: false });
+ * ```
  */
 export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPublicKey, newKey: HistoricalPublicKey, expected: ExpectedKeyTransition): Result<KeyTransitionFacts> {
   return trying(() => {
@@ -2268,6 +3287,108 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
  * digest, object version, framing, both anchors, every transition and every row.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#archive
  * @returns Redacted AnchoredExportFacts in a success Result; authorization remains not_evaluated. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Chains and archives
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { v3, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v3;
+ * type HistoricalPublicKey = v3.HistoricalPublicKey;
+ *
+ * const raw = (key: KeyObject): Uint8Array => Buffer.concat([Buffer.from([4]), Buffer.from(key.export({ format: "jwk" }).x!, "base64url"), Buffer.from(key.export({ format: "jwk" }).y!, "base64url")]);
+ * function lowSign(message: Uint8Array, privateKey: KeyObject): Uint8Array {
+ *   const raw = sign("sha256", message, { key: privateKey, dsaEncoding: "ieee-p1363" });
+ *   const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+ *   const s = BigInt("0x" + raw.subarray(32).toString("hex"));
+ *   if (s > n / 2n) raw.set(Buffer.from((n - s).toString(16).padStart(64, "0"), "hex"), 32);
+ *   return raw;
+ * }
+ * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
+ *   assert.ok(input.ok);
+ *   const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
+ *   const compact = assembleCompact(input.value, lowSign(message, privateKey));
+ *   assert.ok(compact.ok);
+ *   return compact.value;
+ * }
+ *
+ * // Three rows.
+ * const chainId = "audit:approvals";
+ * const zero = new Uint8Array(32);
+ * const rows: Uint8Array[] = [];
+ * let head: Uint8Array = zero;
+ * for (let sequence = 1; sequence <= 3; sequence++) {
+ *   const commitment = createHash("sha256").update(`approval ${sequence}`).digest();
+ *   const entry = encodeConsumptionEntry({ chainId, sequence, previousHash: head, commitment });
+ *   assert.ok(entry.ok);
+ *   rows.push(entry.value.bytes);
+ *   head = entry.value.hash;
+ * }
+ *
+ * // Two archive keys with overlapping windows.
+ * const a = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const b = generateKeyPairSync("ec", { namedCurve: "P-256" });
+ * const keyA: HistoricalPublicKey = { keyId: "archive-a", publicKey: raw(a.publicKey), validFrom: 1_000, validBefore: 3_000 };
+ * const keyB: HistoricalPublicKey = { keyId: "archive-b", publicKey: raw(b.publicKey), validFrom: 2_000, validBefore: null };
+ * const fingerprintA = publicKeyThumbprintRaw(keyA.publicKey);
+ * const fingerprintB = publicKeyThumbprintRaw(keyB.publicKey);
+ *
+ * // The signed pieces: start anchor (key A), handover A to B, end anchor (key B).
+ * const startAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", publicKey: keyA.publicKey,
+ * }), a.privateKey);
+ * const transition = signCompact(keyTransitionSigningInput({
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500, currentKeyId: "archive-a", currentPublicKey: keyA.publicKey,
+ *   nextKeyId: "archive-b", nextPublicKey: keyB.publicKey,
+ * }), a.privateKey);
+ * const endAnchor = signCompact(boundaryAnchorSigningInput({
+ *   anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", publicKey: keyB.publicKey,
+ * }), b.privateKey);
+ *
+ * // What the verifier expects, from its own records.
+ * const chain = { chainId, firstSequence: 1, lastSequence: 3, rowCount: 3, previousHash: zero, lastHash: head };
+ * const expectedStart = { anchorId: "anchor-0", anchoredAt: 1_500, chainId, sequence: 0, chainHash: zero, keyId: "archive-a", keyFingerprint: fingerprintA };
+ * const expectedEnd = { anchorId: "anchor-3", anchoredAt: 2_600, chainId, sequence: 3, chainHash: head, keyId: "archive-b", keyFingerprint: fingerprintB };
+ * const expectedTransition = {
+ *   transitionId: "rotation-1", chainId, effectiveAt: 2_500,
+ *   currentKeyId: "archive-a", currentKeyFingerprint: fingerprintA, nextKeyId: "archive-b", nextKeyFingerprint: fingerprintB,
+ * };
+ *
+ * // A single anchor verifies on its own against its key.
+ * const anchorFacts = verifyHistoricalAnchor(startAnchor, keyA, expectedStart);
+ * assert.ok(anchorFacts.ok);
+ * assert.equal(anchorFacts.value.verification, "signature_and_window");
+ *
+ * // Encoding uses ExpectedExport; stored-object verification also binds digest and objectVersion.
+ * const encoded = encodeAnchoredExport(
+ *   { rows, startAnchor, endAnchor, transitions: [transition], ...chain },
+ *   { chain, startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition] },
+ * );
+ * assert.ok(encoded.ok);
+ *
+ * // Store it (here: split into two chunks), then verify the stored object.
+ * const archive = encoded.value.archive;
+ * const stored = { chunks: [archive.subarray(0, 100), archive.subarray(100)], version: "object-version-7" };
+ * const exported = verifyAnchoredExport(stored, { keys: [keyA, keyB] }, {
+ *   chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *   startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ * });
+ * assert.ok(exported.ok);
+ * assert.equal(exported.value.rowCount, 3);
+ * assert.equal(exported.value.transitionCount, 1);
+ * assert.equal(exported.value.verification, "anchored_export");
+ *
+ * // One flipped byte anywhere changes the digest and rejects.
+ * const tampered = Buffer.from(archive);
+ * tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 1;
+ * assert.deepEqual(
+ *   verifyAnchoredExport({ chunks: [tampered], version: "object-version-7" }, { keys: [keyA, keyB] }, {
+ *     chain, digest: encoded.value.digest, objectVersion: "object-version-7",
+ *     startAnchor: expectedStart, endAnchor: expectedEnd, transitions: [expectedTransition],
+ *   }),
+ *   { ok: false },
+ * );
+ * ```
  */
 export function verifyAnchoredExport(archived: ArchivedObject, keyChain: HistoricalKeyChain, expected: ExpectedAnchoredExport): Result<AnchoredExportFacts> {
   return trying(() => {

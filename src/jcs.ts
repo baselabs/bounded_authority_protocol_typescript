@@ -14,6 +14,13 @@ import { strUtf8, utf8Str, type Tagged } from "./json.js";
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#json
  * @returns RFC 8785 canonical UTF-8 JSON bytes.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.utf8Str(api.jcsEncode(api.jsonDecode(api.strUtf8('{"b":2,"a":1}')))), '{"a":1,"b":2}');
+ * ```
  */
 export function jcsEncode(value: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   // Re-validate caller-supplied bounds (Bounds is structural; a hand-crafted override can widen

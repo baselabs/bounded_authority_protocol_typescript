@@ -89,6 +89,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
  * not permit profile inference from presented bytes. Sibling profiles use distinct labeled kinds.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
  * @inline
+ * @category Canonical bytes
  */
 export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion";
 
@@ -97,6 +98,7 @@ export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" |
  * protectedSegment bytes, one period byte (0x2e), then payloadSegment bytes. Assembly accepts a
  * signature, never a private key or callback.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#datamodel
+ * @category Canonical bytes
  */
 export interface SigningInput {
   /** Closed discriminant selecting the documented artifact or selector variant. */

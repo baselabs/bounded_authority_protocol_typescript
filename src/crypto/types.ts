@@ -11,5 +11,6 @@ export type BackendPublicKey = { readonly [brand]: "bap-backend-public-key" };
  * The resolved crypto implementation: node uses node:crypto; portable uses pure JavaScript noble
  * libraries. Selection must not change protocol verdicts.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export type BackendId = "node" | "portable";

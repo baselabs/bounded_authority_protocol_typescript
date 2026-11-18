@@ -88,7 +88,7 @@ The weekly `corpus-adoption.yml` workflow finds the newest non-retired eligible 
 vendors it transactionally on `automation/adopt-corpus-<version>`, including the generated README
 summary, and pushes that branch. It opens or updates one landing issue, deduplicated by exact
 title across open and closed issues, with the version, branch, compare URL and commit. Infra
-reviews it and runs `kimosabe-land --repo . --sha <full sha>`; the resulting `kci/**` push is the
+reviews it and runs the maintainer qualification command for the exact commit; the resulting `kci/**` push is the
 only qualification run. Adoption creates no PR and needs only `contents: write` and
 `issues: write`. Repository permission to create and approve PRs stays disabled. Maintainers
 can run the same selection manually:
@@ -97,7 +97,7 @@ can run the same selection manually:
 node scripts/check-corpus.mjs adopt
 ```
 
-The owner-dispatched `publish.yml`, running from the default branch in environment `publish`,
+The maintainer-dispatched `publish.yml`, running from the default branch in environment `publish`,
 requires SOURCE to name that newest eligible version, with its registry
 checksum, and byte-compares its complete artifact. Per-push CI compares only the named release:
 a newer eligible version does not require immediate adoption on a push. A Hex outage or retirement
@@ -159,3 +159,7 @@ default also scans staged and unstaged changes. Rule-scoped anchored corpus path
 justified only because every byte must match the checksum-verified Hex release, whose reference
 repository scans it. Historical removed paths are limited to the exact commits that carried them;
 non-corpus fixture exceptions still require exact matched bytes and paths.
+
+---
+
+Documentation navigation: [Previous: Upgrade index](upgrading.md) · [Next: FAQ](faq.md)

@@ -214,3 +214,7 @@ revocation, and the decision to act. A server that issues nonces passes
 [Verify requests](verify-requests.md#nonces)). To find out why a request refuses while you build
 the integration, see [Handle errors](handle-errors.md#finding-why-a-request-rejects); never send that
 detail to the caller.
+
+---
+
+Documentation navigation: [Previous: Contract-majors 2 and 3](contract-majors.md) · [Next: Request adapters in every kind of host](framework-integration.md)

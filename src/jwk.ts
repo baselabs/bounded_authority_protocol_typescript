@@ -15,6 +15,7 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
  * The closed public Ed25519 JWK shape. No private d or extra members are accepted. Key helpers
  * validate canonical, non-small-order, on-curve 32-byte keys before encoding or hashing.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#10-protected-headers
+ * @category Request verification
  */
 export interface OkpPublic {
   /** Exact JWK curve name required by the suite. */
@@ -31,6 +32,15 @@ export interface OkpPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns Canonical UTF-8 JSON for the closed public JWK.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.ok(api.jwkDecodePublic(api.jwkEncodePublic(raw)).ok);
+ * ```
  */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey.length === 32, "jwk.encode_public: public key width must be 32");
@@ -50,6 +60,15 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
  * the raw 32-byte key.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns The validated raw 32-byte Ed25519 public key in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.ok(api.jwkDecodePublic(api.jwkEncodePublic(raw)).ok);
+ * ```
  */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed OKP shape.
@@ -81,6 +100,15 @@ export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUN
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns The validated public OKP JWK object.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.equal(api.jwkFromPublicKey(raw).kty, "OKP");
+ * ```
  */
 export function jwkFromPublicKey(rawKey: Uint8Array): OkpPublic {
   assert(rawKey.length === 32, "jwk: public key width");
@@ -98,6 +126,15 @@ function uncheckedJwk(rawKey: Uint8Array): OkpPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns Canonical UTF-8 JSON of exactly the RFC 7638 required public JWK members.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.ok(api.thumbprintPreimage(api.jwkFromPublicKey(raw)).length > 0);
+ * ```
  */
 export function thumbprintPreimage(jwk: OkpPublic): Uint8Array {
   // Each member is read exactly once into a local, those values are checked, and the preimage is
@@ -126,6 +163,15 @@ function preimageOf(jwk: OkpPublic): Uint8Array {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.equal(api.thumbprint(api.jwkFromPublicKey(raw)).length, 43);
+ * ```
  */
 export function thumbprint(jwk: OkpPublic): string {
   return utf8Str(base64urlEncode(sha256(thumbprintPreimage(jwk))));
@@ -137,6 +183,15 @@ export function thumbprint(jwk: OkpPublic): string {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.equal(api.thumbprintRaw(api.jwkFromPublicKey(raw)).length, 32);
+ * ```
  */
 export function thumbprintRaw(jwk: OkpPublic): Uint8Array {
   return sha256(thumbprintPreimage(jwk));
@@ -169,6 +224,15 @@ export function readMembers(jwk: object, members: readonly string[]): Record<str
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint of the validated public key.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const raw = Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x!, "base64url");
+ * assert.equal(api.publicKeyThumbprintRaw(raw).length, 32);
+ * ```
  */
 export function publicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(jwkFromPublicKey(rawKey));

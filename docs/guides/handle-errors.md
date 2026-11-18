@@ -9,8 +9,8 @@ Every verification, decode and producer function returns a `Result<T>`:
 ```
 
 The failure carries no reason, no partial data and no error code, and that is deliberate: a
-verifier that explains which check failed gives an attacker a probing oracle, and a partial result
-invites a caller to act on half-verified data. Treat `{ ok: false }` as "refuse the request" and
+closed result avoids exposing check-specific diagnostics or partially verified data. This does
+not promise constant-time behavior or eliminate side channels; the host owns its response policy. Treat `{ ok: false }` as "refuse the request" and
 move on. Check `ok` before reading `value`; TypeScript narrows the type for you.
 
 ```ts
@@ -139,3 +139,7 @@ That example shows two of the most common causes. The full list to check:
 | Rejects with a nonce flow | `nonce: { kind: "not_required" }` while the proof carries one, or the other way round |
 | `invocationId` rejects | it must be a lowercase RFC 4122 UUID (versions 1 to 5) |
 | A key is refused everywhere | it fails rule S1 key acceptance (non-canonical, small order or off the curve); check `acceptablePublicKey` |
+
+---
+
+Documentation navigation: [Previous: Operations and observability](operations-observability.md) · [Next: Integration recipes](recipes.md)

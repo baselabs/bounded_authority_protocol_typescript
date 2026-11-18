@@ -79,7 +79,7 @@ const NOBLE_PROPERTIES = ["sign", "keygen", "getPublicKey", "getSharedSecret", "
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "conformance/**", "test/**", "web/**", "browser/**", "site-dist/**", "build-*/**", ".kimosabe/**"],
+    ignores: ["dist/**", "node_modules/**", "conformance/**", "test/**", "web/**", "browser/**", "docs/examples/**", "site-dist/**", "build-*/**", ".kimosabe/**"],
   // web/** is the GitHub Pages site and browser/** the browser test page: DOM-context code, typechecked
   // by their own tsc configs, outside the library purity gate above.
   },

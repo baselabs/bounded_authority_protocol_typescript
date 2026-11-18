@@ -5,8 +5,9 @@
   "includeVersion": true,
   "readme": "none",
   "navigationLinks": {
-    "Guides": "https://github.com/baselabs/bounded_authority_protocol_typescript#documentation",
-    "Verifier bench": "https://baselabs.github.io/bounded_authority_protocol_typescript/"
+    "Released documentation": "../api/",
+    "Development documentation": "../api-development/",
+    "Verifier bench": "../"
   },
   "validation": {
     "notExported": true,
@@ -24,8 +25,56 @@
     "Property",
     "Method",
     "Accessor",
-    "TypeAlias"
+    "TypeAlias",
+    "Constructor"
   ],
   "treatWarningsAsErrors": true,
-  "disableSources": true
+  "disableSources": true,
+  "sortEntryPoints": false,
+  "categorizeByGroup": false,
+  "categoryOrder": [
+    "Getting started",
+    "Request verification",
+    "Keys and trust",
+    "Chains and archives",
+    "Role attestations",
+    "Content assertions",
+    "Canonical bytes",
+    "Limits and errors",
+    "*"
+  ],
+  "excludeExternals": true,
+  "plugin": [
+    "./tools/docs-plugin.mjs"
+  ],
+  "projectDocuments": [
+    "docs/guides/getting-started.md",
+    "docs/guides/verify-requests.md",
+    "docs/guides/contract-majors.md",
+    "docs/guides/http-server.md",
+    "docs/guides/framework-integration.md",
+    "docs/guides/runtimes.md",
+    "docs/guides/local-loopback.md",
+    "docs/guides/rotate-keys.md",
+    "docs/guides/chains-and-archives.md",
+    "docs/guides/role-attestations.md",
+    "docs/guides/content-assertions.md",
+    "docs/guides/durable-replay.md",
+    "docs/guides/integration-security.md",
+    "docs/guides/operations-observability.md",
+    "docs/guides/handle-errors.md",
+    "docs/guides/recipes.md",
+    "docs/guides/test-your-integration.md",
+    "docs/guides/upgrading.md",
+    "docs/guides/corpus-adoption.md",
+    "docs/guides/faq.md",
+    "docs/guides/glossary.md",
+    "docs/guides/cheatsheet.md",
+    "docs/reference.md",
+    "docs/notebooks/README.md",
+    "usage-rules.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md"
+  ]
 }

@@ -197,6 +197,13 @@ const isIdentity = ([x, y, z]: Point): boolean => x === 0n && y === z;
  * the eight small-order encodings, and on the curve. Never throws.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns `true` for a canonical, on-curve 32-byte key outside the small-order set; `false` otherwise. Never throws.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.acceptablePublicKey(new Uint8Array(32)), false);
+ * ```
  */
 export function acceptablePublicKey(publicKey: Uint8Array): boolean {
   // Total: an exotic input whose typed-array getters throw (a Proxy, an object made from
@@ -214,6 +221,13 @@ export function acceptablePublicKey(publicKey: Uint8Array): boolean {
  * enrollment, trust install and before deny-list comparison, not per request. Never throws.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns `true` for an acceptable key in the prime-order subgroup; `false` otherwise. Never throws.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.torsionFree(new Uint8Array(32)), false);
+ * ```
  */
 export function torsionFree(publicKey: Uint8Array): boolean {
   try {
@@ -231,6 +245,13 @@ export function torsionFree(publicKey: Uint8Array): boolean {
  * L`, cofactorless equation). Returns `false` for any invalid input; never throws.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns `true` when the strict encodings and Ed25519 equation verify the exact message; `false` otherwise. Never throws.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.verifyStrict(new Uint8Array(), new Uint8Array(64), new Uint8Array(32)), false);
+ * ```
  */
 export function verifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   try {
@@ -300,6 +321,13 @@ export function ed25519Verify(
  * `Uint8Array`.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#strict-ed25519
  * @returns The raw 32-byte SHA-256 digest of the byte parts concatenated in order. There is no protocol-rejection result.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.sha256(api.strUtf8("hello")).length, 32);
+ * ```
  */
 export function sha256(...parts: Uint8Array[]): Uint8Array {
   return backendSha256(...parts);

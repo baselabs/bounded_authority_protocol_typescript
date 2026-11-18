@@ -16,6 +16,7 @@ import { readMembers } from "./jwk.js";
  * The closed public P-256 JWK shape for major 3. Coordinates are canonical unpadded base64url of
  * exactly 32 bytes each. Key helpers require an on-curve point; no private d is accepted.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#31-keys-and-the-proof-jwk
+ * @category Request verification
  */
 export interface EcPublic {
   /** Exact JWK curve name required by the suite. */
@@ -35,6 +36,16 @@ export interface EcPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns Canonical UTF-8 JSON for the closed public JWK.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.ok(api.v3.jwkDecodePublic(api.v3.jwkEncodePublic(raw)).ok);
+ * ```
  */
 export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Uint8Array {
   assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk.encode_public: public key width must be 65");
@@ -56,6 +67,16 @@ export function jwkEncodePublic(rawKey: Uint8Array, bounds: Bounds = MAXIMUM_BOU
  * point validation.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns The validated raw 65-byte uncompressed SEC1 P-256 public key in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.ok(api.v3.jwkDecodePublic(api.v3.jwkEncodePublic(raw)).ok);
+ * ```
  */
 export function jwkDecodePublic(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   // Decode the JSON, then validate the closed EC shape.
@@ -162,6 +183,16 @@ function acceptableJwkPoint(jwk: EcPublic): Uint8Array {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns The validated public EC JWK object.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.equal(api.v3.jwkFromPublicKey(raw).kty, "EC");
+ * ```
  */
 export function publicJwk(rawKey: Uint8Array): EcPublic {
   assert(rawKey instanceof Uint8Array && rawKey.length === 65, "jwk: public key width");
@@ -175,6 +206,16 @@ export function publicJwk(rawKey: Uint8Array): EcPublic {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns Canonical UTF-8 JSON of exactly the four RFC 7638 required EC JWK members.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.ok(api.v3.thumbprintPreimage(api.v3.jwkFromPublicKey(raw)).length > 0);
+ * ```
  */
 export function checkedThumbprintPreimage(jwk: EcPublic): Uint8Array {
   return thumbprintPreimage(jwkFromPublicKey(acceptableJwkPoint(jwk)));
@@ -186,6 +227,16 @@ export function checkedThumbprintPreimage(jwk: EcPublic): Uint8Array {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns A canonical 43-character unpadded base64url SHA-256 thumbprint.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.equal(api.v3.thumbprint(api.v3.jwkFromPublicKey(raw)).length, 43);
+ * ```
  */
 export function checkedThumbprint(jwk: EcPublic): string {
   return utf8Str(base64urlEncode(sha256(checkedThumbprintPreimage(jwk))));
@@ -197,6 +248,16 @@ export function checkedThumbprint(jwk: EcPublic): string {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.equal(api.v3.thumbprintRaw(api.v3.jwkFromPublicKey(raw)).length, 32);
+ * ```
  */
 export function checkedThumbprintRaw(jwk: EcPublic): Uint8Array {
   return sha256(checkedThumbprintPreimage(jwk));
@@ -208,6 +269,16 @@ export function checkedThumbprintRaw(jwk: EcPublic): Uint8Array {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns The raw 32-byte RFC 7638 SHA-256 thumbprint of the validated P-256 public key.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Keys and trust
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * import { generateKeyPairSync } from "node:crypto";
+ * const jwk = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+ * const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x!, "base64url"), Buffer.from(jwk.y!, "base64url")]);
+ * assert.equal(api.v3.publicKeyThumbprintRaw(raw).length, 32);
+ * ```
  */
 export function checkedPublicKeyThumbprintRaw(rawKey: Uint8Array): Uint8Array {
   return thumbprintRaw(publicJwk(rawKey));

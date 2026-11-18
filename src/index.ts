@@ -13,6 +13,7 @@ import type { BackendId } from "./crypto/types.js";
  * The crypto backend this build resolved: `"node"` (node:crypto) or `"portable"` (@noble).
  * Verdicts are the same in both.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export const BACKEND_ID: BackendId = RESOLVED_BACKEND;
 export type { BackendId } from "./crypto/types.js";

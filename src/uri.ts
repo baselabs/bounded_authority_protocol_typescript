@@ -19,6 +19,15 @@ import { utf8Str, strUtf8 } from "./json.js";
  * query, a fragment, non-ASCII bytes and any other scheme.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#13-uri-normalization
  * @returns Normalized HTTPS URI bytes in a success Result, without reading any request or network state. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * const normalized = api.uriNormalize(api.strUtf8("HTTPS://Example.test:443/a/../b"));
+ * assert.ok(normalized.ok);
+ * assert.equal(api.utf8Str(normalized.value), "https://example.test/b");
+ * ```
  */
 export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS): Result<Uint8Array> {
   try {
@@ -34,6 +43,15 @@ export function uriNormalize(input: Uint8Array, bounds: Bounds = MAXIMUM_BOUNDS)
  * port 1 to 65535 with `:80` dropped.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-local-loopback-http-v1.md#4-public-verification-contract
  * @returns Normalized literal-loopback HTTP URI bytes in a success Result. Failure is value-free { ok: false } for invalid, over-limit or mismatched inputs.
+ * @category Request verification
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * const normalized = api.localLoopbackHttpUriNormalize(api.strUtf8("http://127.0.0.1:80/a"));
+ * assert.ok(normalized.ok);
+ * assert.equal(api.utf8Str(normalized.value), "http://127.0.0.1/a");
+ * ```
  */
 export function localLoopbackHttpUriNormalize(
   input: Uint8Array,

@@ -103,12 +103,19 @@ test("the manifest declares the exports map, the imports conditions and no side 
   assert.deepEqual(Object.keys(crypto), ["bap-source", "bap-portable", "deno", "bun", "workerd", "worker", "node", "types", "default"]);
 });
 
-test("the tarball ships the built backends and no source", () => {
+test("the tarball ships the built backends and integrator sources, with no library source", () => {
   const files = run("tar", ["-tzf", tarball], scratch).split("\n").filter(Boolean);
   for (const f of ["package/dist/src/crypto/node.js", "package/dist/src/crypto/portable.js", "package/dist/src/crypto/backend.d.ts", "package/dist/src/index.d.ts"]) {
     assert.ok(files.includes(f), `${f} is packed`);
   }
   assert.ok(!files.some((f) => f.startsWith("package/src/") || f.startsWith("package/test/") || f.startsWith("package/conformance/")), "no source, tests or corpora");
+  const documentation = JSON.parse(readFileSync(join(REPO, "docs/manifest.json"), "utf8")) as {
+    pages: { path: string }[]; extras: string[]; notebooks: { path: string }[]; runnableSources: string[];
+  };
+  for (const path of ["docs/manifest.json", ...documentation.pages.map((page) => page.path),
+    ...documentation.extras, ...documentation.notebooks.map((notebook) => notebook.path), ...documentation.runnableSources]) {
+    assert.ok(files.includes(`package/${path}`), `${path}: integrator source must survive packing`);
+  }
 });
 
 // The packed package.json must point only at packed files: every string target of "exports" and

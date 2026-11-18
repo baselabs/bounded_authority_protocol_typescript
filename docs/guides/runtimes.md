@@ -53,7 +53,7 @@ console.log(`verified ${result.value.grantId} with the ${BACKEND_ID} backend`);
 ## Deno
 
 ```bash
-deno add npm:@bounded-authority-protocol/verifier
+deno add npm:@bounded-authority-protocol/verifier@2.0.0
 deno run verify-anywhere.ts
 ```
 
@@ -65,7 +65,7 @@ unchanged; the run needs no permission flags. In a project that has a `package.j
 ## Bun
 
 ```bash
-bun add @bounded-authority-protocol/verifier
+bun add @bounded-authority-protocol/verifier@2.0.0
 bun verify-anywhere.ts
 ```
 
@@ -104,3 +104,7 @@ The package needs no `eval`, so the page works under a strict Content Security P
 A verdict computed in a page is for display only, never a trust decision: the page's own scripts
 and extensions can change both the inputs and the result. Keep the decision on a server that holds
 the trusted keys, as in [Protect an HTTP endpoint](http-server.md).
+
+---
+
+Documentation navigation: [Previous: Request adapters in every kind of host](framework-integration.md) · [Next: Local-loopback development](local-loopback.md)

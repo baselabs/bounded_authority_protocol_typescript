@@ -19,6 +19,7 @@ import { resolve, type Bounds, MAXIMUM_BOUNDS, type MaximaKey } from "./bounds.j
  * Paths traverse objects only; missing members refuse. Integer and float tags never collapse.
  * Constraints alone make no authorization decision.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
+ * @category Canonical bytes
  */
 export type Selector = {
     /** Unrestricted selector; other recognized wire members are inert. */
@@ -50,6 +51,30 @@ const SELECTOR_MEMBER_SETS = new Set(["kind", "kind,path,value", "kind,path,valu
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
  * @returns The validated selector with its closed discriminant and typed operands.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { jsonDecode, selectorMatches, parseSelector, strUtf8, utf8Str } from "@bounded-authority-protocol/verifier";
+ *
+ * const args = jsonDecode(strUtf8('{"folder":"reports","pages":12,"ratio":0.5}'));
+ * assert.equal(args.t, "object");
+ * if (args.t === "object") {
+ *   const folder = args.v.get("folder");
+ *   assert.ok(folder?.t === "string" && utf8Str(folder.v) === "reports");
+ *   assert.equal(args.v.get("pages")?.t, "int");
+ *   assert.equal(args.v.get("ratio")?.t, "float");
+ * }
+ *
+ * // Duplicate member names are refused (the closed InvalidError is thrown by jsonDecode).
+ * assert.throws(() => jsonDecode(strUtf8('{"a":1,"a":2}')), { name: "InvalidError" });
+ *
+ * // Selectors compare by type as well as value: integer 12 never equals float 12.0.
+ * const intSelector = parseSelector(jsonDecode(strUtf8('{"kind":"equals","path":["pages"],"value":12}')));
+ * const floatSelector = parseSelector(jsonDecode(strUtf8('{"kind":"equals","path":["pages"],"value":12.0}')));
+ * assert.equal(selectorMatches(intSelector, args), true);
+ * assert.equal(selectorMatches(floatSelector, args), false);
+ * ```
  */
 export function parseSelector(obj: Tagged, bounds: Bounds = MAXIMUM_BOUNDS): Selector {
   if (obj.t !== "object") fail("selector: object");
@@ -169,6 +194,13 @@ export function integralFloatFree(v: Tagged): boolean {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
  * @returns RFC 8785 canonical UTF-8 bytes of the typed projection.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.notDeepEqual(api.semanticIdentity({ t: "int", v: 1 }), api.semanticIdentity({ t: "float", v: 1 }));
+ * ```
  */
 export function semanticIdentity(value: Tagged): Uint8Array {
   return jcsEncode(typedProject(value));
@@ -189,6 +221,30 @@ function traversePath(root: Tagged, path: string[]): Tagged | undefined {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#selectors
  * @returns Whether the parsed selector matches. A missing path or a value/tag mismatch returns `false`.
  * @throws InvalidError if computing tagged identity violates the bounded JSON contract.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { jsonDecode, selectorMatches, parseSelector, strUtf8, utf8Str } from "@bounded-authority-protocol/verifier";
+ *
+ * const args = jsonDecode(strUtf8('{"folder":"reports","pages":12,"ratio":0.5}'));
+ * assert.equal(args.t, "object");
+ * if (args.t === "object") {
+ *   const folder = args.v.get("folder");
+ *   assert.ok(folder?.t === "string" && utf8Str(folder.v) === "reports");
+ *   assert.equal(args.v.get("pages")?.t, "int");
+ *   assert.equal(args.v.get("ratio")?.t, "float");
+ * }
+ *
+ * // Duplicate member names are refused (the closed InvalidError is thrown by jsonDecode).
+ * assert.throws(() => jsonDecode(strUtf8('{"a":1,"a":2}')), { name: "InvalidError" });
+ *
+ * // Selectors compare by type as well as value: integer 12 never equals float 12.0.
+ * const intSelector = parseSelector(jsonDecode(strUtf8('{"kind":"equals","path":["pages"],"value":12}')));
+ * const floatSelector = parseSelector(jsonDecode(strUtf8('{"kind":"equals","path":["pages"],"value":12.0}')));
+ * assert.equal(selectorMatches(intSelector, args), true);
+ * assert.equal(selectorMatches(floatSelector, args), false);
+ * ```
  */
 export function selectorMatches(sel: Selector, castArguments: Tagged): boolean {
   if (sel.kind === "all") return true;

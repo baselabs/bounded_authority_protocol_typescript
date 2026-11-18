@@ -2,6 +2,7 @@
  * Verified grant bindings and time claims, matching caller-supplied trusted inputs. These redacted
  * values are facts, never execution credentials. Authorization is not evaluated.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export interface GrantFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -30,6 +31,7 @@ export interface GrantFacts {
  * Verified grant and proof bindings for the exact expected request. These redacted values are facts,
  * never execution credentials. Reserve replay, check revocation and apply host policy before acting.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export interface EnvelopeFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -72,6 +74,7 @@ export interface EnvelopeFacts {
  * Diagnostic facts for a contiguous, boundary-consistent consumption-row range. Hash consistency
  * establishes neither trust, execution, global completeness nor absence of deletion.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface ChainFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -98,6 +101,7 @@ export interface ChainFacts {
  * Diagnostic facts after an anchor signature and historical key window match. The caller still owns
  * trust selection; fingerprints identify keys without carrying raw key material.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface AnchorFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -124,6 +128,7 @@ export interface AnchorFacts {
  * Diagnostic facts after a signed handover and both historical key windows match. Authenticated
  * succession does not establish operational trust or authorization.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface KeyTransitionFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -148,6 +153,7 @@ export interface KeyTransitionFacts {
  * Facts after archive framing, digest, storage version, anchors, transitions and every row match
  * explicit expectations. Neither trust nor authorization is evaluated.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#chain
+ * @category Chains and archives
  */
 export interface AnchoredExportFacts {
   /** Wire contract-major number, not the npm package version. */
@@ -194,6 +200,7 @@ export interface AnchoredExportFacts {
  * Bounded grant claims without signature or expected-context verification. Use only for display and
  * diagnostics. These values establish no trust.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export interface GrantDecoded {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */
@@ -220,6 +227,7 @@ export interface GrantDecoded {
  * Bounded holder-proof identifiers without signature or expected-context verification. The presented
  * key thumbprint conveys no trust.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Request verification
  */
 export interface ProofDecoded {
   /** Proof StringOrURI identifier, 1 to 512 UTF-8 bytes, unique per proof. */
@@ -234,6 +242,7 @@ export interface ProofDecoded {
  * An untrusted kid lookup hint read only from a grant protected header. Resolve against independently
  * enrolled issuer keys, then verify the entire grant.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#verification
+ * @category Keys and trust
  */
 export interface KeyLocator {
   /** Protected-header kid, 1 to 128 ASCII bytes in the protocol key-id character class. */

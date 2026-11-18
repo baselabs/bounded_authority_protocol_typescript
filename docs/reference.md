@@ -399,9 +399,11 @@ no generic encoder, string, or enumeration protocol") the way the Elixir referen
 - `JSON.stringify`, `String()`, template literals and other conversions to a primitive throw
   `InvalidError` naming the rule, as Elixir's JSON encoding and `to_string` fail for facts.
 
-To log or store facts, copy the fields you need: `{ ...facts }` or
-`const { grantId, invocationId } = envelopeFacts` gives a plain object that serializes normally. A
-decoded content assertion is not a facts value: only its inspection is redacted.
+Use an explicit approved-field projection for logging, for example
+`const event = { operation: envelopeFacts.operation, outcome: "verified" }`. Even identifiers can
+be sensitive or high cardinality. Never spread a facts value into a log or response. Persist lineage
+state separately with an explicit schema and access controls. A decoded content assertion is not
+a facts value: only its inspection is redacted.
 
 ```ts
 import assert from "node:assert/strict";

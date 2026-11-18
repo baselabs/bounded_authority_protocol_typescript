@@ -81,3 +81,7 @@ decisions. `decodeAttestation` parses an attestation without checking its signat
 
 The full rules are in the
 [role-attestation profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-role-attestation-v1.md).
+
+---
+
+Documentation navigation: [Previous: Consumption chains and archives](chains-and-archives.md) · [Next: Content assertions](content-assertions.md)

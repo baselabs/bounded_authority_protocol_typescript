@@ -12,7 +12,7 @@ test("published API uses a real npm release tag and excludes development declara
   const scratch = mkdtempSync(join(tmpdir(), "bap-release-api-test-"));
   try {
     mkdirSync(join(scratch, "tools"));
-    for (const path of ["package.json", "typedoc.json", "tools/build-release-api.mjs"]) cpSync(join(root, path), join(scratch, path));
+    for (const path of ["package.json", "typedoc.json", "tools/build-release-api.mjs", "tools/build-docs.mjs", "tools/docs-plugin.mjs", "docs", "README.md", "usage-rules.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) cpSync(join(root, path), join(scratch, path), { recursive: true });
     symlinkSync(join(root, "node_modules"), join(scratch, "node_modules"), process.platform === "win32" ? "junction" : "dir");
     mkdirSync(join(scratch, "src"));
     writeFileSync(join(scratch, "src/index.ts"), "/** Development only. */\nexport const unreleasedDocumentationProbe = 1;\n");

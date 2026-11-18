@@ -1,4 +1,36 @@
-# Upgrading from 1.x
+# Upgrade index
+
+This guide targets verifier **2.0.0**. Only the current npm latest line receives fixes; earlier
+lines below are migration sources, not alternative parsers or compatibility modes.
+
+| Earlier release line | Route to the current API |
+|---|---|
+| 0.1.x | upgrade all the way; use explicit dispatch structs and strict limits, then follow the 0.8, 1.x and 2.x changes below |
+| 0.2.x | re-run the certified corpora on your host, use explicit namespaces, then follow the later breaking boundaries |
+| 0.3.x | retain exact selector type tags; take the later strict-key and producer rules below |
+| 0.4.x | retain explicit role/content profile selection; take the later strict-key and producer rules |
+| 0.5.x | replace permissive Ed25519 assumptions with rule S1 and enrollment subgroup checks |
+| 0.6.x | use the portable/backend-neutral public API, then migrate producer signatures and facts serialization |
+| 0.7.x | migrate 0.8 producer signature framing, checked JWKs, UTF-8 errors and facts serialization |
+| 0.8.x | close every deep import at 1.0; select namespaces from the root, then apply the 2.0 selector rules |
+| 1.x | apply the selector float-zero and producer integral-float changes below |
+
+## Before 1.0
+
+From 0.8 onward, assemblers refuse noncanonical signatures that no conforming signer emits.
+Sign the exact protected/payload segments with real keys; normalize P-256 signatures to low-S in
+the signer. Do not replace old placeholders with another arbitrary 64-byte value. Checked public
+JWK helpers refuse extra members and unacceptable points; `utf8Str` now throws `InvalidError` for
+invalid UTF-8. All facts refuse generic serialization and coercion: use an explicit approved-field
+projection for events and a protected, enumerated schema for persisted lineage state.
+
+From 1.0 onward, all `dist/...` deep imports are closed. Import namespaces and public types from
+the package root. [Executed migration checks](../examples/upgrade.ts) cover real signing, malformed
+signature framing, root imports, deep-import refusal and safe facts projection. The existing
+[contract-major recipes](contract-majors.md) cover low-S ES256. There are no compatibility shims.
+See [CHANGELOG.md](../../CHANGELOG.md) for the complete historical changes.
+
+## From 1.x
 
 2.0.0 carries one change: the protocol's erratum 6, the selector float-zero
 soundness repair. The exports, the types, the error shape and every other verdict are 1.0.0's,
@@ -69,7 +101,7 @@ assert.deepEqual(affected, ["sensors.calibrate", "jobs.retry"]);
 
 1. Run a check like the one above over the selector values your issuers emit, and change each
    hit to an integer or to a float with a fractional part.
-2. Move the dependency to `^2.0.0` (`npm install @bounded-authority-protocol/verifier@^2.0.0`).
+2. Move the dependency to `^2.0.0` (for an exact migration trial, `npm install @bounded-authority-protocol/verifier@2.0.0`).
 3. Run your own tests. Nothing else in your code changes: no import, function name, parameter or
    result shape moved.
 
@@ -85,3 +117,7 @@ inside issuer-signed bytes), so under the protocol's governance it has no securi
 the [errata registry](https://github.com/baselabs/bounded_authority_protocol/blob/main/docs/errata.md)
 entry is the disclosure. 1.x returns the pre-repair verdict for the inputs above, and only
 the latest release line receives fixes ([SECURITY.md](../../SECURITY.md#supported-versions)).
+
+---
+
+Documentation navigation: [Previous: Test your integration](test-your-integration.md) · [Next: Adopt a certified corpus](corpus-adoption.md)

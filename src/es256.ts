@@ -102,6 +102,13 @@ export function es256Verify(
  * throws.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v3.md#suite-rules
  * @returns `true` when the strict key/scalar encodings and ECDSA P-256/SHA-256 equation verify the exact message; `false` otherwise. Never throws.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.es256VerifyStrict(new Uint8Array(), new Uint8Array(64), new Uint8Array(65)), false);
+ * ```
  */
 export function es256VerifyStrict(message: Uint8Array, signature: Uint8Array, publicKey: Uint8Array): boolean {
   // Total: an exotic input whose typed-array getters throw is refused, never thrown past the caller.

@@ -24,7 +24,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
   candidates; publication requires the newest eligible stable non-retired Hex version without
   build metadata. Weekly adoption branches maintain an issue for infra to qualify and land.
   Offline lanes prove self-consistency; Hex outages or pinned-version retirement fail artifact CI closed. The npm `files`
-  allowlist remains runtime-only. The corpus adoption guide documents the complete workflow.
+  allowlist includes runtime files and public documentation sources. The corpus adoption guide documents the complete workflow.
 
 - Pin checksum-verified Gitleaks 8.30.1 for full-history and developer scans. Scope vendored
   fixture exceptions to rules and anchored paths; retain commit-scoped historical exceptions.
@@ -51,6 +51,12 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
   proof ages out. The regression runs the guide's actual store with real signatures.
 
 ### Documentation
+
+- Document public fields and constructors with executed task examples. Publish an ordered,
+  versioned learning path, Deno Jupyter notebooks, host security and operations guidance,
+  request-adapter recipes and durable SQLite replay integration. Ship documentation sources.
+- Check samples against published declarations, generated API field contracts, notebook
+  execution and documentation currency in qualification. Clarify browser trust and refusals.
 
 - Correct HTTP method, row-sequence, archive-transition, JSON numeric-bound and EC hash-helper
   comments against the code. Release tooling uses portable package commands and remote tag refs.

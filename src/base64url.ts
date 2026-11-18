@@ -25,6 +25,14 @@ function classifyByte(byte: number): number {
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#9-base64url
  * @returns Decoded bytes, at most maxDecodedBytes when supplied.
  * @throws InvalidError when the documented representation or resource limits are violated.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.utf8Str(api.base64urlDecode(api.strUtf8("aGk"))), "hi");
+ * assert.throws(() => api.base64urlDecode(api.strUtf8("aGk=")), api.InvalidError);
+ * ```
  */
 export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Uint8Array {
   const len = input.length;
@@ -79,6 +87,13 @@ export function base64urlDecode(input: Uint8Array, maxDecodedBytes?: number): Ui
  * Encodes bytes as unpadded base64url, returned as ASCII bytes.
  * @see https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-v1.md#9-base64url
  * @returns Canonical unpadded base64url ASCII bytes, including an empty result for empty input. Every byte value is encodable; this helper imposes no protocol size limit.
+ * @category Canonical bytes
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import * as api from "@bounded-authority-protocol/verifier";
+ * assert.equal(api.utf8Str(api.base64urlEncode(api.strUtf8("hi"))), "aGk");
+ * ```
  */
 export function base64urlEncode(input: Uint8Array): Uint8Array {
   const len = input.length;

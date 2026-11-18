@@ -10,3 +10,7 @@ site-dist/
 
 # The tarball tools/pack.mjs writes by default
 build-pack/
+
+# Isolated notebook tool environment
+.venv/
+__pycache__/
