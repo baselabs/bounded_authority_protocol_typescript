@@ -2062,7 +2062,7 @@ export function assembleLocalLoopbackHttpCompact(input: SigningInput, signature:
  *   assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry,
  *   keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor,
  *   type HistoricalPublicKey, type Result, type SigningInput,
- * } from "npm:@bounded-authority-protocol/verifier@2.0.0";
+ * } from "@bounded-authority-protocol/verifier";
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
  * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
@@ -2306,7 +2306,7 @@ export interface EncodedAnchoredExport {
  *   assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry,
  *   keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor,
  *   type HistoricalPublicKey, type Result, type SigningInput,
- * } from "npm:@bounded-authority-protocol/verifier@2.0.0";
+ * } from "@bounded-authority-protocol/verifier";
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
  * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
@@ -2575,7 +2575,7 @@ function frame(bytes: Uint8Array): Uint8Array {
  *   assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry,
  *   keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor,
  *   type HistoricalPublicKey, type Result, type SigningInput,
- * } from "npm:@bounded-authority-protocol/verifier@2.0.0";
+ * } from "@bounded-authority-protocol/verifier";
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
  * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {
@@ -2829,7 +2829,7 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
  *   assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry,
  *   keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor,
  *   type HistoricalPublicKey, type Result, type SigningInput,
- * } from "npm:@bounded-authority-protocol/verifier@2.0.0";
+ * } from "@bounded-authority-protocol/verifier";
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
  * function signCompact(input: Result<SigningInput>, privateKey: KeyObject): Uint8Array {

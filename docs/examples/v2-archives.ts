@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
-import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
-const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
 type HistoricalPublicKey = v2.HistoricalPublicKey;
 
 const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");

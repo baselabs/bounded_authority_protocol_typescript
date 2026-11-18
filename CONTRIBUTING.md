@@ -40,10 +40,33 @@ the Pages artifact. CI rejects undocumented declarations and warnings. Pages bui
 from the immutable tag matching npm latest, using that tag's documentation and declarations.
 Its version, tag and commit are recorded in `release.json`.
 
-For notebooks, run `uv lock --check`, `uv sync --frozen` and `pnpm notebooks:local`
-with the exact tool pins. The shared runner is
-`scripts/check_notebooks.py`; it installs an isolated real Deno Jupyter kernel. See
-[notebook checks](docs/notebooks/README.md) for archive-origin and saved-output checks.
+For notebooks, install the exact Node, Deno, Python and uv versions in `.tool-versions` and
+activate the declared pnpm. The second Node version on the `nodejs` line is the extra
+compatibility lane; notebook checks use the first. Run `pnpm install --frozen-lockfile`,
+`uv lock --check` and `uv sync --frozen`, then `pnpm notebooks:local`.
+
+Both notebook scripts call `scripts/check_notebooks.py`. Register every notebook in
+`docs/notebooks/registry.json`: schema 1 records the package identity, exact npm package pins,
+and an ordered `notebooks` list of `file` and `title` entries. The file list must match the
+notebook directory in both directions.
+
+`--local` installs the candidate tarball from `tools/pack.mjs`, the same packer the package gate
+inspects. `--published` installs exact releases from `https://registry.npmjs.org/` and checks
+registry identity, tarball URL and SHA-512 integrity. Both compare installed files with the archive
+bytes and check in the real kernel that `npm:` imports resolve to that inspected installation.
+Notebook cells are unchanged in both modes.
+
+The runner uses nbclient and a fresh real Deno Jupyter kernel for each notebook. It never
+concatenates cells. Saved Jupyter outputs are the sole expected outputs; it normalizes stdout
+chunks, line endings, ANSI color and display counts before comparing semantic text. Assertions
+stay in each cell. Never persist keys, signatures, nonce values or wall-clock times.
+
+Missing files, unregistered notebooks, empty code, missing output, kernel errors, output
+mismatches, changed files and filesystem residue fail the run. The runner shuts down kernels
+and removes its scratch consumers, inspected tarballs, temporary kernel registration and caches,
+including on failure. Generated development API documentation is a qualification check; publication
+uses the immutable release documentation.
+
 Every authored TypeScript fence, TSDoc example and `docs/examples/` module is discovered and
 tested. Keep guides in `docs/manifest.json` and notebooks in `docs/notebooks/registry.json`.
 Every notebook must have saved safe semantic results and clean up its resources.
@@ -53,7 +76,8 @@ Candidate notebook and consumer journeys install this repository's package from 
 `publish.yml` runs published notebooks and the other registry checks after each upload in the
 keyless `published-notebooks` job. That job waits up to ten minutes for npm to serve the exact
 version. A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
-once that version is available. The upload job and its environment gate are separate.
+once that version is available. Released API checks also need the immutable release tag that
+infra creates after publication. The upload job and its environment gate are separate.
 
 Publication
 and Pages are maintainer-dispatched on the default branch with their existing environment gates.

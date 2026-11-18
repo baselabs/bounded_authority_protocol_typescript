@@ -1304,12 +1304,12 @@ export function decodeProof(compact: Uint8Array, bounds?: Bounds): Result<ProofD
  * ```ts
  * import assert from "node:assert/strict";
  * import { generateKeyPairSync, sign } from "node:crypto";
- * import { v2 } from "@bounded-authority-protocol/verifier";
+ * import { jwkFromPublicKey, v2 } from "@bounded-authority-protocol/verifier";
  * const keys = generateKeyPairSync("ed25519");
  * const publicKey = Buffer.from(keys.publicKey.export({ format: "jwk" }).x!, "base64url");
  * const input = v2.grantSigningInput({ keyId: "issuer", issuer: "urn:example:issuer", grantId: "grant-1",
  *   audiences: ["urn:example:service"], issuedAt: 1000, notBefore: 1000, expiresAt: 2000,
- *   holderThumbprint: v2.thumbprint(v2.jwkFromPublicKey(publicKey)),
+ *   holderThumbprint: v2.thumbprint(jwkFromPublicKey(publicKey)),
  *   operations: [{ name: "records.read", selectors: ["all"] }] });
  * assert.ok(input.ok);
  * const message = Buffer.concat([input.value.protectedSegment, Buffer.from("."), input.value.payloadSegment]);
@@ -1618,8 +1618,8 @@ export interface EncodedConsumptionEntry {
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
@@ -2367,8 +2367,8 @@ export function assembleCompact(input: SigningInput, signature: Uint8Array, boun
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
@@ -2508,8 +2508,8 @@ export function boundaryAnchorSigningInput(anchor: BoundaryAnchorProducer, bound
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
@@ -2660,8 +2660,8 @@ export interface EncodedAnchoredExport {
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
@@ -2926,8 +2926,8 @@ function frame(bytes: Uint8Array): Uint8Array {
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
@@ -3077,8 +3077,8 @@ export function verifyHistoricalAnchor(compact: Uint8Array, key: HistoricalPubli
  * ```ts
  * import assert from "node:assert/strict";
  * import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2 } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyKeyTransition } = v2;
+ * import { publicKeyThumbprintRaw, v2 } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, keyTransitionSigningInput, verifyKeyTransition } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  *
@@ -3177,8 +3177,8 @@ export function verifyKeyTransition(compact: Uint8Array, oldKey: HistoricalPubli
  * ```ts
  * import assert from "node:assert/strict";
  * import { createHash, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
- * import { v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
- * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, publicKeyThumbprintRaw, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
+ * import { publicKeyThumbprintRaw, v2, type Result, type SigningInput } from "@bounded-authority-protocol/verifier";
+ * const { assembleCompact, boundaryAnchorSigningInput, encodeAnchoredExport, encodeConsumptionEntry, keyTransitionSigningInput, verifyAnchoredExport, verifyHistoricalAnchor } = v2;
  * type HistoricalPublicKey = v2.HistoricalPublicKey;
  *
  * const raw = (key: KeyObject): Uint8Array => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");

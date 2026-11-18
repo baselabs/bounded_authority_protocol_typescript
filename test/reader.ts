@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import semver from "semver";
+// @ts-expect-error tools/pack.mjs is untyped JavaScript
 import { pack } from "../tools/pack.mjs";
 import { authoredSamples, type Sample } from "./support/documents.js";
 

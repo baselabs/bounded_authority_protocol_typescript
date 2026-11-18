@@ -2,17 +2,12 @@
 // handles nested lists, blockquotes, tilde fences, longer closers and indented code blocks.
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { createRequire } from "node:module";
 import { join, relative } from "node:path";
+import MarkdownIt from "markdown-it";
 import ts from "typescript";
 import { sourceComments } from "../comments.js";
 
-export interface Token {
-  type: string; tag: string; content: string; info: string; map: [number, number] | null;
-  children: Token[] | null; attrs: [string, string][] | null;
-}
-interface Parser { parse(source: string, env: object): Token[] }
-const MarkdownIt = createRequire(import.meta.url)("markdown-it") as new (preset: string, options: object) => Parser;
+export type { Token } from "markdown-it";
 export const markdown = new MarkdownIt("commonmark", { html: true });
 const excluded = new Set([".git", "node_modules", "dist", "site-dist", ".kimosabe", ".venv"]);
 export function filesUnder(dir: string): string[] {

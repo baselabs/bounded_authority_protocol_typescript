@@ -36,7 +36,7 @@ function anchors(source: string): Set<string> {
 function checkLinks(source: string, file: string): void {
   const parsed = tokens(source);
   const links = parsed.flatMap((token) => (token.attrs ?? [])
-    .filter(([key]) => key === "href" || key === "src").map(([, value]) => value));
+    .filter(([key]) => key === "href" || key === "src").map(([, value]) => String(value)));
   // HTML links are also authored documentation surfaces, including the bench.
   // Fenced HTML programs are executed by the browser lane, not resolved as prose links.
   for (const token of parsed.filter((item) => item.type === "html_block" || item.type === "html_inline")) {

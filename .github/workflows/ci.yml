@@ -460,8 +460,11 @@ jobs:
           persist-credentials: false
       - name: Install exact notebook toolchain and frozen dependencies
         uses: ./.github/actions/notebook-tools
+      # deno fmt --check misreports notebooks on a cold cache; compare the formatted bytes.
       - name: Refuse unformatted notebook cells
-        run: deno fmt --check docs/notebooks/*.ipynb
+        run: |
+          deno fmt docs/notebooks/*.ipynb
+          git diff --exit-code -- docs/notebooks
       - name: Execute notebooks against the inspected packed candidate
         run: pnpm notebooks:local
 

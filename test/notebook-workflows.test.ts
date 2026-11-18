@@ -26,7 +26,7 @@ test("qualification reaches only candidate owning-package journeys", () => {
 test("candidate notebook cells are formatted before they run", () => {
   const job = ci.split("\n  notebooks-local:\n")[1]?.split(/\n  [\w-]+:\n/)[0];
   assert.ok(job, "notebooks-local is required");
-  const format = job.indexOf("run: deno fmt --check docs/notebooks/*.ipynb");
+  const format = job.indexOf("deno fmt docs/notebooks/*.ipynb\n          git diff --exit-code -- docs/notebooks\n");
   assert.ok(format > job.indexOf("uses: ./.github/actions/notebook-tools"), "format check follows the pinned toolchain");
   assert.ok(format < job.indexOf("run: pnpm notebooks:local"), "format check precedes execution");
 });
