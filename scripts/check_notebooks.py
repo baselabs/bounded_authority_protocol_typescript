@@ -10,8 +10,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
-import sys
 import tarfile
 import tempfile
 from urllib.parse import urlparse
@@ -135,7 +135,16 @@ def check(local: bool) -> None:
                                     str(scratch / "packed"), cwd=ROOT, env=env))
             artifact = Path(packed["file"])
             require(hashlib.sha256(artifact.read_bytes()).hexdigest() == packed["sha256"], "packer digest differs")
-        run("deno", "jupyter", "--install", cwd=scratch, env=env)
+        # Deno's own kernelspec, written where only this run's kernel manager looks: `deno jupyter
+        # --install` ignores JUPYTER_DATA_DIR, would write into the home directory and refuses an
+        # existing kernel.
+        deno = shutil.which("deno", path=env.get("PATH"))
+        require(deno is not None, "deno is not on PATH")
+        kernel = scratch / "jupyter/kernels/deno"
+        kernel.mkdir(parents=True)
+        (kernel / "kernel.json").write_text(json.dumps({
+            "argv": [deno, "jupyter", "--kernel", "--conn", "{connection_file}"],
+            "display_name": "Deno", "language": "typescript"}, indent=2) + "\n")
         for name, original in zip(names, originals, strict=True):
             consumer = scratch / Path(name).stem
             consumer.mkdir()

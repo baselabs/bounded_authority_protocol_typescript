@@ -37,9 +37,10 @@ test("TypeDoc discovers exports, rejects undocumented API and stamps the package
     assert.equal(green.status, 0, `${String(green.stdout)}\n${String(green.stderr)}`);
     const index = readFileSync(join(scratch, "build-docs", "api", "index.html"), "utf8");
     assert.ok(index.includes(manifest.version), "API reference must display the package version");
-    assert.ok(index.includes("documentation-probe"), "API reference must include the added export subpath");
     const output = join(scratch, "build-docs/api");
     const pages = readdirSync(output, { recursive: true }).filter((path): path is string => typeof path === "string" && path.endsWith(".html"));
+    // The README is the site's front page, so the added subpath gets its own module page.
+    assert.ok(pages.some((path) => /(?:^|\/)documentation-probe\.html$/.test(path)), "API reference must include the added export subpath");
     const page = (name: string, namespace = ""): string => {
       const path = pages.find((path) => new RegExp(`(?:/|\\.)${namespace ? namespace + "\\." : ""}${name}\\.html$`).test(path) && (namespace !== "" || !/\.v[23]\./.test(path) && !/\/v[23]\./.test(path)));
       assert.ok(path, `${namespace}.${name}: generated page missing`);
@@ -54,6 +55,16 @@ test("TypeDoc discovers exports, rejects undocumented API and stamps the package
     assert.match(page("InvalidError"), /Construct a diagnostic error/);
     assert.ok(!page("InvalidError").includes("captureStackTrace"), "inherited Node Error internals are hidden");
     assert.ok(pages.some((path) => path.includes("getting-started")), "guides share the API site");
+    // Headings that contain code keep their GitHub anchors on the API site.
+    const site = pages.map((path) => readFileSync(join(output, path), "utf8")).join("\n");
+    for (const [level, inner, id] of [
+      [3, "<code>TrustedIssuer</code>", "trustedissuer"],
+      [4, "<code>uriNormalize\\(input, bounds\\?\\): Result&lt;Uint8Array&gt;</code>", "urinormalizeinput-bounds-resultuint8array"],
+      [2, "What <code>checkEnvelope</code> checks", "what-checkenvelope-checks"],
+    ] as const) {
+      const heading = new RegExp(`<h${level}\\b[^>]*\\bid="([^"]*)"[^>]*>\\s*${inner}`).exec(site);
+      assert.equal(heading?.[1], id, `API-site anchor for ${inner}`);
+    }
     assert.ok(pages.some((path) => path.includes("notebooks") && path.includes("local-loopback")), "notebooks share the API site");
     // Removing a field or constructor description must fail the same strict site builder.
     for (const [file, pattern] of [

@@ -126,7 +126,7 @@ assert.deepEqual(checkEnvelope(grant.value, proof.value, { ...expected, method: 
 assert.deepEqual(checkEnvelope(grant.value, proof.value, { ...expected, evaluationTime: 1_760_000_500 }), { ok: false });
 ```
 
-## What checkEnvelope checks
+## What `checkEnvelope` checks
 
 Given the grant, the proof and your `ExpectedRequest`, it accepts only if all of these hold:
 

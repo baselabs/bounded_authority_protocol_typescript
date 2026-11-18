@@ -25,8 +25,9 @@ function anchors(source: string): Set<string> {
   const parsed = markdown.parse(source, {});
   for (const [index, token] of parsed.entries()) {
     if (token.type !== "heading_open") continue;
-    const title = parsed[index + 1]!.content;
-    const slug = title.toLowerCase().replace(/<[^>]*>|[\p{P}\p{S}]/gu, (s) => s === "-" || s === "_" ? s : "").replace(/\s/g, "-");
+    // GitHub and the API site (tools/docs-plugin.mjs) both slug the visible text, code included.
+    const title = (parsed[index + 1]!.children ?? []).filter((child) => child.type === "text" || child.type === "code_inline").map((child) => child.content).join("");
+    const slug = title.toLowerCase().replace(/[\p{P}\p{S}]/gu, (s) => s === "-" || s === "_" ? s : "").replace(/\s/g, "-");
     const count = counts.get(slug) ?? 0; counts.set(slug, count + 1);
     result.add(slug + (count ? `-${count}` : ""));
   }

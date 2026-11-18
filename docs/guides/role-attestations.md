@@ -60,7 +60,7 @@ assert.deepEqual(
 );
 ```
 
-## What verifyAttestation checks
+## What `verifyAttestation` checks
 
 - The header is exactly `{alg: "EdDSA", kid, typ: "ba+role-attestation"}` and the payload exactly
   `{v, jti, key_id, public_key, role, nbf, exp}`, both in canonical JSON (JCS) bytes.
