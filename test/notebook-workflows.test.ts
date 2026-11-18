@@ -44,12 +44,9 @@ test("one keyless job checks the exact published version after the upload", () =
   assert.match(job, /actions\/checkout@[a-f\d]{40} # v\d+\.\d+\.\d+/);
   assert.match(job, /persist-credentials: false/);
   const order = ["name: Check out source", "uses: ./.github/actions/notebook-tools",
-    "run: pnpm notebooks:published", "name: Wait for infra's tag on the published commit",
-    "run: pnpm docs:checks:published"].map((step) => job.indexOf(step));
+    "run: pnpm notebooks:published", "run: pnpm docs:checks:published"].map((step) => job.indexOf(step));
   assert.ok(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]!)));
-  assert.match(job, /deadline = time\.monotonic\(\) \+ 600/);
-  assert.match(job, /commit == os\.environ\['GITHUB_SHA'\]/);
-  assert.match(job, /release checks are incomplete/);
+  assert.doesNotMatch(job, /ls-remote|refs\/tags/, "post-upload checks must not wait for infra's tag");
   assert.match(scripts["docs:checks:published"]!, /pnpm docs:samples:published/);
 });
 

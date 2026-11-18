@@ -111,6 +111,7 @@
     "docs:samples:local": "BAP_SAMPLE_MODE=candidate node --test --import tsx/esm test/reader.ts && BAP_SAMPLE_MODE=candidate node --test --conditions=bap-portable --import tsx/esm test/reader.ts",
     "docs:samples:published": "BAP_SAMPLE_MODE=published node --test --import tsx/esm test/reader.ts && BAP_SAMPLE_MODE=published node --test --conditions=bap-portable --import tsx/esm test/reader.ts",
     "test:network:published": "node --test --import tsx/esm test/*.published.ts",
+    "test:network:pages": "node --test --import tsx/esm test/*.pages.ts",
     "docs:checks:published": "pnpm docs:samples:published && pnpm test:network:published"
   },
   "dependencies": {

@@ -77,8 +77,8 @@ Candidate notebook and consumer journeys install this repository's package from 
 archive. Pending owner approval fails that run clearly; dispatch the same commit after approval.
 The keyless `published-notebooks` job runs only after byte-for-byte registry read-back succeeds.
 A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
-once that version is available. Before the released API checks, the job waits up to ten minutes
-for infra's immutable release tag and refuses a tag on a different commit.
+once that version is available. Infra tags the release; `pages.yml` then builds `/api/` from
+that tag and runs `pnpm test:network:pages`, so no publication job waits on a tag.
 The upload job and its environment gate are separate.
 
 Publication

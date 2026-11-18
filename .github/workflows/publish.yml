@@ -257,27 +257,5 @@ jobs:
         uses: ./.github/actions/notebook-tools
       - name: Execute notebooks against the exact npm releases
         run: pnpm notebooks:published
-      - name: Wait for infra's tag on the published commit
-        run: |
-          python3 - <<'PYTHON'
-          import json, os, subprocess, time
-          from pathlib import Path
-          version = json.loads(Path('package.json').read_text())['version']
-          tag = f'refs/tags/v{version}'
-          deadline = time.monotonic() + 600
-          while time.monotonic() < deadline:
-              result = subprocess.run(['git', 'ls-remote', '--exit-code', '--tags', 'origin', tag, tag + '^{}'],
-                                      capture_output=True, text=True, timeout=30)
-              if result.returncode == 0:
-                  refs = dict(line.split()[::-1] for line in result.stdout.splitlines())
-                  commit = refs.get(tag + '^{}', refs.get(tag))
-                  assert commit == os.environ['GITHUB_SHA'], 'release tag differs from the published commit'
-                  print(f'Infra tagged v{version} on the published commit')
-                  break
-              assert result.returncode == 2, f'could not read the release tag: {result.stderr}'
-              time.sleep(max(0, min(10, deadline - time.monotonic())))
-          else:
-              raise SystemExit(f'::error::Registry read-back passed, but infra has not tagged v{version}; release checks are incomplete')
-          PYTHON
       - name: Run the remaining published documentation checks
         run: pnpm docs:checks:published

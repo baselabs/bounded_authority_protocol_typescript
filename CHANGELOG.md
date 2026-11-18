@@ -7,7 +7,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 - Resume held npm publication only when the served SHA-512 and archive bytes match; refuse
   deprecated, changed or pending staged versions. Preserve inspected archives and checksums
   as `release-assets` for infra's GitHub release and document registry provenance verification.
-- Wait for infra's release tag on the published commit before checking the released API docs.
+- Check the released API reference in Pages, after infra tags the release, instead of in publication.
 - Refuse nondefault corpus-adoption dispatches and give the unmeasured job a 90-minute limit.
 
 - Use one strict tool-version reader for workflow installation and runtime checks, including
