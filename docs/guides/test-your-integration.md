@@ -146,6 +146,7 @@ CI separately fetches and byte-compares the named release, verifying both Hex ch
 If you implement a protocol surface in another language, use the
 [certified Hex release](https://hex.pm/packages/bounded_authority_protocol) as the artifact.
 [Corpus adoption](corpus-adoption.md) explains SOURCE, vendoring, candidate commits, and the weekly
-adoption branch, dispatched CI, and issue. The npm tarball contains runtime files only. Release workflows require the newest
+adoption branch and landing issue. Infra qualifies the commit on `kci/**` before landing it.
+The npm tarball contains runtime files only. The owner-dispatched `publish.yml` requires the newest
 non-retired Hex release after its revert window; new upstream versions do not impose freshness on push CI. Hex outages and retirement of the
 pinned version fail the online artifact job closed.

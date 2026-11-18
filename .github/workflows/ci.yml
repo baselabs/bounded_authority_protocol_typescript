@@ -357,6 +357,9 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      - name: Audit dependency advisories
+        run: pnpm audit --audit-level=high
+
       - name: Verify registry signatures and attestations
         run: npm audit signatures
 

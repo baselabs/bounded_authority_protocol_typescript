@@ -6,20 +6,22 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Changed
 
-- CI runs on every push to `main` and `kci/**`: the push trigger has no `paths-ignore`, because a
+- Audit locked dependencies in CI and move TypeDoc’s `minimatch` dependency from 10.2.6 to the first fixed version, 11.0.1.
+
+- CI runs only on pushes to `kci/**`: the trigger has no `paths-ignore`, because a
   landing candidate whose files were all filtered gets no run and cannot land. The
   `test/ci-paths.test.ts` guard for that filter is removed with it.
 - Bind certification to the complete `priv/conformance/` subtree of Hex
   `bounded_authority_protocol` named in SOURCE at `conformance/priv/conformance/`, with release identity,
   outer checksum, complete-tree SHA-256 and nine index pins in `conformance/SOURCE`. Transactional vendoring verifies
-  both Hex checksums, refuses retirement, and supports immutable candidate commits for PRs.
+  both Hex checksums, refuses retirement, and supports immutable candidate commits for amendment verification.
 - Every corpus checks indexed bytes, file sets, counts, applicability and unique, complete
   execution. Shared verdict digests now use index-ordered JCS `[[id, value], ...]` and unpadded
   base64url SHA-256, deriving expected values from certified outcomes and checking a published
   digest file when present. Remove the separate census inputs and the former digest pins.
-- CI compares the complete snapshot with the named artifact. Main and release workflows refuse
-  candidates, including PRs targeting main; releases require the newest eligible stable non-retired
-  Hex version without build metadata. Weekly adoption branches dispatch CI and maintain an issue.
+- CI compares the complete snapshot with the named artifact. Qualification and `publish.yml` refuse
+  candidates; publication requires the newest eligible stable non-retired Hex version without
+  build metadata. Weekly adoption branches maintain an issue for infra to qualify and land.
   Offline lanes prove self-consistency; Hex outages or pinned-version retirement fail artifact CI closed. The npm `files`
   allowlist remains runtime-only. The corpus adoption guide documents the complete workflow.
 

@@ -263,8 +263,8 @@ checks for ES256), the portable Ed25519 check is an explicit cofactorless one
 (`encode([S]B - [k]A) == R`, never a cofactored verify), and the portable P-256 verify leaves the
 low-S rule to the profile gate. Every certified corpus produces byte-identical verdict digests on
 Node 22 and 24 with either backend, on Deno and Bun, and in Chromium, checked case by case against
-the Node verdicts. CI, and the release workflow before it stages a publish, runs the same
-browser lane in Chromium, Firefox and WebKit on Linux.
+the Node verdicts. CI runs the same browser lane in Chromium, Firefox and WebKit on Linux
+before a release commit lands on the default branch.
 
 **In-page verification is display-only, never a trust decision.** A result computed in a web page
 is for showing to a person. It must not authorize anything, feed a trust decision, or be sent
@@ -445,8 +445,8 @@ Expected values come from the certified cases; computed values come from the SDK
 published `bap-corpus-verdict-digests/1` file must agree as well. The npm tarball excludes the corpus.
 
 [Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring
-tool, candidate verification, and weekly adoption branches, dispatched CI, and issues. Candidate snapshots are refused on main, on PRs targeting main,
-and at release. Releases require the newest eligible stable, non-retired Hex version without build metadata after its revert window;
+tool, candidate verification, and weekly adoption branches and landing issues. Candidate snapshots are refused
+by qualification and publication. Releases require the newest eligible stable, non-retired Hex version without build metadata after its revert window;
 per-push CI remains bound to the named version.
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement
@@ -462,14 +462,18 @@ and Node 24.19.0 with the node and the portable backend; the same corpora on Den
 browser lane in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of
 the packed tarball; and `npm audit signatures`.
 
-Releases from 0.2.1 on are published only from this repository's release workflow, through npm
-trusted publishing (GitHub Actions OIDC, no long-lived tokens) with npm provenance on every
-artifact.
+Releases from 0.2.1 on carry npm trusted-publishing provenance (GitHub Actions OIDC, no
+long-lived tokens). The owner dispatches `publish.yml` from the default branch in environment
+`publish`. It installs the exact `.tool-versions` runtime and declared pnpm with frozen
+dependencies, refuses an already published or tagged version and a stale corpus, builds the
+library and API docs, packs and inspects one archive, verifies its SHA-256, and stages those
+bytes with `npm stage publish --provenance`. Qualification has already passed before landing;
+the publication workflow does not rerun it or create a tag.
 
-After human approval makes npm latest available, Pages checks the registry against its deployed
-`api/release.json` at minutes 17 and 47 of each hour and rebuilds only when they differ. The
-release workflow's staging success is not publication. Registry or Pages read failures fail
-closed; push and manual Pages runs still rebuild the site. GitHub may delay scheduled runs.
+Staging success is not publication: the owner approves the version on npmjs.com. Infra reads
+the publication back and tags the published commit. The owner then dispatches `pages.yml` from
+the default branch in environment `github-pages`; it rebuilds the bench from that branch and
+the API reference from the tag matching npm latest. Registry or Pages read failures fail closed.
 
 ## Versioning
 

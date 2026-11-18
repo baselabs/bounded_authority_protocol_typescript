@@ -45,5 +45,7 @@ non-authorizing facts. It does not choose which keys to trust, hold private keys
 check live revocation or authorize an action; those belong to the service that uses it. A report
 that a verified result was acted on without those host checks is about the host, not this package.
 
-Releases from 0.2.1 on are published from this repository's release workflow through npm trusted publishing with
-provenance; `npm audit signatures` verifies the registry signatures and attestations of an install.
+Releases from 0.2.1 on carry npm trusted-publishing provenance. The owner dispatches
+`publish.yml` from the default branch in environment `publish` to build, inspect and stage the
+archive with provenance; approval on npmjs.com completes publication before infra tags it.
+For an installed copy, `npm audit signatures` verifies the registry signatures and attestations of an install.

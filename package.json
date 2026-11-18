@@ -130,5 +130,10 @@
   "publishConfig": {
     "access": "public"
   },
-  "packageManager": "pnpm@10.20.0"
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "overrides": {
+      "typedoc>minimatch": "11.0.1"
+    }
+  }
 }

@@ -31,8 +31,8 @@ runtime lane, even when only one corpus is run.
 
 For a candidate, `version` and `checksum` are JSON null and `candidate` is the full lowercase
 40-character monorepo commit SHA. The other members and index pins follow the same rules. A
-candidate is for amendment verification on a branch not targeting main. Main CI, PRs targeting
-main, workflow dispatch on main, and the release gate refuse it.
+candidate is for amendment verification with the candidate commands below. Qualification
+always checks a certified release (`ci --main`), and publication refuses a candidate.
 
 ## Vendor and verify
 
@@ -86,18 +86,19 @@ corepack pnpm check:corpus:release
 
 The weekly `corpus-adoption.yml` workflow finds the newest non-retired eligible Hex version,
 vendors it transactionally on `automation/adopt-corpus-<version>`, including the generated README
-summary, and pushes that branch. Because a GITHUB_TOKEN push does not start CI, it explicitly runs
-`gh workflow run ci.yml --ref <branch>`. It opens or updates one issue, deduplicated by exact title
-across open and closed issues, with the version, branch, compare URL, and dispatched CI run URL.
-It creates no PR and needs only `contents: write`, `actions: write`, and `issues: write`. Repository
-permission to create and approve PRs stays disabled. Maintainers
+summary, and pushes that branch. It opens or updates one landing issue, deduplicated by exact
+title across open and closed issues, with the version, branch, compare URL and commit. Infra
+reviews it and runs `kimosabe-land --repo . --sha <full sha>`; the resulting `kci/**` push is the
+only qualification run. Adoption creates no PR and needs only `contents: write` and
+`issues: write`. Repository permission to create and approve PRs stays disabled. Maintainers
 can run the same selection manually:
 
 ```bash
 node scripts/check-corpus.mjs adopt
 ```
 
-The release workflow requires SOURCE to name that newest eligible version, with its registry
+The owner-dispatched `publish.yml`, running from the default branch in environment `publish`,
+requires SOURCE to name that newest eligible version, with its registry
 checksum, and byte-compares its complete artifact. Per-push CI compares only the named release:
 a newer eligible version does not require immediate adoption on a push. A Hex outage or retirement
 of the pinned version fails `corpus-artifact` by design; this behavior is fail closed.
