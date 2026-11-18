@@ -77,7 +77,7 @@ jobs:
         run: node scripts/check-corpus.mjs ci --main
 
   verify:
-    timeout-minutes: 90 # no green run yet (expanded documentation execution)
+    timeout-minutes: 6 # Run 44312164032: slowest green lane 160s; twice that.
     name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, producer canonicality, selector float-zero; node and portable backends) on Node line ${{ matrix.node-line }}
     strategy:
       fail-fast: false
@@ -451,7 +451,7 @@ jobs:
         run: node tools/check-currency.mjs
 
   notebooks-local:
-    timeout-minutes: 90 # no green run yet
+    timeout-minutes: 5 # Run 44312164032: green job 34s.
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
@@ -469,7 +469,7 @@ jobs:
         run: pnpm notebooks:local
 
   durable-replay:
-    timeout-minutes: 90 # no green run yet
+    timeout-minutes: 5 # Run 44312164032: green job 20s.
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
