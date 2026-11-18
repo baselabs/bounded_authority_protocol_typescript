@@ -289,6 +289,11 @@ jobs:
       matrix:
         engine: [chromium, firefox, webkit]
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.1-noble@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579
+      options: --init --ipc=host
+    env:
+      HOME: /root # Firefox requires the current user's home in a root container.
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -315,8 +320,11 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Install the ${{ matrix.engine }} build pinned by the locked Playwright
-        run: pnpm exec playwright install --with-deps ${{ matrix.engine }}
+      - name: Refuse a different Playwright version
+        run: |
+          expected="1.65.1"
+          actual="$(node -p 'require("playwright/package.json").version')"
+          test "$actual" = "$expected" || { echo "::error::Installed Playwright $actual differs from container image Playwright $expected; update the lockfile and image together"; exit 1; }
 
       - name: Check complete snapshot and documentation offline
         run: pnpm check:corpus
