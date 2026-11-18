@@ -503,7 +503,7 @@ jobs:
     if: always()
     needs: [secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency, notebooks-local, durable-replay]
     runs-on: ubuntu-24.04
-    timeout-minutes: 5 # Run 44211491286: green job 5s.
+    timeout-minutes: 5 # Run 44312164032: green job 18s.
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
