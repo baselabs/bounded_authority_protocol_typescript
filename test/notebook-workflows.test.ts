@@ -23,6 +23,14 @@ test("qualification reaches only candidate owning-package journeys", () => {
   assert.match(read("test/reader.ts"), /BAP_SAMPLE_MODE \?\? "candidate"/);
 });
 
+test("candidate notebook cells are formatted before they run", () => {
+  const job = ci.split("\n  notebooks-local:\n")[1]?.split(/\n  [\w-]+:\n/)[0];
+  assert.ok(job, "notebooks-local is required");
+  const format = job.indexOf("run: deno fmt --check docs/notebooks/*.ipynb");
+  assert.ok(format > job.indexOf("uses: ./.github/actions/notebook-tools"), "format check follows the pinned toolchain");
+  assert.ok(format < job.indexOf("run: pnpm notebooks:local"), "format check precedes execution");
+});
+
 test("one keyless job checks the exact published version after the upload", () => {
   const job = publication.split("\n  published-notebooks:\n")[1];
   assert.ok(job, "published-notebooks is required");

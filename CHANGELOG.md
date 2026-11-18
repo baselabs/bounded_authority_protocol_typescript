@@ -14,6 +14,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 - Standardize notebook execution on `scripts/check_notebooks.py`, a versioned notebook registry,
   inspected candidate or registry archives, real Deno kernels and saved Jupyter golden outputs.
 - Split notebook journeys into explained, asserted steps with computed semantic results.
+- Format every notebook cell with the pinned `deno fmt`; qualification refuses unformatted cells.
 - Pin Python 3.15.2, uv 0.13.9, nbclient 0.11.0, nbformat 5.11.1 and jupyter-client 8.10.0;
   generate locks with pinned uv and install the notebook toolchain through one composite action.
 - Read both exact Node lanes from the valid multi-version asdf line and compare tool version fields.
