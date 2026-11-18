@@ -80,7 +80,7 @@ def check(local: bool) -> None:
     from jupyter_client.kernelspec import KernelSpecManager
 
     tool_versions = str(ROOT / "scripts/tool-versions.sh")
-    run(tool_versions, "check", "python", cwd=ROOT)
+    run(tool_versions, "check", "python", cwd=ROOT, env=dict(os.environ))
     package = json.loads((ROOT / "package.json").read_text())
     directory = ROOT / "docs/notebooks"
     registry = json.loads((directory / "registry.json").read_text())
