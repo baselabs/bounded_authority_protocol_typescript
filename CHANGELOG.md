@@ -6,7 +6,7 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ### Changed
 
-- Audit locked dependencies in CI and move TypeDoc’s `minimatch` dependency from 10.2.6 to the first fixed version, 11.0.1.
+- Audit locked dependencies in CI.
 
 - CI runs only on pushes to `kci/**`: the trigger has no `paths-ignore`, because a
   landing candidate whose files were all filtered gets no run and cannot land. The
