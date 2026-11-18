@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@bounded-authority-protocol/signer>@bounded-authority-protocol/verifier': link:.
+
 importers:
 
   .:
@@ -68,10 +71,6 @@ packages:
 
   '@bounded-authority-protocol/signer@2.0.0':
     resolution: {integrity: sha512-fOhvmHkHkCDn7luv/Jo7R2KIvTHO3kghdKqC8b8LlCVtY6UoXDYi6FfKtojDq7lsVhwzuhRHr2n2U5xm0+oIeQ==}
-    engines: {node: '>=22'}
-
-  '@bounded-authority-protocol/verifier@2.0.0':
-    resolution: {integrity: sha512-1nyR9qCwFvBDf+Fv/u7fig2HtOEcWXagIrxFDltSAlzE50ZDosHrTbgLb2H23uuCfy/SkX0QiCAjUHzlvIDBXQ==}
     engines: {node: '>=22'}
 
   '@cacheable/memory@2.2.0':
@@ -766,13 +765,7 @@ snapshots:
 
   '@bounded-authority-protocol/signer@2.0.0':
     dependencies:
-      '@bounded-authority-protocol/verifier': 2.0.0
-
-  '@bounded-authority-protocol/verifier@2.0.0':
-    dependencies:
-      '@noble/curves': 2.4.0
-      '@noble/ed25519': 3.2.0
-      '@noble/hashes': 2.4.0
+      '@bounded-authority-protocol/verifier': 'link:'
 
   '@cacheable/memory@2.2.0':
     dependencies:

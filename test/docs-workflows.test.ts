@@ -20,12 +20,10 @@ test("qualification runs candidate notebooks and durable replay, without cache w
     assert.match(run, /pnpm install --frozen-lockfile/);
     if (name!.startsWith("notebooks-")) {
       assert.ok(job.steps.some((step) => step.uses === "./.github/actions/notebook-tools"));
-      assert.match(run, /uv sync --frozen/); assert.match(run, /python --version/);
-      assert.match(run, /deno --version/); assert.match(run, /uv --version/);
-      assert.match(run, /\.tool-versions/);
+      assert.match(run, /uv sync --frozen/); assert.match(run, /tool-versions\.sh check python/);
+      assert.match(run, /tool-versions\.sh check deno/); assert.match(run, /tool-versions\.sh check uv/);
+      assert.match(run, /tool-versions\.sh read nodejs deno python uv/);
       assert.ok(run.indexOf("uv lock --check") >= 0 && run.indexOf("uv lock --check") < run.indexOf("uv sync --frozen"));
-      assert.match(run, /deno --version \| awk 'NR == 1 \{print \$2\}'/);
-      assert.match(run, /uv --version \| awk '\{print \$2\}'/);
     }
     for (const step of steps.filter((step) => step.uses)) {
       assert.match(step.uses!, /@[a-f\d]{40}$/);

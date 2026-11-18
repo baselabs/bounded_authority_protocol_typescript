@@ -31,10 +31,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Read exact runtime pins
+        id: pins
+        run: scripts/tool-versions.sh read nodejs python
       - name: Set up Node from the tool versions
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: .tool-versions
+          node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
       - name: Activate the declared pnpm with Corepack
         run: |
@@ -44,9 +47,13 @@ jobs:
           corepack prepare "$manager" --activate
           test "pnpm@$(pnpm --version)" = "$manager"
       - name: Refuse a different Node version
-        run: |
-          expected="$(awk '$1 == "nodejs" {print $2}' .tool-versions)"
-          test "$(node --version)" = "v$expected" || { echo "::error::Node must be exactly $expected"; exit 1; }
+        run: scripts/tool-versions.sh check nodejs
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ steps.pins.outputs.python }}
+      - name: Refuse a different Python version
+        run: scripts/tool-versions.sh check python
       - name: Pin archive tooling
         run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Install with the frozen lockfile
@@ -143,6 +150,7 @@ jobs:
         run: npm stage publish ./artifacts/package.tgz --provenance
 
   published-notebooks:
+    if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
     needs: publish
     runs-on: ubuntu-24.04
     timeout-minutes: 90 # no green run yet

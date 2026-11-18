@@ -26,7 +26,11 @@ test("qualification reaches only candidate owning-package journeys", () => {
 test("one keyless job checks the exact published version after the upload", () => {
   const job = publication.split("\n  published-notebooks:\n")[1];
   assert.ok(job, "published-notebooks is required");
-  assert.match(job, /needs: publish/); assert.match(job, /runs-on: ubuntu-24\.04/);
+  const upload = publication.split("\n  publish:\n")[1]!.split("\n  published-notebooks:\n")[0]!;
+  const uploadIf = upload.match(/^    if: (.+)$/m)?.[1];
+  assert.ok(uploadIf, "publish requires a job-level condition");
+  assert.equal(job.match(/^    if: (.+)$/m)?.[1], uploadIf, "post-upload condition must equal publish");
+  assert.match(job, /^    needs: publish$/m); assert.match(job, /runs-on: ubuntu-24\.04/);
   assert.match(job, /timeout-minutes: 90 # no green run yet/);
   assert.doesNotMatch(job, /environment:|secrets\.|id-token:|NODE_AUTH_TOKEN|NPM_TOKEN/);
   assert.match(job, /actions\/checkout@[a-f\d]{40} # v\d+\.\d+\.\d+/);

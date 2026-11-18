@@ -146,6 +146,9 @@
   },
   "packageManager": "pnpm@10.20.0",
   "pnpm": {
+    "overrides": {
+      "@bounded-authority-protocol/signer>@bounded-authority-protocol/verifier": "link:."
+    },
     "auditConfig": {
       "ignoreGhsas": [
         "GHSA-fc5q-39xc-vjpf"

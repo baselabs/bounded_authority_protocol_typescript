@@ -6,11 +6,7 @@ runs:
     - name: Read exact tool pins
       id: pins
       shell: bash
-      run: |
-        while read -r tool version compatibility; do
-          test -n "$tool" && test -n "$version"
-          printf '%s=%s\n' "$tool" "$version" >> "$GITHUB_OUTPUT"
-        done < .tool-versions
+      run: scripts/tool-versions.sh read nodejs deno python uv
     - name: Set up Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
@@ -32,16 +28,11 @@ runs:
         save-cache: false
     - name: Refuse differing tool versions
       shell: bash
-      env:
-        EXPECTED_NODE: ${{ steps.pins.outputs.nodejs }}
-        EXPECTED_DENO: ${{ steps.pins.outputs.deno }}
-        EXPECTED_PYTHON: ${{ steps.pins.outputs.python }}
-        EXPECTED_UV: ${{ steps.pins.outputs.uv }}
       run: |
-        test "$(node --version)" = "v$EXPECTED_NODE"
-        test "$(deno --version | awk 'NR == 1 {print $2}')" = "$EXPECTED_DENO"
-        test "$(python --version | awk '{print $2}')" = "$EXPECTED_PYTHON"
-        test "$(uv --version | awk '{print $2}')" = "$EXPECTED_UV"
+        scripts/tool-versions.sh check nodejs
+        scripts/tool-versions.sh check deno
+        scripts/tool-versions.sh check python
+        scripts/tool-versions.sh check uv
     - name: Activate the declared package manager
       shell: bash
       run: |

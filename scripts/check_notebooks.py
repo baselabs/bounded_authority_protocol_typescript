@@ -79,9 +79,8 @@ def check(local: bool) -> None:
     from jupyter_client import AsyncKernelManager
     from jupyter_client.kernelspec import KernelSpecManager
 
-    pins = {parts[0]: parts[1:] for line in (ROOT / ".tool-versions").read_text().splitlines()
-            if (parts := line.split()) and not parts[0].startswith("#")}
-    require(sys.version.split()[0] == pins["python"][0], "Python differs from .tool-versions")
+    tool_versions = str(ROOT / "scripts/tool-versions.sh")
+    run(tool_versions, "check", "python", cwd=ROOT)
     package = json.loads((ROOT / "package.json").read_text())
     directory = ROOT / "docs/notebooks"
     registry = json.loads((directory / "registry.json").read_text())
@@ -128,9 +127,8 @@ def check(local: bool) -> None:
         (scratch / "runtime").mkdir()
         (scratch / "npmrc").write_text("registry=" + REGISTRY + "\n")
         (scratch / "global-npmrc").write_text("")
-        require(run("node", "--version", cwd=scratch, env=env) == "v" + pins["nodejs"][0], "Node differs")
-        for tool in ("deno", "uv"):
-            require(run(tool, "--version", cwd=scratch, env=env).split()[1] == pins[tool][0], tool + " differs")
+        for tool in ("nodejs", "deno", "uv"):
+            run(tool_versions, "check", tool, cwd=scratch, env=env)
         artifact = None
         if local:
             packed = json.loads(run("node", str(ROOT / "tools/pack.mjs"), "--out",
