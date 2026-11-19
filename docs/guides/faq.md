@@ -32,7 +32,7 @@ profiles do not negotiate or fall back. See [contract majors](contract-majors.md
 
 ## Where are signing keys stored?
 
-Outside this verifier. The companion signer 2.0.0 depends on verifier `^2.0.0` and delegates to
+Outside this verifier. The companion signer 2.0.1 depends on verifier `^2.0.1` and delegates to
 caller-owned handles. The verifier accepts public keys only. Notebooks generate temporary
 in-memory demonstration keys and never print or persist them.
 
