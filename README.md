@@ -57,7 +57,7 @@ Guides, searchable API field contracts and notebook transcripts share one TypeDo
 npm install @bounded-authority-protocol/verifier@2.0.1
 ```
 
-The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.19.0), or a
+The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.22.3), or a
 current browser, Deno (CI: 2.5.6) or Bun (CI: 1.3.14). Its three runtime dependencies are
 exactly pinned and MIT-licensed: `@noble/ed25519` 3.2.0, `@noble/curves` 2.4.0 and
 `@noble/hashes` 2.4.0, used only by the portable backend (browsers, Deno, Bun, workers).
@@ -80,7 +80,7 @@ npm install @bounded-authority-protocol/verifier@2.0.1
 
 Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`
 file directly needs Node.js 22.18 or later, which strips the types (checked as written on 22.23.1 and
-24.19.0); on an older Node 22, or another runtime, run `npx tsx quickstart.ts`. It prints nothing
+24.22.3); on an older Node 22, or another runtime, run `npx tsx quickstart.ts`. It prints nothing
 when every assertion holds.
 
 ```ts
@@ -476,7 +476,7 @@ in `src/`, and the browser-safety rules: no Node module or global, no dynamic co
 typecheck, a scan of the browser bundle for unresolved globals, a bundle-size budget, a license
 check, the unit tests (which also typecheck and run every code sample in this README and in
 `docs/`), the mutation gate, and every corpus above against the vendored snapshots, on Node 22.23.1
-and Node 24.19.0 with the node and the portable backend; the same corpora on Deno and Bun; the
+and Node 24.22.3 with the node and the portable backend; the same corpora on Deno and Bun; the
 browser lane in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of
 the packed tarball; and `npm audit signatures`.
 

@@ -19,7 +19,9 @@ notebooks and packaged docs, and adopts the protocol 1.1.0 conformance corpus.
   the primary and compatibility Node lanes. Gate post-upload checks with the upload condition.
 - Resolve the signer's verifier dependency to this checkout so qualification uses the candidate;
   reject registry resolutions of this package in the lockfile. npm's `overrides` states the same
-  link, so registry signature audits never look up the unpublished candidate version.
+  link, so registry signature audits never look up the unpublished candidate version. The audit
+  runs on the Node compatibility lane, now 24.22.3 (npm 11.19.1): npm applies overrides through
+  pnpm's linked packages from 11.18; Node 22's npm 10 does not.
 
 - Qualify only the packed candidate; run exact-version npm notebook, sample and registry checks
   after upload in a separate keyless publication job.
