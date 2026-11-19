@@ -39,7 +39,7 @@ test("one keyless job checks the exact published version after the upload", () =
   assert.ok(uploadIf, "publish requires a job-level condition");
   assert.equal(job.match(/^    if: (.+)$/m)?.[1], uploadIf, "post-upload condition must equal publish");
   assert.match(job, /^    needs: publish$/m); assert.match(job, /runs-on: ubuntu-24\.04/);
-  assert.match(job, /timeout-minutes: 90 # no green run yet/);
+  assert.match(job, /^    timeout-minutes: 5 # /m);
   assert.doesNotMatch(job, /environment:|secrets\.|id-token:|NODE_AUTH_TOKEN|NPM_TOKEN/);
   assert.match(job, /actions\/checkout@[a-f\d]{40} # v\d+\.\d+\.\d+/);
   assert.match(job, /persist-credentials: false/);
@@ -58,7 +58,10 @@ test("publication resumes only an identical, nondeprecated release and reads its
     assert.ok(found, `missing publication step: ${name}`);
     return found;
   };
-  assert.match(upload, /timeout-minutes: 90 # no green run yet/);
+  const limit = Number(upload.match(/^    timeout-minutes: (\d+) # /m)?.[1]);
+  const deadline = Number(upload.match(/deadline = time\.monotonic\(\) \+ (\d+)/)?.[1]);
+  assert.equal(limit, 12);
+  assert.ok(limit * 60 > deadline + 30, "the job limit must outlast the approval read-back deadline");
   const tag = step("Refuse a tagged version");
   assert.match(tag, /ls-remote.*refs\/tags\/v\$\{version\}/);
   assert.match(tag, /assert\.equal\(tags\.trim\(\), ''/);

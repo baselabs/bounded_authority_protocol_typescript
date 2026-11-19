@@ -19,7 +19,7 @@ jobs:
     name: Publish the inspected archive with provenance
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
     runs-on: ubuntu-24.04
-    timeout-minutes: 90 # no green run yet
+    timeout-minutes: 12 # the read-back's 600 s approval deadline and 30 s tarball read, plus 2x the other steps' 29 s; green 3.1 min, run 44623496542.
     environment: publish
     permissions:
       contents: read
@@ -251,7 +251,7 @@ jobs:
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
     needs: publish
     runs-on: ubuntu-24.04
-    timeout-minutes: 90 # no green run yet
+    timeout-minutes: 5 # 5-minute floor; green 1.6 min, run 44623496542.
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
