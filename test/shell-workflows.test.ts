@@ -29,7 +29,8 @@ test("workflows, composite actions and tracked shell scripts preserve command fa
     const workflow = parse(source) as Workflow;
     assert.equal(workflow.defaults?.run?.shell, "bash", file);
     for (const [name, job] of Object.entries(workflow.jobs)) {
-      assert.equal(job.defaults?.run?.shell ?? "bash", "bash", `${file}: ${name}`);
+      // A job's defaults.run replaces the workflow's whole defaults.run, shell included.
+      if (job.defaults?.run !== undefined) assert.equal(job.defaults.run.shell, "bash", `${file}: ${name}`);
       for (const step of job.steps ?? []) {
         if (step.run !== undefined) assert.equal(step.shell ?? "bash", "bash", `${file}: ${step.run}`);
       }
