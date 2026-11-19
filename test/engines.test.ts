@@ -37,9 +37,12 @@ test('engines.node is exactly ">=22", and every CI Node pin satisfies it', () =>
   for (const pin of pins) assert.ok(semver.satisfies(pin, range), `${pin} satisfies ${range}`);
 });
 
+// pnpm resolves the link; npm's own field states the same link, so `npm audit signatures`
+// treats the candidate as this directory and never looks up an unpublished version.
 test("the companion signer resolves only this checkout's verifier", () => {
   const selector = "@bounded-authority-protocol/signer>@bounded-authority-protocol/verifier";
   const manifest = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as {
+    overrides: Record<string, Record<string, string>>;
     pnpm: { overrides: Record<string, string> };
   };
   const lock = parse(readFileSync(join(REPO, "pnpm-lock.yaml"), "utf8")) as {
@@ -47,6 +50,7 @@ test("the companion signer resolves only this checkout's verifier", () => {
     snapshots: Record<string, { dependencies?: Record<string, string> }>;
   };
   assert.equal(manifest.pnpm.overrides[selector], "link:.");
+  assert.deepEqual(manifest.overrides, { "@bounded-authority-protocol/signer": { "@bounded-authority-protocol/verifier": "file:." } });
   assert.equal(lock.overrides[selector], "link:.");
   const signers = Object.entries(lock.snapshots).filter(([name]) => name.startsWith("@bounded-authority-protocol/signer@"));
   assert.ok(signers.length > 0, "the lock must include the companion signer");

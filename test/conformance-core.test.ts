@@ -149,14 +149,17 @@ test("JCS is structured, ordered, field-sensitive, and refuses non-JSON", () => 
   for (const value of [undefined, NaN, Infinity, "\ud800"]) assert.throws(() => jcs(value));
 });
 
-test("every core refuses auxiliary snapshot mutations, including a root digest file", () => fixture(dir => {
+test("every core refuses auxiliary snapshot mutations and additions, including the root digest file", () => fixture(dir => {
   for (const path of ["v1/schemas/corpus-index.schema.json", "v1/vectors/grant-holder-proof.json", "verdict-digests.json"]) {
-    const target = join(dir, "priv/conformance", path);
-    const original = path === "verdict-digests.json" ? undefined : readFileSync(target);
-    writeFileSync(target, original ? Buffer.concat([original, Buffer.from(" ")]) : "{}");
+    const target = join(dir, "priv/conformance", path), original = readFileSync(target);
+    writeFileSync(target, Buffer.concat([original, Buffer.from(" ")]));
     for (const core of CORES) red(`${core.corpus} auxiliary ${path}`, () => core.run(fsSource(dir)), /tree SHA-256/);
-    if (original) writeFileSync(target, original); else rmSync(target);
+    writeFileSync(target, original);
   }
+  const unlisted = join(dir, "priv/conformance", "unlisted.json");
+  writeFileSync(unlisted, "{}");
+  for (const core of CORES) red(`${core.corpus} unlisted root file`, () => core.run(fsSource(dir)), /tree SHA-256/);
+  rmSync(unlisted);
   assertSnapshot(fsSource(dir));
 }));
 test("a repinned real attestation case can grow the corpus without editing a runner count", () => fixture(dir => {
@@ -173,5 +176,13 @@ test("a repinned real attestation case can grow the corpus without editing a run
   const report = core.run(fsSource(dir));
   assert.deepEqual(report.failures, []);
   assert.equal(report.verdicts.length, cases.length);
+  red("stale published verdict digest", () => assertVerdictDigest(fsSource(dir), core.dir, report.verdicts), /published verdict digest mismatch/);
+  const digestsPath = join(dir, "priv/conformance/verdict-digests.json"), digests = JSON.parse(readFileSync(digestsPath, "utf8"));
+  digests.corpora[core.dir.slice("priv/conformance/".length)] = {
+    case_count: cases.length,
+    index_sha256_base64url: hash64(readFileSync(indexPath)),
+    verdict_digest_sha256_base64url: verdictDigest(report.verdicts),
+  };
+  writeFileSync(digestsPath, JSON.stringify(digests)); repinTree(dir);
   assertVerdictDigest(fsSource(dir), core.dir, report.verdicts);
 }));

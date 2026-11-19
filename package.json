@@ -146,6 +146,11 @@
     "access": "public"
   },
   "packageManager": "pnpm@10.20.0",
+  "overrides": {
+    "@bounded-authority-protocol/signer": {
+      "@bounded-authority-protocol/verifier": "file:."
+    }
+  },
   "pnpm": {
     "overrides": {
       "@bounded-authority-protocol/signer>@bounded-authority-protocol/verifier": "link:."

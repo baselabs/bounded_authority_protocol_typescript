@@ -9,9 +9,12 @@ import { fileURLToPath } from "node:url";
 import { assertReleaseSource, compareSnapshot, hash, installSnapshot, parseSource, readTar, sourceFor, treeDigest, treeFiles, unpackHex, validateReleaseMetadata } from "../scripts/corpus-artifact.mjs";
 import { adoptionDecision, assertCurrent, newestEligible } from "../scripts/corpus-policy.mjs";
 import { assertDocumentation, corpusSummary, rewriteCorpusSummary } from "../scripts/corpus-docs.mjs";
+import semver from "semver";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const source = parseSource(readFileSync(join(root, "conformance/SOURCE")));
 const files = treeFiles(join(root, "conformance/priv/conformance"));
+// A release newer than the pinned one, so every policy test holds for whichever release is pinned.
+const later = semver.inc(source.version, "minor");
 function tar(entries) {
   const chunks = [];
   for (const [path, data, type = "0"] of entries) {
@@ -67,8 +70,8 @@ test("transaction stages completely and removes its own residue on failure and s
   assert.equal(existsSync(dir), false);
 });
 test("stale SOURCE and candidate SOURCE fail release and main gates, then release pin is green", () => {
-  const newest = {version: "1.1.0", checksum: source.checksum};
-  red("stale SOURCE", () => assertCurrent({...source, version: "1.0.0"}, newest), /stale SOURCE/);
+  const newest = {version: source.version, checksum: source.checksum};
+  red("stale SOURCE", () => assertCurrent(source, {...newest, version: later}), /stale SOURCE/);
   const candidate = sourceFor(files, {candidate: "a".repeat(40)});
   red("candidate SOURCE on main", () => assertReleaseSource(candidate, true), /candidate SOURCE refused on main/);
   red("candidate release", () => assertCurrent(candidate, newest), /candidate SOURCE refused by release gate/);
@@ -99,9 +102,9 @@ test("prereleases and build metadata never become a source, adoption target, or 
     assert.throws(() => adoptionDecision(source, {version, checksum: source.checksum}), /stable versions/);
     assert.throws(() => assertCurrent(source, {version, checksum: source.checksum}), /stable versions/);
   }
-  assert.equal(adoptionDecision(source, {...source, version: "1.1.0"}), "adopt");
+  assert.equal(adoptionDecision(source, {...source, version: later}), "adopt");
   assert.equal(adoptionDecision(source, source), "same");
-  assert.equal(adoptionDecision({...source, version: "1.1.0"}, source), "ahead");
+  assert.equal(adoptionDecision({...source, version: later}, source), "ahead");
 });
 test("re-fetched registry metadata must agree with the eligibility checksum", () => {
   const metadata = {version: source.version, checksum: source.checksum, retirement: null};
@@ -118,12 +121,13 @@ test("subtree selection ignores irrelevant links but refuses every non-regular c
   assert.throws(() => readTar(tar([[prefix + "../escape", "x"]]), prefix), /unsafe/);
 });
 test("offline whole-tree digest covers auxiliary schemas, vectors, additions and removals", () => {
-  for (const path of ["v1/schemas/corpus-index.schema.json", "v1/vectors/grant-holder-proof.json"]) {
+  for (const path of ["v1/schemas/corpus-index.schema.json", "v1/vectors/grant-holder-proof.json", "verdict-digests.json"]) {
     const changed = new Map(files); changed.set(path, Buffer.concat([files.get(path), Buffer.from(" ")]));
     assert.notEqual(treeDigest(changed), source.tree_sha256);
     assert.throws(() => installSnapshot(root, changed, source), /tree SHA-256/);
   }
-  const added = new Map([...files, ["verdict-digests.json", Buffer.from("{}")]]);
+  assert.ok(!files.has("unlisted.json"));
+  const added = new Map([...files, ["unlisted.json", Buffer.from("{}")]]);
   assert.notEqual(treeDigest(added), source.tree_sha256);
   const missing = new Map(files); missing.delete("v1/vectors/grant-holder-proof.json");
   assert.notEqual(treeDigest(missing), source.tree_sha256);
@@ -134,7 +138,7 @@ test("adoption rewrites the sole corpus summary and offline checks reject stale 
   const dir = mkdtempSync(join(tmpdir(), "bap-corpus-docs-"));
   try {
     cpSync(join(root, "README.md"), join(dir, "README.md"));
-    const next = {...source, version: "1.1.0"};
+    const next = {...source, version: later};
     assert.throws(() => assertDocumentation(dir, files, next, ["README.md"]), /summary differs/);
     rewriteCorpusSummary(dir, files, next);
     assertDocumentation(dir, files, next, ["README.md"]);
