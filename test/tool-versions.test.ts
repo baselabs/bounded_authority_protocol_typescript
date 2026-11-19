@@ -36,7 +36,7 @@ test("the reader validates the entire table and selects exact primary and compat
     mkdirSync(join(directory, "scripts"));
     copyFileSync(new URL("../scripts/tool-versions.sh", import.meta.url), join(directory, "scripts/tool-versions.sh"));
     const output = join(directory, "outputs");
-    const invoke = (...args: string[]) => spawnSync("sh", [join(directory, "scripts/tool-versions.sh"), ...args], {
+    const invoke = (...args: string[]) => spawnSync("bash", [join(directory, "scripts/tool-versions.sh"), ...args], {
       cwd: tmpdir(), encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output },
     });
     const table = (value: string): void => {

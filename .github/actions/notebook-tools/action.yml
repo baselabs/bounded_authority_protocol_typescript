@@ -40,7 +40,8 @@ runs:
         case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
         corepack enable
         corepack prepare "$manager" --activate
-        test "pnpm@$(pnpm --version)" = "$manager"
+        pnpm_version=$(pnpm --version)
+        test "pnpm@$pnpm_version" = "$manager"
     - name: Install JavaScript dependencies frozen
       shell: bash
       run: pnpm install --frozen-lockfile

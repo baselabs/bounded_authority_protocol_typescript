@@ -1,7 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
+# Field splitting deliberately parses pins and version output; -f disables glob expansion.
+# shellcheck disable=SC2086
+set -efuo pipefail
+
 # One parser for exact primary and optional compatibility pins in .tool-versions.
 # Usage: tool-versions.sh read TOOL... | check TOOL [primary|next]
-set -efu
 
 fail() {
   printf 'tool-versions: %s\n' "$*" >&2
@@ -22,7 +25,8 @@ exact_version() (
   done
 )
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+script_directory=$(dirname -- "$0")
+root=$(CDPATH='' cd -- "$script_directory/.." && pwd)
 read_pins() {
   seen=' '
   while IFS= read -r line || [ -n "$line" ]; do
@@ -70,7 +74,8 @@ case "$command" in
     done
     : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
     for tool do
-      printf '%s=%s\n' "$tool" "$(declared "$tool")" >> "$GITHUB_OUTPUT"
+      value=$(declared "$tool")
+      printf '%s=%s\n' "$tool" "$value" >> "$GITHUB_OUTPUT"
       if lane=$(declared "$tool-next"); then
         printf '%s-next=%s\n' "$tool" "$lane" >> "$GITHUB_OUTPUT"
       fi

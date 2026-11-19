@@ -1,5 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 expected_version='8.30.1'
 
@@ -72,7 +72,8 @@ assert_history_safe() {
     echo "secret history scan requires a complete, non-shallow repository" >&2
     return 1
   fi
-  if [ -n "$(git --no-replace-objects -C "$scan_root" for-each-ref --format='%(refname)' refs/replace)" ]; then
+  replace_refs=$(git --no-replace-objects -C "$scan_root" for-each-ref --format='%(refname)' refs/replace)
+  if [ -n "$replace_refs" ]; then
     echo "secret history scan refuses Git replace refs" >&2
     return 1
   fi

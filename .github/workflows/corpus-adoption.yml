@@ -9,6 +9,10 @@ permissions:
   contents: write
   issues: write
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: corpus-adoption
   cancel-in-progress: false
@@ -42,7 +46,8 @@ jobs:
           case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
           corepack enable
           corepack prepare "$manager" --activate
-          test "pnpm@$(pnpm --version)" = "$manager"
+          pnpm_version=$(pnpm --version)
+          test "pnpm@$pnpm_version" = "$manager"
       - name: Refuse a different Node version
         run: scripts/tool-versions.sh check nodejs
       - name: Install (frozen lockfile)
@@ -55,7 +60,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -eo pipefail
-          if git diff --quiet -- conformance/SOURCE; then exit 0; fi
+          if git diff --quiet -- conformance/SOURCE; then
+            exit 0
+          else
+            status=$?
+            [ "$status" -eq 1 ] || exit "$status"
+          fi
           version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; console.log(JSON.parse(readFileSync("conformance/SOURCE")).version)')
           branch="automation/adopt-corpus-$version"
           title="Adopt certified Hex corpus $version"
@@ -65,6 +75,8 @@ jobs:
             git diff --exit-code FETCH_HEAD -- conformance/SOURCE conformance/priv/conformance README.md
             sha=$(git rev-parse FETCH_HEAD)
           else
+            status=$?
+            [ "$status" -eq 2 ] || exit "$status"
             git switch -c "$branch"
             git add -- conformance/SOURCE conformance/priv/conformance README.md
             git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "Adopt certified Hex corpus $version"

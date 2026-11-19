@@ -21,7 +21,7 @@ test('engines.node is exactly ">=22", and every CI Node pin satisfies it', () =>
   const output = join(directory, "outputs");
   let versions: Map<string, string>;
   try {
-    execFileSync("sh", [join(REPO, "scripts/tool-versions.sh"), "read", "nodejs"], {
+    execFileSync("bash", [join(REPO, "scripts/tool-versions.sh"), "read", "nodejs"], {
       env: { ...process.env, GITHUB_OUTPUT: output },
     });
     versions = new Map(readFileSync(output, "utf8").trim().split("\n").map((line) => {

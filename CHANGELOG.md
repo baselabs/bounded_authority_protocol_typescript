@@ -7,6 +7,8 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 2.0.1 is a patch release: API and behavior are unchanged; it ships the integrator guides,
 notebooks and packaged docs, and adopts the protocol 1.1.0 conformance corpus.
 
+- Fail CI steps when any command or pipeline fails, including tool-version and repository checks,
+  so integrators can rely on qualification failures being reported.
 - Resume held npm publication only when the served SHA-512 and archive bytes match; refuse
   deprecated, changed or pending staged versions. Preserve inspected archives and checksums
   as `release-assets` for infra's GitHub release and document registry provenance verification.

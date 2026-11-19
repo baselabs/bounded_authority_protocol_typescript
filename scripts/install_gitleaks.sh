@@ -1,5 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 version='8.30.1'
 linux_x64_sha256='551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
@@ -15,7 +15,7 @@ sha256_file() {
 verify_checksum() {
   file=$1
   expected=$2
-  actual=$(sha256_file "$file")
+  actual=$(sha256_file "$file") || return "$?"
   if [ "$actual" != "$expected" ]; then
     echo "gitleaks archive checksum mismatch" >&2
     return 1
@@ -36,7 +36,9 @@ if [ "${1:-}" = '--check' ]; then
 fi
 
 destination=${1:?"usage: scripts/install_gitleaks.sh DESTINATION_DIRECTORY"}
-if [ "$(uname -s)" != 'Linux' ] || [ "$(uname -m)" != 'x86_64' ]; then
+system=$(uname -s)
+architecture=$(uname -m)
+if [ "$system" != 'Linux' ] || [ "$architecture" != 'x86_64' ]; then
   echo "automatic gitleaks installation supports Linux x86_64 only; install gitleaks 8.30.1 from the official release" >&2
   exit 1
 fi

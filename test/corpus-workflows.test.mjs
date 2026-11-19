@@ -91,7 +91,7 @@ test("every dependency install uses Corepack's declared pnpm without a cache wri
     for (const job of Object.values(workflow(name).jobs)) {
       if (!commands(job).includes("pnpm install")) continue;
       assert.match(commands(job), /corepack prepare "\$manager" --activate/);
-      assert.match(commands(job), /test "pnpm@\$\(pnpm --version\)" = "\$manager"/);
+      assert.match(commands(job), /pnpm_version=\$\(pnpm --version\)\s+test "pnpm@\$pnpm_version" = "\$manager"/);
       assert.match(commands(job), /pnpm install --frozen-lockfile/);
       for (const step of job.steps) {
         assert.doesNotMatch(step.uses ?? "", /^actions\/cache@|^pnpm\/action-setup@/);
