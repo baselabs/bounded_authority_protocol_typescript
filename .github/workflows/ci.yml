@@ -464,7 +464,7 @@ jobs:
         run: node tools/check-currency.mjs
 
   site:
-    timeout-minutes: 5 # Pages run 44039148515: green build job 27s.
+    timeout-minutes: 5 # Run 44664305664: green job 29s.
     # Qualify the complete site from HEAD, without owning-package registry metadata or tags.
     # Use a frozen install before any library build; Pages selects the npm-latest release instead.
     name: Pages build and checks
