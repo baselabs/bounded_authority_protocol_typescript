@@ -3,11 +3,13 @@
 // the asset URLs: every deploy gets styles.css/app.js suffixed with the commit SHA, so returning
 // visitors can never be served a stale stylesheet from an unchanged URL.
 //
-// The bundle runs this repository's verifier source on the portable backend, and the published
-// signer (demo issuance only) on its own published verifier dependency. The bap-source condition
-// cannot be set globally for that: it would also send the published verifier's "#crypto" to
-// src/crypto/, which a published package does not ship. So the build sets only bap-portable and
-// resolves "#crypto" to src/crypto/portable.ts for importers inside this repository's src/.
+// The bundle runs one verifier: this repository's source, on the portable backend. The published
+// signer (demo issuance only) imports the package by name, and its lock entry links that name to
+// this checkout (see "the companion signer resolves only this checkout's verifier" in
+// test/engines.test.ts). Package resolution would send it to dist/, which Pages never builds, and
+// would bundle a second verifier beside src/. So the build resolves the package name to
+// src/index.ts and "#crypto" to src/crypto/portable.ts for importers inside src/, and refuses a
+// bundle that reads anything from dist/ or from a registry copy of the verifier.
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, sep } from "node:path";
@@ -34,15 +36,21 @@ console.log(`site: static assets staged in ${out} (asset version ?v=${version})`
 
 const repo = join(web, "..");
 const sourceDir = join(repo, "src") + sep;
-const sourceCrypto = {
-  name: "bench-source-crypto",
+const candidateVerifier = {
+  name: "bench-candidate-verifier",
   setup(b) {
+    b.onResolve({ filter: /^@bounded-authority-protocol\/verifier$/ }, () => ({ path: join(repo, "src", "index.ts") }));
     b.onResolve({ filter: /^#crypto$/ }, (args) =>
       args.importer.startsWith(sourceDir) ? { path: join(repo, "src", "crypto", "portable.ts") } : undefined);
   },
 };
-await build({
+const result = await build({
   entryPoints: [join(web, "main.ts")], absWorkingDir: repo, bundle: true, minify: true, format: "iife",
   target: "es2022", platform: "browser", conditions: ["bap-portable"], outfile: join(out, "app.js"),
-  plugins: [sourceCrypto], logLevel: "info",
+  plugins: [candidateVerifier], metafile: true, logLevel: "info",
 });
+const foreign = Object.keys(result.metafile.inputs)
+  .filter((input) => input.startsWith("dist/") || input.includes("node_modules/@bounded-authority-protocol/verifier/"));
+if (foreign.length > 0) {
+  throw new Error(`site: the bench must bundle only this repository's verifier source; it read ${foreign.join(", ")}`);
+}
