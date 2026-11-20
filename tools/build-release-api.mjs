@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { writeDocumentationMetadata } from "./build-docs.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -76,9 +77,8 @@ try {
   mkdirSync(out, { recursive: true });
   // The version gate permits authored history only inside TypeDoc articles. Derive that
   // history from the selected source, so commit and release builds carry the same evidence.
-  const authored = (options.projectDocuments ?? []).map((path) => readFileSync(join(release, path), "utf8")).join("\n");
-  const historicalVersions = [...new Set([...authored.matchAll(/(?<![\w.])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?!\w|\.\d)/g)].map((match) => match[1]))];
-  writeFileSync(join(out, "documentation.json"), JSON.stringify({ version, channel: source, historicalVersions }, null, 2) + "\n");
+  writeDocumentationMetadata(out, { version, channel: source,
+    authored: (options.projectDocuments ?? []).map((path) => readFileSync(join(release, path), "utf8")) });
   writeFileSync(join(out, "release.json"), JSON.stringify({ package: pkg.name, version, source, ...(tag ? { tag } : {}), commit }, null, 2) + "\n");
   console.log(`${source === "release" ? "Released" : "Commit"} API: ${pkg.name}@${version}, ${tag ? `tag ${tag}, ` : ""}commit ${commit}`);
 } finally {

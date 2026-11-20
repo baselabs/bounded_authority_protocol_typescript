@@ -8,6 +8,14 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// documentation.json for the site version gate: the version the site targets, and every version
+// written in the authored documents, which the gate permits only inside generated articles.
+export function writeDocumentationMetadata(out, { version, channel, authored }) {
+  const historicalVersions = [...new Set(Array.from(authored.join("\n")
+    .matchAll(/(?<![\w.])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?!\w|\.\d)/g), (match) => match[1]))];
+  writeFileSync(join(out, "documentation.json"), JSON.stringify({ version, channel, historicalVersions }, null, 2) + "\n");
+}
+
 export function buildDocumentation({ source = root, out = join(root, "build-docs/api") } = {}) {
   const pkg = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
   const registry = JSON.parse(readFileSync(join(root, "docs/manifest.json"), "utf8"));
@@ -66,9 +74,8 @@ export function buildDocumentation({ source = root, out = join(root, "build-docs
     mkdirSync(out, { recursive: true });
     // The version gate still checks headers and arbitrary pages against npm. The documented
     // historical/dependency versions in each generated article must occur in authored sources.
-    const authored = documents.map((path) => readFileSync(join(scratch, path), "utf8")).join("\n");
-    const historicalVersions = [...new Set([...authored.matchAll(/(?<![\w.])v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?!\w|\.\d)/g)].map((match) => match[1]))];
-    writeFileSync(join(out, "documentation.json"), JSON.stringify({ version: pkg.version, channel: "development", historicalVersions }, null, 2) + "\n");
+    writeDocumentationMetadata(out, { version: pkg.version, channel: "development",
+      authored: documents.map((path) => readFileSync(join(scratch, path), "utf8")) });
     return out;
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
