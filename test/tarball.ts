@@ -232,7 +232,7 @@ for (const [label, command, backend] of [
 }
 
 // The backends are reachable only through "#crypto": a deep import cannot pick the ungated one.
-test("deep imports: closed — the backends are not exported and no deep path resolves", () => {
+test("deep imports: the backends are not exported and no deep path resolves", () => {
   const probe = (specifier: string) => {
     writeFileSync(join(consumer, "probe.mjs"), `import(${JSON.stringify(specifier)}).then((m) => console.log(typeof m.verifyGrant), (e) => console.log(e.code));`);
     return run("node", ["probe.mjs"], consumer).trim();

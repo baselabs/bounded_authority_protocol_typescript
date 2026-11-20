@@ -63,13 +63,13 @@ function visit(name, fromDir) {
 for (const dep of runtimeDeps) visit(dep, ROOT);
 
 if (offenders.length > 0) {
-  console.error("license-check: FAIL — disallowed runtime dependency licenses:");
+  console.error("license-check: FAIL. The following runtime dependency licenses are disallowed:");
   for (const o of offenders) console.error(`  ${o}`);
   process.exit(1);
 }
 
 if (runtimeDeps.length === 0) {
-  console.log("license-check: PASS — zero runtime dependencies (stdlib-only by design)");
+  console.log("license-check: PASS. There are zero runtime dependencies (stdlib-only by design).");
 } else {
-  console.log(`license-check: PASS — ${runtimeDeps.length} runtime dependency(ies), ${seen.size} package(s) with transitive ones, all allowlisted: ${[...seen].sort().join(", ")}`);
+  console.log(`license-check: PASS. All ${runtimeDeps.length} runtime dependency(ies) and their transitive dependencies are allowlisted (${seen.size} package(s) total): ${[...seen].sort().join(", ")}.`);
 }

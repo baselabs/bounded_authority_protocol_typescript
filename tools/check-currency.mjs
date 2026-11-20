@@ -89,7 +89,7 @@ async function inRangeMax(name) {
   }
   const max = semver.maxSatisfying(versions, ranges[name]);
   if (max === null) {
-    return { error: `no version of ${name} satisfies the declared ${ranges[name]} — unverified` };
+    return { error: `no version of ${name} satisfies the declared ${ranges[name]}. Currency state is unverified.` };
   }
   return { max };
 }
@@ -101,7 +101,7 @@ const unverified = [];
 function sweepStalePins(listed) {
   for (const name of DELIBERATE_PINS.keys()) {
     if (!listed.has(name)) {
-      reports.push(`${name}: pin recorded but not listed by pnpm outdated — at latest or absent; drop the pin if stale`);
+      reports.push(`${name}: a pin is recorded, but pnpm outdated does not list it. It is at latest or absent; drop the pin if stale.`);
     }
   }
 }
@@ -112,8 +112,8 @@ try {
   table = JSON.parse(pnpm.stdout);
 } catch {
   console.error(
-    `check-currency: no parseable dependency data (pnpm exited ${pnpm.code}) — ` +
-      `currency state unverified, and an unverified currency state never passes.` +
+    `check-currency: dependency data could not be parsed (pnpm exited ${pnpm.code}). ` +
+      `Currency state is unverified, and an unverified currency state never passes.` +
       (pnpm.stderr ? `\n  pnpm stderr: ${pnpm.stderr.trim()}` : ""),
   );
   process.exit(1);
@@ -139,13 +139,13 @@ if (entries.length === 0) {
   if (pnpm.code !== 0) {
     console.error(
       "check-currency: pnpm outdated exited nonzero with no entries while " +
-        "package.json declares dependencies — currency state unverified, and an " +
+        "package.json declares dependencies. Currency state is unverified, and an " +
         "unverified currency state never passes." +
         (pnpm.stderr ? `\n  pnpm stderr: ${pnpm.stderr.trim()}` : ""),
     );
   }
   for (const item of unverified) console.error(item);
-  console.error(`check-currency: ${unverified.length} unverified state(s) — an unverified currency state never passes.`);
+  console.error(`check-currency: there are ${unverified.length} unverified state(s). An unverified currency state never passes.`);
   process.exit(1);
 }
 
@@ -161,20 +161,20 @@ for (const [name, info] of entries) {
   }
   const { max } = resolution;
   if (info.isDeprecated) {
-    failures.push(`${name}: deprecated on the registry (current ${info.current}) — move off it`);
+    failures.push(`${name}: the registry marks the current version (${info.current}) as deprecated. Move off it.`);
   } else if (semver.gt(max, info.current)) {
     failures.push(
-      `${name}: in-range resolvable drift — current ${info.current}, max within the declared ` +
-        `${ranges[name]} is ${max} (the range already allows it; pnpm update in this change — never pinnable)`,
+      `${name}: in-range drift is resolvable. The current version is ${info.current}; the maximum within the declared range ` +
+        `${ranges[name]} is ${max}. The range already allows it; run pnpm update in this change. This drift cannot be pinned.`,
     );
   } else if (info.latest && semver.gt(info.latest, max)) {
     const pin = DELIBERATE_PINS.get(name);
     if (pin) {
-      reports.push(`${name}: pinned (latest ${info.latest} sits outside the declared range) — ${pin}`);
+      reports.push(`${name}: the dependency is pinned (latest ${info.latest} sits outside the declared range). Reason: ${pin}`);
     } else {
       failures.push(
-        `${name}: newer release outside the declared range — range max ${max}, latest ` +
-          `${info.latest} (move the range in this change or record a DELIBERATE_PINS reason)`,
+        `${name}: a newer release sits outside the declared range. The range maximum is ${max}; latest is ` +
+          `${info.latest}. Move the range in this change or record a DELIBERATE_PINS reason.`,
       );
     }
   }
@@ -186,8 +186,8 @@ for (const item of unverified) console.error(item);
 for (const failure of failures) console.error(failure);
 if (failures.length > 0 || unverified.length > 0) {
   console.error(
-    `check-currency: ${failures.length} dependency-currency failure(s), ` +
-      `${unverified.length} unverified state(s) — an unverified currency state never passes.`,
+    `check-currency: there are ${failures.length} dependency-currency failure(s) and ` +
+      `${unverified.length} unverified state(s). An unverified currency state never passes.`,
   );
   process.exit(1);
 }

@@ -93,7 +93,7 @@ test("malformed caller Bounds returns the closed error on every contract-major s
       let result: unknown = undefined;
       assert.doesNotThrow(() => {
         result = call(shape);
-      }, `${surfaceName} threw on malformed bounds (${shapeName}) — past the Result contract`);
+      }, `${surfaceName} threw on malformed bounds (${shapeName}), violating the Result contract.`);
       assert.ok(
         typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false,
         `${surfaceName} must fail closed on malformed bounds (${shapeName})`,
@@ -150,7 +150,7 @@ test("anchor producers reject junk field types with the closed error (no coercio
       let result: unknown = undefined;
       assert.doesNotThrow(() => {
         result = produce(adapt(input as Record<string, unknown>));
-      }, `${producerName} threw on ${junkName} — past the Result contract`);
+      }, `${producerName} threw on ${junkName}, violating the Result contract.`);
       assert.ok(
         typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false,
         `${producerName} must fail closed on ${junkName}`,
@@ -202,7 +202,7 @@ test("grant producers reject junk field types with the closed error (no coercion
       let result: unknown = undefined;
       assert.doesNotThrow(() => {
         result = produce(input);
-      }, `${producerName} threw on ${junkName} — past the Result contract`);
+      }, `${producerName} threw on ${junkName}, violating the Result contract.`);
       assert.ok(
         typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === false,
         `${producerName} must fail closed on ${junkName}`,

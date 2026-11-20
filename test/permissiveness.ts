@@ -1257,7 +1257,7 @@ test("shape gate rejects malformed nested expected-export structs (no deref esca
     try {
       r = verifyAnchoredExport(obj, built.keyChain, expected as never);
     } catch (e) {
-      assert.fail(`${label}: threw ${(e as object).constructor.name} past the closed Result — the nested shape spec is too shallow`);
+      assert.fail(`${label} threw ${(e as object).constructor.name} past the closed Result. The nested shape spec is too shallow.`);
     }
     assert.equal((r as { ok: boolean }).ok, false, `${label}: must be Err`);
     // Encoding shares the nested-shape contract.
@@ -1438,7 +1438,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
     nonce: { kind: "not_required" } as const,
   };
   const at = v2.checkEnvelope(grantCompact, proofCompact, expected);
-  assert.equal(at.ok, true, "boundary-equal amount (5000 == lte bound) must verify — inclusive comparison");
+  assert.equal(at.ok, true, "The boundary-equal amount (5000 == lte bound) must verify because the comparison is inclusive.");
   // One past the bound rejects (the gte/lte envelope closes at exactly the bound).
   const over = v2.checkEnvelope(grantCompact, proofCompact, { ...expected, castArguments: amountArgs(5001) });
   assert.equal(over.ok, false, "amount 5001 > the lte bound must reject (the proof's ba_req also mismatches)");
@@ -1469,7 +1469,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
   const forged = (raw: string) => new TextEncoder().encode(raw);
   const decodeUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
 
-  test("permissiveness: v2 assembly revalidation — member set (mutation e1)", () => {
+  test("permissiveness: v2 assembly revalidation checks the member set (mutation e1)", () => {
     // {"aud":"a"} decodes as JSON but is no grant/anchor/transition payload.
     const bad = forged('{"aud":"a"}');
     for (const [kind, compact] of [["grant", grantCompact], ["boundary_anchor", anchorCompact], ["key_transition", transitionCompact]] as const) {
@@ -1478,7 +1478,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
     }
   });
 
-  test("permissiveness: v2 assembly revalidation — canonical payload (mutation e2)", () => {
+  test("permissiveness: v2 assembly revalidation checks the canonical payload (mutation e2)", () => {
     // Whitespace retains the members and genesis values but changes canonical bytes.
     const nonCanon = (c: string) => {
       const payloadJson = decodeUtf8(base64urlDecode(strUtf8(seg(c)[1]!)));
@@ -1490,7 +1490,7 @@ test("permissiveness: v2 envelope verifies at the inclusive boundary (mutation a
     }
   });
 
-  test("permissiveness: v2 assembly revalidation — anchor genesis binding (mutation e3)", () => {
+  test("permissiveness: v2 assembly revalidation checks anchor genesis binding (mutation e3)", () => {
     // A JCS-canonical, closed-member anchor payload with sequence 0 and a NON-zero chain hash
     // (the reference's BoundaryAnchorCodec.parse genesis binding).
     const payload = jsonDecode(base64urlDecode(strUtf8(seg(anchorCompact)[1]!)));
@@ -1571,7 +1571,7 @@ function readV3Case(file: string, id: string): Record<string, unknown> {
       { issuer: input.issuer as string, audience: input.audience as string, evaluationTime: input.evaluation_time as number, clockSkew: input.clock_skew as number },
     ).ok;
 
-  test("permissiveness: v3 positive control — the valid corpus grant verifies (mutation a/b control)", () => {
+  test("permissiveness: the valid v3 corpus grant verifies (mutation a/b positive control)", () => {
     assert.equal(tryVerify(valid), true, "the untouched fixture must verify");
   });
 
@@ -1657,7 +1657,7 @@ test("permissiveness: v3 JWK coordinates must be canonical unpadded base64url of
 
   test("permissiveness: v3 rejects a coordinate at the field prime even when the curve equation holds (mutation e)", () => {
     assert.equal(v3.jwkDecodePublic(jwkText(P, SQRT_B)).ok, false,
-      "x=p, y=√b satisfies y²=x³−3x+b mod p — only the x<p gate rejects this pair");
+      "x=p, y=√b satisfies y²=x³−3x+b mod p. Only the x<p gate rejects this pair.");
   });
 
   test("permissiveness: v3 rejects an off-curve point with no crypto backend in the path (mutation e)", () => {
@@ -1871,7 +1871,7 @@ test("permissiveness: attestation window must be contained in the attestor key w
   assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validFrom: 1000 } }).ok, true);
   assert.equal(raVerify(f.compact, { ...f.expected, attestor: { ...f.expected.attestor, validBefore: 2000 } }).ok, true);
 });
-test("permissiveness: now window is half-open [nbf, exp) — now == exp rejects", () => {
+test("permissiveness: the now window is half-open [nbf, exp), so now == exp rejects", () => {
   const f = raFixture();
   assert.equal(raVerify(f.compact, { ...f.expected, now: 1000 }).ok, true, "now == nbf accepts");
   assert.equal(raVerify(f.compact, { ...f.expected, now: 1999 }).ok, true);

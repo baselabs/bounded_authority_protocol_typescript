@@ -123,9 +123,9 @@ test("public prose and source cite no unpublished decision record", () => {
   assert.deepEqual(hits, []);
 });
 
-// Code literals and vectors keep their punctuation. For source files, examine comment trivia
-// at their original offsets rather than operators or literals. The private-record gate reads
-// full Markdown, including fences; sentence-style checks omit fenced code.
+// The private-record and spaced-hyphen gates examine source comment trivia at its original
+// offsets rather than operators or literals. The private-record gate reads full Markdown,
+// including fences; the spaced-hyphen check omits fenced code. The em-dash gate reads raw text.
 function publicProse(file: string): string {
   const source = readFileSync(file, "utf8");
   if (/\.(?:ts|js|mjs)$/.test(file)) {
@@ -136,15 +136,33 @@ function publicProse(file: string): string {
   if (file.endsWith(".yml")) return source.split("\n").map((line) => /^\s*#/.test(line) ? line : line.replace(/[^\r\n]/g, " ")).join("\n");
   return source.replace(/^\s*(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\s*\1\s*$/gm, (block) => block.replace(/[^\r\n]/g, " "));
 }
-const proseDash = /—|[a-z][.,;:!?]?[ \t]+-[ \t]+(?=[a-z])/i;
+const emDash = new RegExp(String.fromCodePoint(0x2014) + "|\\\\u" + "2014", "i");
+const proseDash = /[a-z][.,;:!?]?[ \t]+-[ \t]+(?=[a-z])/i;
 
 test("prose hygiene distinguishes sentence dashes from code and subtraction", () => {
-  assert.ok(proseDash.test("Request bytes — signed exactly."));
+  assert.ok(emDash.test("Request bytes " + String.fromCodePoint(0x2014) + " signed exactly."));
+  assert.ok(emDash.test("Request bytes " + "\\u" + "2014 signed exactly."));
   assert.ok(proseDash.test("Request bytes - signed exactly."));
   assert.equal(proseDash.test("2^53 - 1; rowCount - 1; - a list item"), false);
 });
 
-test("public prose uses sentences without em dashes or spaced hyphen dashes", () => {
+test("tracked public text contains no em dashes", () => {
+  const tracked = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  // conformance/priv/conformance/ is the immutable corpus/vector/schema snapshot pinned by
+  // conformance/SOURCE. Binary files are not text. No source or placeholder file is exempt.
+  const files = tracked.stdout.split("\0").filter((file) => file !== "" && !file.startsWith("conformance/priv/conformance/"));
+  assert.ok(files.includes("test/docs-samples.test.ts"), "the tracked-text scan must include itself");
+  const hits = files.flatMap((file) => {
+    const source = readFileSync(join(REPO, file));
+    if (source.includes(0)) return [];
+    return source.toString("utf8").split("\n").flatMap((line, i) =>
+      emDash.test(line) ? [`${file}:${i + 1}: ${line.trim()}`] : []);
+  });
+  assert.deepEqual(hits, []);
+});
+
+test("public prose uses sentences without spaced hyphen dashes", () => {
   const hits = PUBLIC_FILES.flatMap((file) => publicProse(file).replace(/`[^`]*`/g, "").split("\n")
     .flatMap((line) => proseDash.test(line) ? [`${relative(REPO, file)}: ${line.trim()}`] : []));
   assert.deepEqual(hits, []);
