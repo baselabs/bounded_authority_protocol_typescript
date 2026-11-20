@@ -74,28 +74,72 @@ test("the upload and every Pages job require both owners and refuse nondefault r
   }
 });
 
-test("Pages and qualification run the same complete site pipeline without a prior library build", () => {
-  const pages = workflow("pages"), ci = workflow("ci");
+const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+
+test("Pages and qualification share every ordered site step with different API sources", () => {
+  const pages = workflow("pages"), candidate = workflow("ci");
   const scripts = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
-  assert.deepEqual(scripts.site.split(" && "), ["pnpm typecheck:web", "pnpm build:site",
-    "pnpm docs:api:release", "pnpm test:network:pages", "pnpm check:site", "pnpm guard:site"]);
+  const pipeline = read("tools/build-site.mjs");
+  const ordered = JSON.parse(pipeline.match(/const steps = (\[[\s\S]*?\n\]);/)[1]);
+  assert.equal(scripts.site, "node tools/build-site.mjs");
+  assert.deepEqual(ordered, ["typecheck:web", "build:site", "docs:api:release", "test:network:pages", "check:site", "guard:site"]);
   assert.equal(scripts["guard:site"], "node tools/browser-guard.mjs --scan site-dist/app.js");
+  assert.match(pipeline, /default: "release"/);
+  assert.match(pipeline, /source === "release" \|\| source === "commit"/);
+  assert.match(pipeline, /if \(step === "docs:api:release" \|\| step === "check:site"\) args.push\(`--source=\$\{source\}`\)/);
+  assert.match(pipeline, /BAP_SITE_SOURCE: source/);
+  assert.doesNotMatch(pipeline, /\bnpm\b|ls-remote|refs\/tags/);
+  for (const name of ordered) assert.doesNotMatch(scripts[name], /npm (?:view|info)|@latest|ls-remote|refs\/tags/);
   const pagesRuns = pages.jobs.build.steps.filter(s => s.run).map(s => s.run);
-  const site = ci.jobs.site;
+  const site = candidate.jobs.site;
   assert.ok(site, "site must be a qualification job");
+  const siteRuns = site.steps.filter(s => s.run).map(s => s.run);
   assert.equal(pagesRuns.at(-1), "pnpm site");
-  assert.deepEqual(site.steps.filter(s => s.run).map(s => s.run), pagesRuns.slice(1),
-    "CI uses the same setup and sole build command as Pages, without the deployment ref gate");
-  assert.doesNotMatch(commands(site), /\bpnpm (?:run )?build(?:\s|$)/);
-  assert.equal(ci.defaults.run.shell, "bash");
+  assert.equal(siteRuns.at(-1), "pnpm site --source=commit");
+  assert.deepEqual(siteRuns.slice(0, -1), pagesRuns.slice(1, -1),
+    "CI and Pages have identical setup apart from the deployment ref gate");
+  assert.doesNotMatch(siteRuns.join("\n"), /\bpnpm (?:run )?build(?:\s|$)|npm (?:view|info)|@latest|ls-remote|refs\/tags/);
+  assert.equal(candidate.defaults.run.shell, "bash");
+  assert.equal(pages.defaults.run.shell, "bash");
   assert.equal(site["runs-on"], "ubuntu-24.04");
   assert.equal(site["timeout-minutes"], 5);
-  assert.ok(ci.jobs.qualified.needs.includes("site"));
+  assert.ok(candidate.jobs.qualified.needs.includes("site"));
+  assert.match(siteRuns.join("\n"), /corepack prepare "\$manager" --activate/);
+  assert.ok(siteRuns.includes("scripts/tool-versions.sh check nodejs"));
+  assert.ok(siteRuns.includes("pnpm install --frozen-lockfile"));
   for (const step of site.steps.filter(s => s.uses)) {
     assert.match(step.uses, /@[a-f\d]{40}$/);
-    if (step.uses.startsWith("actions/checkout@")) assert.equal(step.with["persist-credentials"], false);
-    if (step.uses.startsWith("actions/setup-node@")) assert.equal(step.with["package-manager-cache"], false);
+    assert.doesNotMatch(step.uses, /^actions\/cache@/);
+    assert.equal(step.with?.cache, undefined);
+    if (step.uses.startsWith("actions/checkout@")) assert.equal(step.with?.["persist-credentials"], false);
+    if (step.uses.startsWith("actions/setup-node@")) assert.equal(step.with?.["package-manager-cache"], false);
   }
+});
+
+test("commit API and badge paths cannot query owning-package registry metadata or release tags", () => {
+  for (const name of ["build-release-api", "check-site-badge"]) {
+    const tool = read(`tools/${name}.mjs`);
+    const branch = tool.split('if (source === "commit") {')[1].split("} else")[0];
+    assert.ok(branch, `${name}: commit mode must be explicit`);
+    assert.doesNotMatch(branch, /(?:run|spawn.sync)\("npm"|ls-remote|refs\/tags|--branch/);
+    assert.match(tool, /default: "release"/);
+  }
+  const builder = read("tools/build-release-api.mjs");
+  const render = builder.split("  const released = JSON.parse")[1];
+  assert.ok(render);
+  assert.doesNotMatch(render, /(?:run|spawn.sync)\("npm"|ls-remote|refs\/tags|--branch/);
+  assert.match(builder, /"--no-hardlinks", "--no-tags", "--no-checkout", root, release/);
+  assert.match(builder, /"checkout", "--quiet", "--detach", commit/);
+  assert.match(render, /released.packageManager, "install", "--frozen-lockfile", "--ignore-scripts"/);
+  assert.match(render, /join\(release, "node_modules\/typedoc\/bin\/typedoc"\)/);
+  assert.match(render, /run\(process.execPath, \[typedoc\], release\)/);
+  assert.match(render, /sourceLinkTemplate.*\/blob\/\$\{commit\}/);
+  const checks = read("test/released-api.pages.ts");
+  assert.match(checks, /BAP_SITE_SOURCE \?\? "release"/);
+  assert.match(checks, /skip: source !== "release"/);
+  assert.match(checks, /skip: source !== "commit"/);
+  assert.match(checks, /npm_config_offline: "true"/);
+  assert.match(checks, /GIT_ALLOW_PROTOCOL: "file"/);
 });
 
 test("every conformance lane checks complete snapshot self-consistency offline", () => {

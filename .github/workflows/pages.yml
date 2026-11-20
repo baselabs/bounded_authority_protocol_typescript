@@ -1,7 +1,8 @@
 # GitHub Pages publishes the verifier bench and versioned API reference from this
 # repository's development verifier source plus the published signer package (demo
 # issuance only); no backend, no secrets, deploy-only permissions.
-# The complete build and checks run through pnpm site, also required by CI qualification.
+# pnpm site builds the API from the npm-latest release tag and checks claims against npm latest.
+# CI qualifies the same ordered pipeline with --source=commit, independently of this package's registry state.
 name: Pages
 
 on:

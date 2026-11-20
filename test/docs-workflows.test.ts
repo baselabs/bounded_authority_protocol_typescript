@@ -46,9 +46,11 @@ test("development API coverage cannot enter the Pages artifact", () => {
   assert.match(development, /build-docs\/api/);
   assert.ok(!pages.includes("run: pnpm docs:api\n"));
   assert.match(pages, /run: pnpm site\n/);
-  assert.ok(!scripts.site!.split(" && ").includes("pnpm docs:api"));
-  const releaseBuild = scripts.site!.indexOf("pnpm docs:api:release");
-  const releaseCheck = scripts.site!.indexOf("pnpm test:network:pages");
+  assert.equal(scripts.site, "node tools/build-site.mjs");
+  const pipeline = readFileSync(new URL("../tools/build-site.mjs", import.meta.url), "utf8");
+  assert.ok(!pipeline.includes('"docs:api"'));
+  const releaseBuild = pipeline.indexOf('"docs:api:release"');
+  const releaseCheck = pipeline.indexOf('"test:network:pages"');
   assert.ok(releaseBuild >= 0 && releaseCheck > releaseBuild, "Pages checks the released API after building it from the tag");
   assert.ok(!pages.includes("api-development"));
   assert.ok(!release.includes("buildDocumentation"));

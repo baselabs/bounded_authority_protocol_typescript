@@ -4,7 +4,8 @@
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
 pnpm docs:api                # strict TypeDoc reference in build-docs/api, stamped with package version
-pnpm site                    # complete Pages build and checks, also required by qualification
+pnpm site --source=commit    # complete qualification site from HEAD, independent of own registry state
+pnpm site                    # Pages site from npm latest, including release and version checks
 pnpm test:network            # normative spec anchors; released registry checks run after upload
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
@@ -39,13 +40,19 @@ leaves `entryPoints` unset so a new public subpath cannot bypass documentation c
 `pnpm docs:api` is the strict development-source check, writing only `build-docs/api` outside
 the Pages artifact. CI rejects undocumented declarations and warnings. Pages builds `/api/`
 from the immutable tag matching npm latest, using that tag's documentation and declarations.
-Its version, tag and commit are recorded in `release.json`.
+Its package, version, `source: "release"`, tag and commit are recorded in `release.json`.
+Qualification selects `source: "commit"` and records HEAD with its committed package version,
+without a release tag.
 
-`pnpm site` runs the web typecheck, bench build, released API build, released API checks,
-npm version checks and browser bundle scan, in that order. The separate `site` qualification
-job runs it from a frozen install before any library build; Pages runs the same command.
-The released API uses the tag's own TypeDoc, plugins and types from its frozen install,
-and fails closed if that install has no TypeDoc.
+`pnpm site` runs the web typecheck, bench build, API build, API checks, version checks and
+browser bundle scan, in that order. The separate `site` qualification job selects
+`pnpm site --source=commit` from a frozen install before any library build. Pages uses the same
+ordered pipeline with the default release source. CI checks claims and `documentation.json`
+against HEAD's package version; Pages checks them against npm latest. CI never reads this
+package's registry metadata or resolves a release tag. Both API sources use a separate clean
+checkout and its own TypeDoc, plugins and types from a frozen install, failing closed if that
+install has no TypeDoc. Commit mode clones locally without tags or hardlinks and detaches at
+HEAD, excluding uncommitted files and installed dependencies while retaining Git source links.
 
 For notebooks, install the exact Node, Deno, Python and uv versions in `.tool-versions` and
 activate the declared pnpm. The second Node version on the `nodejs` line is the extra
@@ -86,7 +93,7 @@ The keyless `published-notebooks` job runs only after byte-for-byte registry rea
 A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
 once that version is available. Infra tags the release; `pages.yml` then runs `pnpm site`,
 which builds `/api/` from that tag and checks it with `pnpm test:network:pages`.
-Qualification checks the current npm release through the same pipeline; no publication job waits on a tag.
+Qualification checks HEAD through the same pipeline with `--source=commit`; no publication job waits on a tag.
 The upload job and its environment gate are separate.
 
 Publication
