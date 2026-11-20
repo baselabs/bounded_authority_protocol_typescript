@@ -40,12 +40,15 @@ test("qualification runs candidate notebooks and durable replay, without cache w
 
 test("development API coverage cannot enter the Pages artifact", () => {
   const pages = readFileSync(new URL("../.github/workflows/pages.yml", import.meta.url), "utf8");
+  const scripts = (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { scripts: Record<string, string> }).scripts;
   const development = readFileSync(new URL("../tools/build-docs.mjs", import.meta.url), "utf8");
   const release = readFileSync(new URL("../tools/build-release-api.mjs", import.meta.url), "utf8");
   assert.match(development, /build-docs\/api/);
   assert.ok(!pages.includes("run: pnpm docs:api\n"));
-  const releaseBuild = pages.indexOf("run: pnpm docs:api:release\n");
-  const releaseCheck = pages.indexOf("run: pnpm test:network:pages\n");
+  assert.match(pages, /run: pnpm site\n/);
+  assert.ok(!scripts.site!.split(" && ").includes("pnpm docs:api"));
+  const releaseBuild = scripts.site!.indexOf("pnpm docs:api:release");
+  const releaseCheck = scripts.site!.indexOf("pnpm test:network:pages");
   assert.ok(releaseBuild >= 0 && releaseCheck > releaseBuild, "Pages checks the released API after building it from the tag");
   assert.ok(!pages.includes("api-development"));
   assert.ok(!release.includes("buildDocumentation"));

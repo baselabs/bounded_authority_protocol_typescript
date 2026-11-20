@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,12 +8,14 @@ import { test } from "node:test";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-test("published API uses a real npm release tag and excludes development declarations", () => {
+test("published API uses the release's own TypeDoc without checkout TypeDoc or development declarations", () => {
   const scratch = mkdtempSync(join(tmpdir(), "bap-release-api-test-"));
   try {
     mkdirSync(join(scratch, "tools"));
     for (const path of ["package.json", "typedoc.json", "tools/build-release-api.mjs", "tools/build-docs.mjs", "tools/docs-plugin.mjs", "docs", "README.md", "usage-rules.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) cpSync(join(root, path), join(scratch, path), { recursive: true });
-    symlinkSync(join(root, "node_modules"), join(scratch, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+    mkdirSync(join(scratch, "node_modules"));
+    symlinkSync(join(root, "node_modules/cross-spawn"), join(scratch, "node_modules/cross-spawn"), process.platform === "win32" ? "junction" : "dir");
+    assert.equal(existsSync(join(scratch, "node_modules/typedoc")), false, "the checkout must not supply TypeDoc");
     mkdirSync(join(scratch, "src"));
     writeFileSync(join(scratch, "src/index.ts"), "/** Development only. */\nexport const unreleasedDocumentationProbe = 1;\n");
     const output = execFileSync(process.execPath, [join(scratch, "tools/build-release-api.mjs")], {

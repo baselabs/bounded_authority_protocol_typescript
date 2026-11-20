@@ -74,10 +74,28 @@ test("the upload and every Pages job require both owners and refuse nondefault r
   }
 });
 
-test("Pages builds the site, released API, then checks it, in that order", () => {
-  const steps = workflow("pages").jobs.build.steps.map(s => s.run);
-  const order = ["pnpm build:site", "pnpm docs:api:release", "pnpm check:site"].map(c => steps.indexOf(c));
-  assert.ok(order.every(i => i >= 0)); assert.ok(order[0] < order[1] && order[1] < order[2]);
+test("Pages and qualification run the same complete site pipeline without a prior library build", () => {
+  const pages = workflow("pages"), ci = workflow("ci");
+  const scripts = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts;
+  assert.deepEqual(scripts.site.split(" && "), ["pnpm typecheck:web", "pnpm build:site",
+    "pnpm docs:api:release", "pnpm test:network:pages", "pnpm check:site", "pnpm guard:site"]);
+  assert.equal(scripts["guard:site"], "node tools/browser-guard.mjs --scan site-dist/app.js");
+  const pagesRuns = pages.jobs.build.steps.filter(s => s.run).map(s => s.run);
+  const site = ci.jobs.site;
+  assert.ok(site, "site must be a qualification job");
+  assert.equal(pagesRuns.at(-1), "pnpm site");
+  assert.deepEqual(site.steps.filter(s => s.run).map(s => s.run), pagesRuns.slice(1),
+    "CI uses the same setup and sole build command as Pages, without the deployment ref gate");
+  assert.doesNotMatch(commands(site), /\bpnpm (?:run )?build(?:\s|$)/);
+  assert.equal(ci.defaults.run.shell, "bash");
+  assert.equal(site["runs-on"], "ubuntu-24.04");
+  assert.equal(site["timeout-minutes"], 5);
+  assert.ok(ci.jobs.qualified.needs.includes("site"));
+  for (const step of site.steps.filter(s => s.uses)) {
+    assert.match(step.uses, /@[a-f\d]{40}$/);
+    if (step.uses.startsWith("actions/checkout@")) assert.equal(step.with["persist-credentials"], false);
+    if (step.uses.startsWith("actions/setup-node@")) assert.equal(step.with["package-manager-cache"], false);
+  }
 });
 
 test("every conformance lane checks complete snapshot self-consistency offline", () => {

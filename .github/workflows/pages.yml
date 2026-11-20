@@ -1,6 +1,7 @@
 # GitHub Pages publishes the verifier bench and versioned API reference from this
 # repository's development verifier source plus the published signer package (demo
 # issuance only); no backend, no secrets, deploy-only permissions.
+# The complete build and checks run through pnpm site, also required by CI qualification.
 name: Pages
 
 on:
@@ -57,23 +58,8 @@ jobs:
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck the site
-        run: pnpm typecheck:web
-
-      - name: Build the bundle
-        run: pnpm build:site
-
-      - name: Build /api/ from the release tag matching npm latest
-        run: pnpm docs:api:release
-
-      - name: Check the released API against its real release tag
-        run: pnpm test:network:pages
-
-      - name: Every built-site version claim must match npm latest
-        run: pnpm check:site
-
-      - name: Scan the bench bundle (no unresolved globals, eval or Function constructor)
-        run: node tools/browser-guard.mjs --scan site-dist/app.js
+      - name: Build and check the complete Pages site
+        run: pnpm site
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@0252fc4ba7626f0298f0cf00902a25c6afc77fa8 # v3.0.0

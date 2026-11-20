@@ -478,7 +478,8 @@ check, the unit tests (which also typecheck and run every code sample in this RE
 `docs/`), the mutation gate, and every corpus above against the vendored snapshots, on Node 22.23.1
 and Node 24.22.3 with the node and the portable backend; the same corpora on Deno and Bun; the
 browser lane in Playwright Chromium, Firefox and WebKit under a strict CSP; a consumer typecheck of
-the packed tarball; and `npm audit signatures`.
+the packed tarball; `npm audit signatures`; and a separate `site` job that runs the complete
+Pages build and checks through `pnpm site` from a frozen install, before any library build.
 
 Releases from 0.2.1 on carry npm trusted-publishing provenance (GitHub Actions OIDC, no
 long-lived tokens). The owner dispatches `publish.yml` from the default branch in environment
@@ -496,8 +497,9 @@ refuses a package name the registry has never had. A first publication is the ow
 
 Staging success is not publication: the owner approves the version on npmjs.com. Infra reads
 the publication back and tags the published commit. The owner then dispatches `pages.yml` from
-the default branch in environment `github-pages`; it rebuilds the bench from that branch and
-the API reference from the tag matching npm latest. Registry or Pages read failures fail closed.
+the default branch in environment `github-pages`; it runs the same `pnpm site` pipeline required
+by qualification, rebuilding the bench from that branch and the API reference from the tag
+matching npm latest. Registry or Pages read failures fail closed.
 
 Verify npm registry provenance for the installed package with `npm audit signatures`.
 Download `package.tgz` and `SHA256SUMS` from the corresponding

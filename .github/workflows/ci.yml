@@ -463,6 +463,44 @@ jobs:
       - name: Dependency currency (classified exit; unverified never passes)
         run: node tools/check-currency.mjs
 
+  site:
+    timeout-minutes: 5 # Pages run 44039148515: green build job 27s.
+    # Qualify the complete Pages pipeline from a frozen install, before any library build.
+    name: Pages build and checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read exact runtime pins
+        id: pins
+        shell: bash
+        run: scripts/tool-versions.sh read nodejs
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ steps.pins.outputs.nodejs }}
+          package-manager-cache: false
+      - name: Activate the declared pnpm with Corepack
+        run: |
+          manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
+          case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) echo "::error::Declare an exact pnpm packageManager"; exit 1 ;; esac
+          corepack enable
+          corepack prepare "$manager" --activate
+          pnpm_version=$(pnpm --version)
+          test "pnpm@$pnpm_version" = "$manager"
+      - name: Refuse a different Node version
+        run: scripts/tool-versions.sh check nodejs
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and check the complete Pages site
+        run: pnpm site
+
   notebooks-local:
     timeout-minutes: 5 # Run 44312164032: green job 34s.
     runs-on: ubuntu-24.04
@@ -515,7 +553,7 @@ jobs:
 
   qualified:
     if: always()
-    needs: [secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency, notebooks-local, durable-replay]
+    needs: [secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency, site, notebooks-local, durable-replay]
     runs-on: ubuntu-24.04
     timeout-minutes: 5 # Run 44312164032: green job 18s.
     steps:

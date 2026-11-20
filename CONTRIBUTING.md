@@ -4,6 +4,7 @@
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm build && pnpm lint && pnpm license-check
 pnpm docs:api                # strict TypeDoc reference in build-docs/api, stamped with package version
+pnpm site                    # complete Pages build and checks, also required by qualification
 pnpm test:network            # normative spec anchors; released registry checks run after upload
 pnpm test                    # builds, then unit, struct and facade tests and every docs sample
 pnpm test:permissiveness     # the mutation gate
@@ -39,6 +40,12 @@ leaves `entryPoints` unset so a new public subpath cannot bypass documentation c
 the Pages artifact. CI rejects undocumented declarations and warnings. Pages builds `/api/`
 from the immutable tag matching npm latest, using that tag's documentation and declarations.
 Its version, tag and commit are recorded in `release.json`.
+
+`pnpm site` runs the web typecheck, bench build, released API build, released API checks,
+npm version checks and browser bundle scan, in that order. The separate `site` qualification
+job runs it from a frozen install before any library build; Pages runs the same command.
+The released API uses the tag's own TypeDoc, plugins and types from its frozen install,
+and fails closed if that install has no TypeDoc.
 
 For notebooks, install the exact Node, Deno, Python and uv versions in `.tool-versions` and
 activate the declared pnpm. The second Node version on the `nodejs` line is the extra
@@ -77,8 +84,9 @@ Candidate notebook and consumer journeys install this repository's package from 
 archive. Pending owner approval fails that run clearly; dispatch the same commit after approval.
 The keyless `published-notebooks` job runs only after byte-for-byte registry read-back succeeds.
 A maintainer can run `pnpm notebooks:published` and `pnpm docs:checks:published` on demand
-once that version is available. Infra tags the release; `pages.yml` then builds `/api/` from
-that tag and runs `pnpm test:network:pages`, so no publication job waits on a tag.
+once that version is available. Infra tags the release; `pages.yml` then runs `pnpm site`,
+which builds `/api/` from that tag and checks it with `pnpm test:network:pages`.
+Qualification checks the current npm release through the same pipeline; no publication job waits on a tag.
 The upload job and its environment gate are separate.
 
 Publication

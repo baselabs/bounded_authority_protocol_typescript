@@ -2,7 +2,7 @@
 // run development source, but its API reference must describe the package readers can install.
 import assert from "node:assert/strict";
 import spawn from "cross-spawn";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,9 +39,11 @@ try {
   const released = JSON.parse(readFileSync(join(release, "package.json"), "utf8"));
   assert.equal(released.name, pkg.name);
   assert.equal(released.version, version, "the release tag must match the npm version");
-  // Resolve types against the tag's frozen dependency graph, never development dependencies.
+  // Run TypeDoc, its plugins and types from the tag's frozen dependency graph.
   // Documentation needs no dependency install scripts. Use the same pinned pnpm as CI.
   run("corepack", [released.packageManager, "install", "--frozen-lockfile", "--ignore-scripts"], release);
+  const typedoc = join(release, "node_modules/typedoc/bin/typedoc");
+  assert.ok(existsSync(typedoc), `Release ${tag}'s frozen install has no TypeDoc; refusing to use the checkout's copy`);
   const options = JSON.parse(readFileSync(join(release, "typedoc.json"), "utf8"));
   // Current-source CI enforces documentation coverage. Immutable releases can predate that gate;
   // render their actual comments without requiring undocumented types to become new exports.
@@ -51,7 +53,7 @@ try {
   options.out = out;
   options.name = `${pkg.name} (released ${tag})`;
   writeFileSync(join(release, "typedoc.json"), JSON.stringify(options));
-  console.log(run(process.execPath, [join(root, "node_modules/typedoc/bin/typedoc")], release));
+  console.log(run(process.execPath, [typedoc], release));
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, "release.json"), JSON.stringify({ package: pkg.name, version, tag, commit }, null, 2) + "\n");
   console.log(`Released API: ${pkg.name}@${version}, tag ${tag}, commit ${commit}`);

@@ -126,6 +126,7 @@ test("qualified keeps its exact check name and requires every candidate job", ()
   const jobs = [...ci.split("\njobs:\n")[1]!.matchAll(/^  ([\w-]+):$/gm)]
     .map((match) => match[1]!).filter((name) => name !== "qualified");
   assert.deepEqual(new Set(needs), new Set(jobs));
+  assert.ok(needs?.includes("site"), "the complete Pages pipeline must qualify before landing");
   assert.match(qualified, /job\['result'\] != 'success'/);
   assert.doesNotMatch(ci, /workflow_dispatch:|schedule:|time\.sleep|time\.monotonic/);
 });

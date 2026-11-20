@@ -100,6 +100,8 @@
     "census": "tsx --conditions=bap-source conformance/census.ts",
     "typecheck:web": "tsc -p tsconfig.web.json",
     "build:site": "node web/build.mjs",
+    "guard:site": "node tools/browser-guard.mjs --scan site-dist/app.js",
+    "site": "pnpm typecheck:web && pnpm build:site && pnpm docs:api:release && pnpm test:network:pages && pnpm check:site && pnpm guard:site",
     "docs:api": "node tools/build-docs.mjs",
     "docs:api:release": "node tools/build-release-api.mjs",
     "test:network": "node --test --import tsx/esm test/*.network.ts",
