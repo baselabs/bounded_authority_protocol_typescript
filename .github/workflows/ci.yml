@@ -35,6 +35,10 @@ jobs:
           python-version: ${{ steps.pins.outputs.python }}
       - name: Refuse a different Python version
         run: scripts/tool-versions.sh check python
+      - name: Test local identifier hooks
+        run: |
+          command -v git >/dev/null
+          python3 scripts/test_private_identifier_guard.py
       - name: Install verified Gitleaks 8.30.1
         run: |
           scripts/install_gitleaks.sh "$RUNNER_TEMP/gitleaks-bin"

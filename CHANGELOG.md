@@ -2,6 +2,11 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
+## Unreleased
+
+- Add generic local identifier hooks for staged content, commit messages and outgoing Git
+  objects, with ignored owner policy and synthetic real-Git guard tests in CI.
+
 ## [2.0.1] (2026-11-18)
 
 2.0.1 is a patch release: API and behavior are unchanged; it ships the integrator guides,

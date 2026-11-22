@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Enforce the ignored local private-identifier policy on the pending commit message.
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  printf 'commit-msg: repository resolution failed; failing closed\n' >&2
+  exit 1
+}
+guard="$repo_root/scripts/private_identifier_guard.py"
+
+if [ ! -r "$guard" ] || ! command -v python3 >/dev/null 2>&1; then
+  printf 'commit-msg: private-identifier guard unavailable; failing closed\n' >&2
+  exit 1
+fi
+
+exec python3 "$guard" --repo "$repo_root" commit-msg "$1"

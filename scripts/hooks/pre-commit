@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Enforce the local identifier policy before repository-specific staged checks.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  printf 'pre-commit: repository resolution failed; failing closed\n' >&2
+  exit 1
+}
+guard="$repo_root/scripts/private_identifier_guard.py"
+
+if [ ! -r "$guard" ] || ! command -v python3 >/dev/null 2>&1; then
+  printf 'pre-commit: private-identifier guard unavailable; failing closed\n' >&2
+  exit 1
+fi
+
+python3 "$guard" --repo "$repo_root" pre-commit || exit $?
+
+extensions="$repo_root/scripts/hooks/pre-commit.d"
+if [ -e "$extensions" ] || [ -L "$extensions" ]; then
+  if [ -L "$extensions" ] || [ ! -d "$extensions" ] \
+      || [ ! -r "$extensions" ] || [ ! -x "$extensions" ]; then
+    printf 'pre-commit: extension directory unavailable; failing closed\n' >&2
+    exit 1
+  fi
+  # Include hidden entries and sort by byte value, independent of the locale.
+  export LC_ALL=C
+  shopt -s nullglob dotglob
+  for extension in "$extensions"/*; do
+    if [ -L "$extension" ] || [ ! -f "$extension" ] \
+        || [ ! -r "$extension" ] || [ ! -x "$extension" ]; then
+      printf 'pre-commit: extension unavailable; failing closed\n' >&2
+      exit 1
+    fi
+    "$extension" "$@" || exit $?
+  done
+fi

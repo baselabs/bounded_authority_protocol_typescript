@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Scan every commit and annotated-tag message introduced by the requested push.
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  printf 'pre-push: repository resolution failed; failing closed\n' >&2
+  exit 1
+}
+guard="$repo_root/scripts/private_identifier_guard.py"
+
+if [ ! -r "$guard" ] || ! command -v python3 >/dev/null 2>&1; then
+  printf 'pre-push: private-identifier guard unavailable; failing closed\n' >&2
+  exit 1
+fi
+
+exec python3 "$guard" --repo "$repo_root" pre-push "$1" "$2"

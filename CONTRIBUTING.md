@@ -100,3 +100,10 @@ Publication
 and Pages are maintainer-dispatched on the default branch with their existing environment gates.
 Contributors do not publish, tag or dispatch workflows. Report vulnerabilities through the
 [security policy](SECURITY.md). Use real services and real signatures in integration tests.
+
+## Maintainer checks
+
+Install the tracked hooks with `bash scripts/install-hooks.sh`. Local confidential-identifier
+checks require an ignored owner policy; contributors without it get an inactive notice.
+See the [maintainer checks](https://github.com/baselabs/bounded_authority_protocol_typescript/blob/main/docs/maintainer-checks.md)
+for activation, coverage and the standalone guard tests. Public CI uses only synthetic identifiers.

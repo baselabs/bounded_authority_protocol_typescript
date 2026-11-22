@@ -14,3 +14,6 @@ __pycache__/
 
 # Development documentation is never a Pages artifact
 build-docs/
+
+# Bytecode from the standalone local identifier guard tests.
+/scripts/__pycache__/
