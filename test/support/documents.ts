@@ -1,7 +1,8 @@
 // CommonMark parsing shared by execution and currency checks. The parser, not a fence regex,
 // handles nested lists, blockquotes, tilde fences, longer closers and indented code blocks.
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import MarkdownIt from "markdown-it";
 import ts from "typescript";
@@ -9,13 +10,9 @@ import { sourceComments } from "../comments.js";
 
 export type { Token } from "markdown-it";
 export const markdown = new MarkdownIt("commonmark", { html: true });
-const excluded = new Set([".git", "node_modules", "dist", "site-dist", ".kimosabe", ".venv"]);
 export function filesUnder(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).flatMap((entry) => {
-    if (excluded.has(entry.name) || entry.name.startsWith("build-")) return [];
-    const path = join(dir, entry.name);
-    return entry.isDirectory() ? filesUnder(path) : [path];
-  });
+  return execFileSync("git", ["ls-files", "-z"], { cwd: dir, encoding: "utf8" })
+    .split("\0").filter(Boolean).map((file) => join(dir, file)).sort((a, b) => a.localeCompare(b));
 }
 export function docFiles(root: string): string[] {
   return filesUnder(root).filter((path) => path.endsWith(".md") && !["AGENTS.md", "CLAUDE.md"].includes(path.split("/").at(-1)!));

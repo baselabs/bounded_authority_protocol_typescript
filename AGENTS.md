@@ -1,9 +1,9 @@
 ## CI/CD and releases
 
-Releases, deployments, and publications are done by the infra session (infra-1).
-The project lands on the default branch with `kimosabe-land --repo . --sha <full sha>`
-and stops there. Requirements live in the infra repository at `baselabs/docs/ci.md`,
-"What infra requires of every product".
+Releases, deployments, and publications are done by the infrastructure maintainers.
+Changes land on the default branch through the project's landing tool after the `qualified`
+CI job passes, and stop there. Requirements live in the infrastructure repository's
+CI requirements document.
 
 The `site` qualification job runs `pnpm site --source=commit` in GitHub CI on ubuntu-24.04
 from a frozen install, before any library build. It is required by `qualified`. CI exports HEAD,

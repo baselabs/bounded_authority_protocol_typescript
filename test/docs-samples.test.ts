@@ -2,14 +2,14 @@
 // source, then executed with real keys, requests and stores. Installed artifacts use test/reader.ts.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { commentProse } from "./comments.js";
-import { authoredSamples, docFiles as discoverDocs, type Sample } from "./support/documents.js";
+import { authoredSamples, docFiles as discoverDocs, filesUnder, type Sample } from "./support/documents.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const VERIFIER_SOURCE = join(REPO, "src", "index.ts");
@@ -39,6 +39,26 @@ const usesSigner = (s: Sample): boolean => s.code.includes('from "@bounded-autho
 test("the docs carry samples (a known-positive for the fence scan)", () => {
   assert.ok(SAMPLES.some((s) => s.doc === "README.md"), "README.md has no ts sample");
   assert.ok(SAMPLES.length >= 37, `only ${SAMPLES.length} samples found`);
+});
+
+test("document discovery includes tracked files and excludes untracked workspace state", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bap-docs-tracked-"));
+  try {
+    execFileSync("git", ["init", "--quiet", dir]);
+    mkdirSync(join(dir, "docs"));
+    mkdirSync(join(dir, "local-state"));
+    writeFileSync(join(dir, ".gitignore"), "local-state/\n");
+    writeFileSync(join(dir, "README.md"), "# Guide\n");
+    writeFileSync(join(dir, "AGENTS.md"), "Contributor instructions.\n");
+    writeFileSync(join(dir, "docs", "guide with spaces.md"), "# Tracked guide\n");
+    writeFileSync(join(dir, "docs", "untracked.md"), "# Untracked guide\n");
+    writeFileSync(join(dir, "local-state", "notes.md"), "# Local notes\n");
+    execFileSync("git", ["add", "--", ".gitignore", "README.md", "AGENTS.md", "docs/guide with spaces.md"], { cwd: dir });
+    assert.deepEqual(filesUnder(join(dir, "docs")), [join(dir, "docs", "guide with spaces.md")]);
+    assert.deepEqual(discoverDocs(dir).map((file) => relative(dir, file)).sort(), ["README.md", "docs/guide with spaces.md"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("every docs sample typechecks under strict settings against the source", () => {
@@ -80,16 +100,8 @@ test("every docs sample typechecks under strict settings against the source", ()
 });
 
 // Public readers must be able to follow every normative citation without private records.
-function filesUnder(dir: string): string[] {
-  return readdirSync(dir).sort().flatMap((name) => {
-    const file = join(dir, name);
-    return statSync(file).isDirectory() ? filesUnder(file) : [file];
-  });
-}
-
 const PUBLIC_FILES = [...new Set([
-  ...docFiles(), ...readdirSync(REPO).filter((name) => /\.(?:md|json|js|mjs|yml)$/.test(name))
-    .map((name) => join(REPO, name)),
+  ...docFiles(), ...filesUnder(REPO).filter((file) => !relative(REPO, file).includes("/") && /\.(?:md|json|js|mjs|yml)$/.test(file)),
   ...["src", "web", "tools", "scripts", ".github/workflows"].flatMap((dir) => filesUnder(join(REPO, dir))),
   ...["test", "conformance", "browser"].flatMap((dir) => filesUnder(join(REPO, dir)))
     .filter((file) => /\.(?:ts|js|mjs)$/.test(file)),
@@ -98,7 +110,7 @@ const privateRecord = /(?<![a-z])adrs?(?=$|[^a-z])|architecture[ -]decision[ -]r
 
 test("private-record hygiene recognizes citation spellings", () => {
   for (const citation of ["ADR", "ADRs", "ADR 14", "ADR-0014", "ADR0014", "ADR_0014", "ADR:0014",
-    "ADR#0014", "adr/0014", "docs/adr/0014.md", ".kimosabe/adr/0014", "architecture decision record"]) {
+    "ADR#0014", "adr/0014", "docs/adr/0014.md", "local-notes/adr/0014", "architecture decision record"]) {
     assert.ok(privateRecord.test(citation), citation);
   }
   assert.equal(privateRecord.test("address and quadrant"), false);

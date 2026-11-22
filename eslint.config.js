@@ -79,9 +79,10 @@ const NOBLE_PROPERTIES = ["sign", "keygen", "getPublicKey", "getSharedSecret", "
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "conformance/**", "test/**", "web/**", "browser/**", "docs/examples/**", "site-dist/**", "build-*/**", ".kimosabe/**"],
-  // web/** is the GitHub Pages site and browser/** the browser test page: DOM-context code, typechecked
-  // by their own tsc configs, outside the library purity gate above.
+    // Lint only the project's library and tooling paths, independent of local workspace state.
+    ignores: ["**/*", "!src/", "!src/**", "!scripts/", "!scripts/**", "!tools/", "!tools/**", "!eslint.config.js"],
+    // web/** is the GitHub Pages site and browser/** the browser test page: DOM-context code,
+    // typechecked by their own tsc configs, outside the library purity gate above.
   },
   ...tseslint.configs.recommended,
   {

@@ -19,6 +19,15 @@ async function lintRules(code: string, filePath: string): Promise<string[]> {
   return (result?.messages ?? []).map((m) => m.ruleId ?? `fatal: ${m.message}`);
 }
 
+test("lint scope covers project sources and tooling without local workspace directories", async () => {
+  for (const file of ["src/v1.ts", "scripts/vendor.mjs", "tools/readback.mjs", "eslint.config.js"]) {
+    assert.equal(await eslint.isPathIgnored(join(REPO, file)), false, file);
+  }
+  for (const file of ["local-state/probe.js", "test/guard-probe.ts", "conformance/run.ts", "web/build.mjs", "browser/main.ts", "docs/examples/upgrade.ts"]) {
+    assert.equal(await eslint.isPathIgnored(join(REPO, file)), true, file);
+  }
+});
+
 // ---- lint: one probe per banned form, in a profile module ----
 
 const LINT_PROBES: ReadonlyArray<readonly [string, string, string]> = [

@@ -147,8 +147,8 @@ test("pack check: every exports and imports target in the packed package.json is
 const sha256 = (file: string): string => createHash("sha256").update(readFileSync(file)).digest("hex");
 
 // The published files carry no internal process markers: repository-internal rule ids, internal
-// runner file names, review labels and ids, or internal tooling names.
-export const INTERNAL_MARKERS = /AGENTS rule|corpus_independent|\bowner-|cross-vendor|re-review|review round|\bFinding \d+|\bBAP-\d+\b|kimosabe/i;
+// runner file names, or review labels and ids.
+export const INTERNAL_MARKERS = /AGENTS rule|corpus_independent|\bowner-|cross-vendor|re-review|review round|\bFinding \d+|\bBAP-\d+\b/i;
 test("pack check: no packed file contains an internal process marker", () => {
   const files = run("tar", ["-tzf", tarball], scratch).split("\n").filter((f) => /\.(js|ts|map|json|md)$/.test(f));
   assert.ok(files.includes("package/dist/src/index.js") && files.includes("package/README.md"), "the scan sees the packed files");

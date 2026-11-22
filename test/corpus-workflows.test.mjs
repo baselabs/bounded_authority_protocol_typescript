@@ -53,7 +53,8 @@ test("weekly adoption maintains one exact-title landing issue without dispatchin
   assert.match(run, /check-corpus.mjs adopt/);
   assert.match(run, /gh issue create/); assert.match(run, /gh issue edit/);
   assert.match(run, /select\(\.pull_request == null and \.title ==/); assert.match(run, /state=all/);
-  assert.match(run, /kimosabe-land --repo \. --sha \$sha/);
+  assert.match(run, /land the commit through the project's landing tool using the full commit SHA \$sha/);
+  assert.match(run, /its kci\/ push is the only qualification run/);
   assert.equal(job.permissions.actions, undefined); assert.equal(job.permissions.issues, "write");
   assert.equal(job.permissions["pull-requests"], undefined);
   assert.doesNotMatch(run, /gh pr|gh workflow run|--force|reset --hard|stash/);

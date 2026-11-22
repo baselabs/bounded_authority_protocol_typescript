@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Post-publish read-back of one released version (pnpm readback; infra-1 runs it after
+// Post-publish read-back of one released version (pnpm readback; the release operator runs it after
 // the owner approves the staged version on npmjs.com). Every check reads the public registry or runs the package
 // installed from it, so it needs no credential and changes nothing. Each check is fatal.
 //

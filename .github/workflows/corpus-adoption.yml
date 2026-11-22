@@ -92,7 +92,7 @@ jobs:
           Compare: https://github.com/$GH_REPO/compare/main...$branch
           Commit: $sha
 
-          Vendoring verified both Hex checksums. Offline conformance checks self-consistency against SOURCE, including its complete-tree digest; corpus-artifact fetches and compares the named Hex release. A Hex outage or retirement fails that job closed. Infra reviews the branch and qualifies and lands the commit with kimosabe-land --repo . --sha $sha; its kci/ push is the only qualification run.
+          Vendoring verified both Hex checksums. Offline conformance checks self-consistency against SOURCE, including its complete-tree digest; corpus-artifact fetches and compares the named Hex release. A Hex outage or retirement fails that job closed. The infrastructure maintainers review the branch and qualify and land the commit through the project's landing tool using the full commit SHA $sha; its kci/ push is the only qualification run.
           TEXT
           # Paginate all issues, including closed ones; exact title equality provides deduplication.
           issue=$(gh api --paginate "repos/$GH_REPO/issues?state=all&per_page=100" --jq ".[] | select(.pull_request == null and .title == \"$title\") | .number" | sed -n '1p')
