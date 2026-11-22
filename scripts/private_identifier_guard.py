@@ -578,12 +578,38 @@ class Guard:
             raise GuardError("push-input-empty")
         return updates
 
+    def remote_tracking_commits(self, remote_name: str) -> list[bytes]:
+        remote = remote_name.encode("utf-8", "surrogateescape")
+        if not remote or remote not in self.git("remote").splitlines():
+            return []
+        prefix = b"refs/remotes/" + remote + b"/"
+        raw = self.git(
+            "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes"
+        )
+        commits: set[bytes] = set()
+        for line in raw.splitlines():
+            try:
+                oid, ref = line.split(b" ", 1)
+            except ValueError as error:
+                raise GuardError("remote-ref-format") from error
+            if not ref.startswith(prefix):
+                continue
+            self.valid_oid(oid)
+            if SAFE_REF_RE.fullmatch(ref) is None:
+                raise GuardError("remote-ref-format")
+            commit = self.peel_commit(oid)
+            if commit is not None:
+                commits.add(commit)
+        return sorted(commits)
+
     def outgoing_commits(
         self,
         updates: list[tuple[bytes, bytes, bytes, bytes]],
+        remote_name: str,
     ) -> list[bytes]:
         zero = b"0" * self.object_hex_length
         commits: set[bytes] = set()
+        tracking_commits: list[bytes] | None = None
         for _local_ref, local_oid, _remote_ref, remote_oid in updates:
             if local_oid == zero:
                 continue
@@ -595,6 +621,11 @@ class Guard:
                 remote_commit = self.peel_commit(remote_oid)
                 if remote_commit is not None:
                     revision_input += b"^" + remote_commit + b"\n"
+            else:
+                if tracking_commits is None:
+                    tracking_commits = self.remote_tracking_commits(remote_name)
+                for commit in tracking_commits:
+                    revision_input += b"^" + commit + b"\n"
             raw_commits = self.git(
                 "rev-list", "--topo-order", "--stdin", input_bytes=revision_input
             )
@@ -821,11 +852,11 @@ class Guard:
         return sorted(set(findings))
 
     def pre_push(
-        self, _remote: str, raw_updates: bytes, patterns: list[bytes]
+        self, remote_name: str, raw_updates: bytes, patterns: list[bytes]
     ) -> list[Finding]:
         self.ensure_history_integrity()
         updates = self.parse_push_updates(raw_updates)
-        commits = self.outgoing_commits(updates)
+        commits = self.outgoing_commits(updates, remote_name)
         ref_findings: list[Finding] = []
         for update_number, (_local_ref, _local_oid, remote_ref, _remote_oid) in enumerate(
             updates, start=1
@@ -936,7 +967,7 @@ def main() -> int:
             elif args.mode == "commit-msg":
                 findings = guard.commit_message(Path(args.message_file), patterns)
             elif args.mode == "pre-push":
-                findings = guard.pre_push(args.remote_url, sys.stdin.buffer.read(), patterns)
+                findings = guard.pre_push(args.remote_name, sys.stdin.buffer.read(), patterns)
             elif args.mode == "audit-remotes":
                 findings, commit_count = guard.audit_remotes(patterns)
                 print(f"findings={len(findings)} scanned_commits={commit_count}")

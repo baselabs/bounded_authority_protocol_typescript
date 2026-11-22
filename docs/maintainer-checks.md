@@ -22,7 +22,11 @@ Installation preserves existing hooks and refuses collisions, an alternate `core
 or installation from a linked worktree. It links only the three top-level hook files.
 Pre-commit checks staged paths and bytes; commit-msg checks the raw pending message, including
 comments and verbose diffs. Pre-push checks outgoing commits, messages, introduced paths and
-blobs, pushed refs, tags and terminal objects. New remote refs scan their full ancestry.
+blobs, pushed refs, tags and terminal objects. Existing remote refs exclude ancestry reachable
+from their current remote object. New remote refs exclude commits already reachable from
+`refs/remotes/<remote>/*`, using the exact configured remote name passed to the hook. An
+unconfigured name or URL, or a remote without tracking refs, keeps the full-ancestry scan.
+Tracking refs for other remotes never exclude commits.
 Automatic merge, rebase, cherry-pick and mail-application commits can skip commit checks;
 pre-push is their local backstop. For deletion-only cleanup, use `git rm -- path` and a clean
 explicit commit message, without confidential paths.

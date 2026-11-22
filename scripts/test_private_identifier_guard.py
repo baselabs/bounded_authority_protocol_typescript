@@ -790,6 +790,88 @@ class PrivateIdentifierGuardTest(unittest.TestCase):
         self.assertIn("blob=", result.stderr)
         self.assert_safe_output(result)
 
+    def make_remote_with_historical_identifier(self) -> tuple[Path, str, str]:
+        remote, _baseline = self.make_remote()
+        historical_path = f"historical-{self.pattern}.txt"
+        (self.repo / historical_path).write_text(
+            f"secret payload {self.pattern}\n", encoding="utf-8"
+        )
+        git(self.repo, "add", historical_path)
+        git(self.repo, "commit", "-qm", f"historical {self.pattern}")
+        historical = git(self.repo, "rev-parse", "HEAD")
+        git(self.repo, "push", "-q", "origin", "HEAD:refs/heads/archive")
+        git(self.repo, "fetch", "-q", "origin")
+        self.assertEqual(
+            git(self.repo, "rev-parse", "refs/remotes/origin/archive"), historical
+        )
+        git(self.repo, "commit", "--allow-empty", "-qm", "clean outgoing")
+        return remote, historical, git(self.repo, "rev-parse", "HEAD")
+
+    def test_new_ref_excludes_history_on_remote_tracking_refs(self) -> None:
+        remote, _historical, local_oid = self.make_remote_with_historical_identifier()
+        result = self.pre_push(
+            remote, "HEAD", local_oid, "refs/heads/qualified", ZERO_OID
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_safe_output(result)
+
+    def test_new_ref_denies_new_identifier_after_remote_history(self) -> None:
+        remote, historical, _clean = self.make_remote_with_historical_identifier()
+        (self.repo / "new.txt").write_text(
+            f"secret payload {self.other_pattern}\n", encoding="utf-8"
+        )
+        git(self.repo, "add", "new.txt")
+        git(self.repo, "commit", "-qm", "new outgoing identifier")
+        local_oid = git(self.repo, "rev-parse", "HEAD")
+        result = self.pre_push(
+            remote, "HEAD", local_oid, "refs/heads/qualified", ZERO_OID
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("blob=", result.stderr)
+        self.assertIn("pattern=2", result.stderr)
+        self.assertNotIn(f"commit={historical}", result.stderr)
+        self.assertNotIn("pattern=1", result.stderr)
+        self.assert_safe_output(result)
+
+    def test_new_ref_unconfigured_remote_or_url_scans_full_history(self) -> None:
+        remote, historical, local_oid = self.make_remote_with_historical_identifier()
+        git(self.repo, "update-ref", "refs/remotes/unconfigured/archive", historical)
+        for remote_name in ("unconfigured", "orig", str(remote)):
+            with self.subTest(remote_name=remote_name):
+                result = self.guard(
+                    "pre-push",
+                    remote_name,
+                    str(remote),
+                    input_text=f"HEAD {local_oid} refs/heads/qualified {ZERO_OID}\n",
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(f"commit={historical} line=1 pattern=1", result.stderr)
+                self.assert_safe_output(result)
+
+    def test_new_ref_remote_without_tracking_refs_scans_full_history(self) -> None:
+        remote, historical, local_oid = self.make_remote_with_historical_identifier()
+        git(self.repo, "remote", "add", "empty", str(remote))
+        git(self.repo, "update-ref", "refs/remotes/empty-other/archive", historical)
+        result = self.guard(
+            "pre-push",
+            "empty",
+            str(remote),
+            input_text=f"HEAD {local_oid} refs/heads/qualified {ZERO_OID}\n",
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"commit={historical} line=1 pattern=1", result.stderr)
+        self.assert_safe_output(result)
+
+    def test_existing_ref_still_scans_only_relative_to_remote_oid(self) -> None:
+        remote, historical, local_oid = self.make_remote_with_historical_identifier()
+        baseline = git(self.repo, "rev-parse", f"{historical}^")
+        result = self.pre_push(
+            remote, "HEAD", local_oid, "refs/heads/main", baseline
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"commit={historical} line=1 pattern=1", result.stderr)
+        self.assert_safe_output(result)
+
     def test_pre_push_scans_direct_blob_tree_and_tag_terminals(self) -> None:
         remote, _remote_oid = self.make_remote()
         blob_oid = git(

@@ -4,6 +4,9 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Limit new-ref identifier checks to commits outside the pushing remote's tracking refs.
+  Keep full-history checks for unconfigured remotes and remotes without tracking refs.
+
 - Add generic local identifier hooks for staged content, commit messages and outgoing Git
   objects, with ignored owner policy and synthetic real-Git guard tests in CI.
 
