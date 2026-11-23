@@ -57,9 +57,10 @@ HEAD, excluding uncommitted files and installed dependencies while retaining Git
 For notebooks, run `scripts/toolchain.sh` to read the exact Node, Deno, Python and uv versions
 from `.tool-versions`, install them and activate the declared pnpm. The reader emits each tool's
 default and JSON compatibility lanes. Notebook checks use the first Node version; CI verifies
-both the default and compatibility lanes. After Node setup, CI and the notebook runner call
-`scripts/toolchain.sh --installed nodejs=VERSION`. Deno, Bun, Python and uv use exact setup-action
-versions without separate version probes. Run `pnpm install --frozen-lockfile`, `uv lock --check`
+both the default and compatibility lanes. After each workflow or composite-action setup,
+`scripts/toolchain.sh --installed TOOL=VERSION` checks Node, Deno, Bun, Python and uv against the
+same reader output or matrix lane used for installation, under the same condition. The notebook
+runner also checks Node through the reader. Run `pnpm install --frozen-lockfile`, `uv lock --check`
 and `uv sync --frozen`, then `pnpm notebooks:local`.
 
 Both notebook scripts call `scripts/check_notebooks.py`. Register every notebook in

@@ -486,8 +486,10 @@ package's registry metadata or release tags.
 
 Releases from 0.2.1 on carry npm trusted-publishing provenance (GitHub Actions OIDC, no
 long-lived tokens). The owner dispatches `publish.yml` from the default branch in environment
-`publish`. It installs exact runtime versions from the shared `scripts/toolchain.sh` reader
-of `.tool-versions` and the declared pnpm with frozen dependencies, refuses a tagged version and
+`publish`. Every workflow and composite action installs exact Node, Deno, Bun, Python and uv
+versions from the shared `scripts/toolchain.sh` reader of `.tool-versions` as needed and refuses
+a different installed version through its `--installed` checks. Publication activates the declared
+pnpm with frozen dependencies, refuses a tagged version and
 a stale corpus, builds the library and API docs, packs and inspects one archive, and verifies its
 SHA-256. If npm already serves the version,
 its SHA-512 must match and it must not be deprecated; staging is skipped. Otherwise it stages

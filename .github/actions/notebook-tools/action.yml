@@ -19,12 +19,18 @@ runs:
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
         deno-version: ${{ steps.pins.outputs.deno }}
+    - name: Refuse a different Deno version
+      shell: bash
+      run: scripts/toolchain.sh --installed deno=${{ steps.pins.outputs.deno }}
     - name: Set up Python
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: ${{ steps.pins.outputs.python }}
         check-latest: false
         allow-prereleases: false
+    - name: Refuse a different Python version
+      shell: bash
+      run: scripts/toolchain.sh --installed python=${{ steps.pins.outputs.python }}
     - name: Set up uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
@@ -32,6 +38,9 @@ runs:
         python-version: ${{ steps.pins.outputs.python }}
         enable-cache: false
         save-cache: false
+    - name: Refuse a different uv version
+      shell: bash
+      run: scripts/toolchain.sh --installed uv=${{ steps.pins.outputs.uv }} python=${{ steps.pins.outputs.python }}
     - name: Activate the declared package manager
       shell: bash
       run: |

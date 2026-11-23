@@ -3,7 +3,9 @@
 This guide targets verifier **2.0.1**. Install the exact registry package in a new ESM project,
 save the module below as `first-integration.ts`, and run `node first-integration.ts` on Node 22.18
 or later. The package needs Node 22 or later; CI reads its exact Node pins and compatibility
-lanes from `.tool-versions` through the shared `scripts/toolchain.sh` reader.
+lanes from `.tool-versions` through the shared `scripts/toolchain.sh` reader. Workflows and
+composite actions also read Deno, Bun, Python and uv pins from it and refuse a different installed
+version of each tool with `scripts/toolchain.sh --installed TOOL=VERSION` after setup.
 
 ```bash
 npm init -y

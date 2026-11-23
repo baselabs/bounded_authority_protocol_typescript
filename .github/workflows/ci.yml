@@ -53,6 +53,8 @@ jobs:
           python-version: ${{ steps.pins.outputs.python }}
           check-latest: false
           allow-prereleases: false
+      - name: Refuse a different Python version
+        run: scripts/toolchain.sh --installed python=${{ steps.pins.outputs.python }}
       - name: Test local identifier hooks
         run: |
           command -v git >/dev/null
@@ -263,12 +265,18 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: ${{ steps.pins.outputs.deno }}
+      - name: Refuse a different Deno version
+        if: matrix.runtime == 'deno'
+        run: scripts/toolchain.sh --installed deno=${{ steps.pins.outputs.deno }}
 
       - name: Set up Bun
         if: matrix.runtime == 'bun'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ steps.pins.outputs.bun }}
+      - name: Refuse a different Bun version
+        if: matrix.runtime == 'bun'
+        run: scripts/toolchain.sh --installed bun=${{ steps.pins.outputs.bun }}
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -319,11 +327,15 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: ${{ steps.pins.outputs.deno }}
+      - name: Refuse a different Deno version
+        run: scripts/toolchain.sh --installed deno=${{ steps.pins.outputs.deno }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ steps.pins.outputs.bun }}
+      - name: Refuse a different Bun version
+        run: scripts/toolchain.sh --installed bun=${{ steps.pins.outputs.bun }}
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -397,6 +409,10 @@ jobs:
         run: pnpm test:browser
 
   supply-chain:
+    needs: toolchain
+    strategy:
+      matrix:
+        node-version: ${{ fromJSON(needs.toolchain.outputs.nodejs_lanes) }}
     timeout-minutes: 5 # Run 44123105381: slowest green lane 26s.
     # Registry signatures and provenance attestations of every installed package (CI and release).
     # Runs on the Node compatibility lane: npm 10 (Node 22) does not apply package.json overrides
@@ -417,10 +433,10 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ fromJSON(steps.pins.outputs.nodejs_lanes)[0] }}
+          node-version: ${{ matrix.node-version }}
           package-manager-cache: false
       - name: Refuse a different Node version
-        run: scripts/toolchain.sh --installed nodejs=${{ fromJSON(steps.pins.outputs.nodejs_lanes)[0] }}
+        run: scripts/toolchain.sh --installed nodejs=${{ matrix.node-version }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -587,6 +603,8 @@ jobs:
           python-version: ${{ steps.pins.outputs.python }}
           check-latest: false
           allow-prereleases: false
+      - name: Refuse a different Python version
+        run: scripts/toolchain.sh --installed python=${{ steps.pins.outputs.python }}
       - name: Require every qualification job to succeed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}

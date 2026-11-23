@@ -15,6 +15,6 @@ browser bundle. Both sources fail closed if their separate frozen install has no
 
 Every workflow and composite action reads runtime pins through the shared toolchain reader,
 `scripts/toolchain.sh`, carried unchanged and executable. It emits defaults and JSON compatibility
-lanes from `.tool-versions`. After Node setup, `scripts/toolchain.sh --installed nodejs=VERSION`
-refuses a different version. Deno, Bun, Python and uv use exact setup-action versions; the reader
-does not probe those tools. Keep version parsing in the shared reader.
+lanes from `.tool-versions`. After each setup, `scripts/toolchain.sh --installed TOOL=VERSION`
+refuses a different installed version of Node, Deno, Bun, Python or uv. Pass the same reader output
+or matrix lane to setup and refusal, with the same condition. Keep version parsing in the shared reader.

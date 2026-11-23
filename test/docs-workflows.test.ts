@@ -28,6 +28,9 @@ test("qualification runs candidate notebooks and durable replay, without cache w
         const setup = steps.find((step) => step.uses?.startsWith(action!));
         assert.ok(setup, `${tool}: exact setup is required`);
         assert.equal(setup.with?.[input!], "${{ steps.pins.outputs." + tool + " }}");
+        const python = tool === "uv" ? " python=${{ steps.pins.outputs.python }}" : "";
+        assert.equal(steps[steps.indexOf(setup) + 1]?.run,
+          "scripts/toolchain.sh --installed " + tool + "=${{ steps.pins.outputs." + tool + " }}" + python);
       }
       assert.ok(run.indexOf("uv lock --check") >= 0 && run.indexOf("uv lock --check") < run.indexOf("uv sync --frozen"));
     }

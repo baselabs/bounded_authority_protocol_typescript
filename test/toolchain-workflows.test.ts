@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { test } from "node:test";
 import { parse } from "yaml";
 
-interface Step { id?: string; uses?: string; run?: string; with?: Record<string, unknown> }
+interface Step { id?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown> }
 interface Job {
   needs?: string | string[];
   outputs?: Record<string, string>;
@@ -24,19 +24,18 @@ function yamlFiles(directory: URL): URL[] {
 
 const readPins = 'scripts/toolchain.sh >> "$GITHUB_OUTPUT"';
 const primary = "${{ steps.pins.outputs.nodejs }}";
-const compatibility = "${{ fromJSON(steps.pins.outputs.nodejs_lanes)[0] }}";
 const lane = "${{ matrix.node-version }}";
 const ci = parse(readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8")) as Workflow;
 
 test("the shared toolchain reader has its required bytes and executable mode", () => {
   const reader = new URL("../scripts/toolchain.sh", import.meta.url);
   assert.equal(createHash("sha256").update(readFileSync(reader)).digest("hex"),
-    "b29bfeb6ec4ec8f5b7e3ac3c963f04b6d3c73483172e5bd59ea40f20b102f1eb");
+    "25bbfa023b7f031256428b498fe300fcc460988fea81277072355e4c0d933764");
   assert.equal(statSync(reader).mode & 0o777, 0o755);
   assert.ok(ci.jobs.toolchain!.steps.some((step) => step.run === "scripts/toolchain.sh --self-test"));
 });
 
-test("every runtime setup uses shared outputs and checks supported tools after installation", () => {
+test("every runtime setup uses shared outputs and refuses a different installed version", () => {
   const files = yamlFiles(new URL("../.github/", import.meta.url));
   const setups = [
     ["actions/setup-node@", "node-version", "nodejs"],
@@ -48,7 +47,7 @@ test("every runtime setup uses shared outputs and checks supported tools after i
   let checked = 0;
   for (const file of files) {
     const source = readFileSync(file, "utf8");
-    assert.doesNotMatch(source, /(?:bash|sh) scripts\/toolchain\.sh|--installed (?:deno|bun|python|uv)=/, file.pathname);
+    assert.doesNotMatch(source, /(?:bash|sh) scripts\/toolchain\.sh/, file.pathname);
     const document = parse(source) as Workflow | Action;
     const groups = "jobs" in document ? Object.values(document.jobs).map((job) => job.steps)
       : document.runs.using === "composite" ? [document.runs.steps] : [];
@@ -66,12 +65,15 @@ test("every runtime setup uses shared outputs and checks supported tools after i
         assert.ok(reader >= 0 && reader < index, `${file.pathname}: ${tool} needs the reader before setup`);
         const version = step.with?.[input];
         if (tool === "nodejs") {
-          assert.ok([primary, compatibility, lane].includes(String(version)), `${file.pathname}: ${input}`);
-          assert.equal(steps[index + 1]?.run, `scripts/toolchain.sh --installed nodejs=${String(version)}`,
-            `${file.pathname}: refuse a different Node before using it`);
+          assert.ok([primary, lane].includes(String(version)), `${file.pathname}: ${input}`);
         } else {
           assert.equal(version, "${{ steps.pins.outputs." + tool + " }}", `${file.pathname}: ${input}`);
         }
+        const python = tool === "uv" ? " python=${{ steps.pins.outputs.python }}" : "";
+        assert.equal(steps[index + 1]?.run, `scripts/toolchain.sh --installed ${tool}=${String(version)}${python}`,
+          `${file.pathname}: refuse a different ${tool} before using it`);
+        assert.equal(steps[index + 1]?.if, step.if, `${file.pathname}: ${tool} refusal uses the setup condition`);
+        if (tool === "uv") assert.equal(step.with?.["python-version"], "${{ steps.pins.outputs.python }}");
         if (tool === "python") {
           assert.equal(step.with?.["check-latest"], false);
           assert.equal(step.with?.["allow-prereleases"], false);
@@ -98,6 +100,11 @@ test("Node compatibility versions drive the matrix while existing check names st
       { os: "ubuntu-24.04", "node-version": "${{ needs.toolchain.outputs.nodejs }}", "node-line": "nodejs" },
     ],
   });
-  const auditSetup = ci.jobs["supply-chain"]!.steps.find((step) => step.uses?.startsWith("actions/setup-node@"));
-  assert.equal(auditSetup?.with?.["node-version"], compatibility);
+  const audit = ci.jobs["supply-chain"]!;
+  assert.equal(audit.needs, "toolchain");
+  assert.deepEqual(audit.strategy!.matrix, {
+    "node-version": "${{ fromJSON(needs.toolchain.outputs.nodejs_lanes) }}",
+  });
+  const auditSetup = audit.steps.find((step) => step.uses?.startsWith("actions/setup-node@"));
+  assert.equal(auditSetup?.with?.["node-version"], lane);
 });
