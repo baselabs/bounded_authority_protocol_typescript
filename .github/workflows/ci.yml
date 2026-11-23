@@ -16,6 +16,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  toolchain:
+    name: shared toolchain reader
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      nodejs: ${{ steps.pins.outputs.nodejs }}
+      nodejs_lanes: ${{ steps.pins.outputs.nodejs_lanes }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the shared toolchain reader
+        run: scripts/toolchain.sh --self-test
+      - name: Read exact runtime pins
+        id: pins
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
+
   secrets:
     timeout-minutes: 5 # Run 44123105381: slowest green lane 9s.
     name: secret scan (full history and sensitivity)
@@ -28,13 +46,13 @@ jobs:
           persist-credentials: false
       - name: Read exact Python pin
         id: pins
-        run: scripts/tool-versions.sh read python
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - name: Refuse a different Python version
-        run: scripts/tool-versions.sh check python
+          check-latest: false
+          allow-prereleases: false
       - name: Test local identifier hooks
         run: |
           command -v git >/dev/null
@@ -62,13 +80,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -77,8 +97,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
       # Check the pinned artifact, not freshness. Hex outages and retirement fail closed.
@@ -86,17 +104,22 @@ jobs:
         run: node scripts/check-corpus.mjs ci --main
 
   verify:
+    needs: toolchain
     timeout-minutes: 6 # Run 44312164032: slowest green lane 160s; twice that.
     name: typecheck, lint, license, unit, conformance (contract majors, sibling profiles, strict Ed25519, producer canonicality, selector float-zero; node and portable backends) on Node line ${{ matrix.node-line }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04]
-        # The two exact Node pins on the .tool-versions nodejs line: the primary version and the
-        # compatibility lane, both read by scripts/tool-versions.sh. Verdicts must be identical on both: the strict
-        # Ed25519 rule gates every verify before the backend, so a backend that differs by version
-        # (the platform OpenSSL) cannot change a verdict.
-        node-line: [nodejs, nodejs-next]
+        # Read compatibility versions first, then add the primary with its existing check name.
+        # Verdicts must be identical: strict Ed25519 gates every verify before the backend,
+        # so a platform OpenSSL difference cannot change a verdict.
+        node-version: ${{ fromJSON(needs.toolchain.outputs.nodejs_lanes) }}
+        include:
+          - node-line: nodejs-next
+          - os: ubuntu-24.04
+            node-version: ${{ needs.toolchain.outputs.nodejs }}
+            node-line: nodejs
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out source
@@ -107,13 +130,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ steps.pins.outputs[matrix.node-line] }}
+          node-version: ${{ matrix.node-version }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ matrix.node-version }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -122,10 +147,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        env:
-          NODE_LANE: ${{ matrix.node-line == 'nodejs-next' && 'next' || 'primary' }}
-        run: scripts/tool-versions.sh check nodejs "$NODE_LANE"
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -219,13 +240,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs deno bun
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -234,8 +257,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
 
       - name: Set up Deno
         if: matrix.runtime == 'deno'
@@ -248,11 +269,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ steps.pins.outputs.bun }}
-
-      - name: Refuse a different runtime version
-        env:
-          RUNTIME: ${{ matrix.runtime }}
-        run: scripts/tool-versions.sh check "$RUNTIME"
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -281,13 +297,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs deno bun
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -296,8 +314,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
 
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
@@ -308,11 +324,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ steps.pins.outputs.bun }}
-
-      - name: Refuse different runtime versions
-        run: |
-          scripts/tool-versions.sh check deno
-          scripts/tool-versions.sh check bun
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -350,13 +361,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -365,8 +378,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -401,13 +412,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ steps.pins.outputs['nodejs-next'] }}
+          node-version: ${{ fromJSON(steps.pins.outputs.nodejs_lanes)[0] }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ fromJSON(steps.pins.outputs.nodejs_lanes)[0] }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -416,8 +429,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs next
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -443,13 +454,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -458,8 +471,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -482,13 +493,15 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -497,8 +510,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
 
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
@@ -535,14 +546,16 @@ jobs:
       - name: Read exact runtime pins
         id: pins
         shell: bash
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
-      - name: Activate declared pnpm and refuse a different Node
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
+      - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
           case "$manager" in pnpm@[0-9]*.[0-9]*.[0-9]*) ;; *) exit 1 ;; esac
@@ -550,7 +563,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-          scripts/tool-versions.sh check nodejs
       - name: Install JavaScript dependencies frozen
         run: pnpm install --frozen-lockfile
       - name: Real SQLite contention and process restart
@@ -558,7 +570,7 @@ jobs:
 
   qualified:
     if: always()
-    needs: [secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency, site, notebooks-local, durable-replay]
+    needs: [toolchain, secrets, corpus-artifact, verify, runtimes, package, browser-conformance, supply-chain, dependency-currency, site, notebooks-local, durable-replay]
     runs-on: ubuntu-24.04
     timeout-minutes: 5 # Run 44312164032: green job 18s.
     steps:
@@ -568,13 +580,13 @@ jobs:
           persist-credentials: false
       - name: Read exact Python pin
         id: pins
-        run: scripts/tool-versions.sh read python
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - name: Refuse a different Python version
-        run: scripts/tool-versions.sh check python
+          check-latest: false
+          allow-prereleases: false
       - name: Require every qualification job to succeed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}

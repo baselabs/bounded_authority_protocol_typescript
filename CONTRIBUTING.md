@@ -54,10 +54,13 @@ checkout and its own TypeDoc, plugins and types from a frozen install, failing c
 install has no TypeDoc. Commit mode clones locally without tags or hardlinks and detaches at
 HEAD, excluding uncommitted files and installed dependencies while retaining Git source links.
 
-For notebooks, install the exact Node, Deno, Python and uv versions in `.tool-versions` and
-activate the declared pnpm. The second Node version on the `nodejs` line is the extra
-compatibility lane; notebook checks use the first. Run `pnpm install --frozen-lockfile`,
-`uv lock --check` and `uv sync --frozen`, then `pnpm notebooks:local`.
+For notebooks, run `scripts/toolchain.sh` to read the exact Node, Deno, Python and uv versions
+from `.tool-versions`, install them and activate the declared pnpm. The reader emits each tool's
+default and JSON compatibility lanes. Notebook checks use the first Node version; CI verifies
+both the default and compatibility lanes. After Node setup, CI and the notebook runner call
+`scripts/toolchain.sh --installed nodejs=VERSION`. Deno, Bun, Python and uv use exact setup-action
+versions without separate version probes. Run `pnpm install --frozen-lockfile`, `uv lock --check`
+and `uv sync --frozen`, then `pnpm notebooks:local`.
 
 Both notebook scripts call `scripts/check_notebooks.py`. Register every notebook in
 `docs/notebooks/registry.json`: schema 1 records the package identity, exact npm package pins,

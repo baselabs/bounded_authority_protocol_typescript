@@ -4,6 +4,10 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Use the shared toolchain reader for every workflow and composite action, preserving exact
+  runtime pins and Node compatibility lanes. Check installed Node versions through the reader;
+  install Deno, Bun, Python and uv at exact versions without separate version probes.
+
 - Limit new-ref identifier checks to commits outside the pushing remote's tracking refs.
   Keep full-history checks for unconfigured remotes and remotes without tracking refs.
 

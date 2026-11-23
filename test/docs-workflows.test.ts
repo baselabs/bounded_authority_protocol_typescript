@@ -20,9 +20,15 @@ test("qualification runs candidate notebooks and durable replay, without cache w
     assert.match(run, /pnpm install --frozen-lockfile/);
     if (name!.startsWith("notebooks-")) {
       assert.ok(job.steps.some((step) => step.uses === "./.github/actions/notebook-tools"));
-      assert.match(run, /uv sync --frozen/); assert.match(run, /tool-versions\.sh check python/);
-      assert.match(run, /tool-versions\.sh check deno/); assert.match(run, /tool-versions\.sh check uv/);
-      assert.match(run, /tool-versions\.sh read nodejs deno python uv/);
+      assert.match(run, /uv sync --frozen/);
+      assert.ok(steps.some((step) => step.run === 'scripts/toolchain.sh >> "$GITHUB_OUTPUT"'));
+      assert.ok(steps.some((step) => step.run === "scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}"));
+      for (const [action, input, tool] of [["denoland/setup-deno@", "deno-version", "deno"],
+        ["actions/setup-python@", "python-version", "python"], ["astral-sh/setup-uv@", "version", "uv"]]) {
+        const setup = steps.find((step) => step.uses?.startsWith(action!));
+        assert.ok(setup, `${tool}: exact setup is required`);
+        assert.equal(setup.with?.[input!], "${{ steps.pins.outputs." + tool + " }}");
+      }
       assert.ok(run.indexOf("uv lock --check") >= 0 && run.indexOf("uv lock --check") < run.indexOf("uv sync --frozen"));
     }
     for (const step of steps.filter((step) => step.uses)) {

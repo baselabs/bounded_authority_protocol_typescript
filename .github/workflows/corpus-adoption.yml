@@ -34,12 +34,14 @@ jobs:
           persist-credentials: false
       - name: Read exact runtime pins
         id: pins
-        run: scripts/tool-versions.sh read nodejs
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -48,8 +50,6 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
       - name: Fetch the newest eligible release

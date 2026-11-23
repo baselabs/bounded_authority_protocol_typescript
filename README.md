@@ -486,9 +486,10 @@ package's registry metadata or release tags.
 
 Releases from 0.2.1 on carry npm trusted-publishing provenance (GitHub Actions OIDC, no
 long-lived tokens). The owner dispatches `publish.yml` from the default branch in environment
-`publish`. It installs the exact `.tool-versions` runtime and declared pnpm with frozen
-dependencies, refuses a tagged version and a stale corpus, builds the library and API docs,
-packs and inspects one archive, and verifies its SHA-256. If npm already serves the version,
+`publish`. It installs exact runtime versions from the shared `scripts/toolchain.sh` reader
+of `.tool-versions` and the declared pnpm with frozen dependencies, refuses a tagged version and
+a stale corpus, builds the library and API docs, packs and inspects one archive, and verifies its
+SHA-256. If npm already serves the version,
 its SHA-512 must match and it must not be deprecated; staging is skipped. Otherwise it stages
 the archive with `npm stage publish --provenance`. An existing pending stage is refused without
 replacement. The job reads back the exact archive bytes before succeeding; pending approval

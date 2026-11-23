@@ -12,3 +12,9 @@ committed package version, without querying this package's registry metadata or 
 Pages runs the same ordered pipeline with `pnpm site`: typecheck and build the bench, build and
 check the API from the npm-latest release tag, check claims against npm latest, and scan the
 browser bundle. Both sources fail closed if their separate frozen install has no TypeDoc.
+
+Every workflow and composite action reads runtime pins through the shared toolchain reader,
+`scripts/toolchain.sh`, carried unchanged and executable. It emits defaults and JSON compatibility
+lanes from `.tool-versions`. After Node setup, `scripts/toolchain.sh --installed nodejs=VERSION`
+refuses a different version. Deno, Bun, Python and uv use exact setup-action versions; the reader
+does not probe those tools. Keep version parsing in the shared reader.

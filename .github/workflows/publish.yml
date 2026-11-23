@@ -37,12 +37,14 @@ jobs:
           persist-credentials: false
       - name: Read exact runtime pins
         id: pins
-        run: scripts/tool-versions.sh read nodejs python
+        run: scripts/toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Set up Node from the tool versions
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ steps.pins.outputs.nodejs }}
           package-manager-cache: false
+      - name: Refuse a different Node version
+        run: scripts/toolchain.sh --installed nodejs=${{ steps.pins.outputs.nodejs }}
       - name: Activate the declared pnpm with Corepack
         run: |
           manager="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager')"
@@ -51,14 +53,12 @@ jobs:
           corepack prepare "$manager" --activate
           pnpm_version=$(pnpm --version)
           test "pnpm@$pnpm_version" = "$manager"
-      - name: Refuse a different Node version
-        run: scripts/tool-versions.sh check nodejs
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.pins.outputs.python }}
-      - name: Refuse a different Python version
-        run: scripts/tool-versions.sh check python
+          check-latest: false
+          allow-prereleases: false
       - name: Pin archive tooling
         run: npm install --global npm@11.19.0 --ignore-scripts
       - name: Install with the frozen lockfile

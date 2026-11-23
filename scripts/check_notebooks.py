@@ -79,8 +79,9 @@ def check(local: bool) -> None:
     from jupyter_client import AsyncKernelManager
     from jupyter_client.kernelspec import KernelSpecManager
 
-    tool_versions = str(ROOT / "scripts/tool-versions.sh")
-    run(tool_versions, "check", "python", cwd=ROOT, env=dict(os.environ))
+    toolchain = str(ROOT / "scripts/toolchain.sh")
+    pins = dict(line.split("=", 1) for line in
+                run(toolchain, cwd=ROOT, env=dict(os.environ)).splitlines())
     package = json.loads((ROOT / "package.json").read_text())
     directory = ROOT / "docs/notebooks"
     registry = json.loads((directory / "registry.json").read_text())
@@ -127,8 +128,7 @@ def check(local: bool) -> None:
         (scratch / "runtime").mkdir()
         (scratch / "npmrc").write_text("registry=" + REGISTRY + "\n")
         (scratch / "global-npmrc").write_text("")
-        for tool in ("nodejs", "deno", "uv"):
-            run(tool_versions, "check", tool, cwd=scratch, env=env)
+        run(toolchain, "--installed", "nodejs=" + pins["nodejs"], cwd=scratch, env=env)
         artifact = None
         if local:
             packed = json.loads(run("node", str(ROOT / "tools/pack.mjs"), "--out",
