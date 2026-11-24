@@ -4,6 +4,8 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Update @types/node to 26.6.7, the newest release within its declared range.
+
 - Refuse to publish a package whose changelog is not stamped for its version.
 
 - Keep release assets for 7 days, the period anything reads them after their run.
