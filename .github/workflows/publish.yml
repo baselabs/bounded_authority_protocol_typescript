@@ -248,6 +248,7 @@ jobs:
             artifacts/package.tgz
             artifacts/SHA256SUMS
           if-no-files-found: error
+          retention-days: 7
 
   published-notebooks:
     if: contains(fromJSON('["corepay","palermo-git"]'), github.actor) && contains(fromJSON('["corepay","palermo-git"]'), github.triggering_actor)
