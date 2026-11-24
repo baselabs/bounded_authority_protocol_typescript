@@ -91,7 +91,9 @@ test("publication resumes only an identical, nondeprecated release and reads its
   assert.match(readback, /raise SystemExit\(f'::error::.*staged, awaiting owner approval/);
   const order = ["Refuse a package name the registry has never had", "Refuse a tagged version",
     "Build the library and documentation", "Pack the package archive", "Inspect the exact package archive",
-    "Verify the inspected archive checksum", "Compare any served version with the inspected archive",
+    "Verify the inspected archive checksum", "Read the package version",
+    "Refuse a package whose changelog is not stamped for its version",
+    "Compare any served version with the inspected archive",
     "Stage the inspected archive with trusted publishing", "Read back the exact inspected bytes or report pending approval",
     "Upload the inspected release assets"].map((name) => upload.indexOf(`name: ${name}\n`));
   assert.ok(order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]!)));

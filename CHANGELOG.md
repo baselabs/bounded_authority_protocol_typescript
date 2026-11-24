@@ -4,6 +4,8 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Refuse to publish a package whose changelog is not stamped for its version.
+
 - Keep release assets for 7 days, the period anything reads them after their run.
 
 - Update typescript-eslint to 8.74.0, the newest release within its declared range.
