@@ -4,6 +4,8 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Update typescript-eslint to 8.74.0, the newest release within its declared range.
+
 - Use the shared toolchain reader for every workflow and composite action, preserving exact
   runtime pins and Node compatibility lanes. Refuse different installed Node, Deno, Bun, Python
   and uv versions after setup through the reader, using the same version output and condition.
