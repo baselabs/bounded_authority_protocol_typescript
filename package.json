@@ -128,7 +128,7 @@
     "@types/semver": "^7.8.0",
     "cross-spawn": "^7.0.6",
     "esbuild": "^0.28.2",
-    "eslint": "^10.15.0",
+    "eslint": "^10.16.0",
     "globals": "^17.14.0",
     "markdown-it": "15.0.3",
     "playwright": "^1.65.1",
