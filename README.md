@@ -1,4 +1,4 @@
-# @bounded-authority-protocol/verifier
+# Bounded Authority Protocol™ TypeScript verifier
 
 [![npm](https://img.shields.io/npm/v/@bounded-authority-protocol/verifier)](https://www.npmjs.com/package/@bounded-authority-protocol/verifier)
 [![CI](https://github.com/baselabs/bounded_authority_protocol_typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/baselabs/bounded_authority_protocol_typescript/actions/workflows/ci.yml)
@@ -588,7 +588,8 @@ see [SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0, maintained by BaseLabs Holdings LLC. See [LICENSE](LICENSE) and [NOTICE](NOTICE),
+and [IPR.md](IPR.md) for contributions and use of the name.
 
 Candidate notebook and consumer journeys install this repository's package from the packed candidate.
 `publish.yml` waits up to ten minutes in the upload job for npm to serve the exact inspected

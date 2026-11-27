@@ -105,6 +105,10 @@ and Pages are maintainer-dispatched on the default branch with their existing en
 Contributors do not publish, tag or dispatch workflows. Report vulnerabilities through the
 [security policy](SECURITY.md). Use real services and real signatures in integration tests.
 
+Contributions are licensed under Apache-2.0, as section 5 of the license describes, and
+every commit carries a Developer Certificate of Origin sign-off (`git commit -s`). See
+[IPR.md](IPR.md).
+
 ## Maintainer checks
 
 Install the tracked hooks with `bash scripts/install-hooks.sh`. Local confidential-identifier

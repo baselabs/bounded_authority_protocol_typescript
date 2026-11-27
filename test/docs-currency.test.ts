@@ -97,7 +97,22 @@ test("ordered manifest covers every guide, notebook and runnable source", () => 
       for (const match of code.matchAll(/npm:@bounded-authority-protocol\/verifier@([^"/\s]+)/g)) assert.equal(match[1], pkg.version);
     }
   }
-  for (const name of ["docs", "CONTRIBUTING.md", "usage-rules.md", "SECURITY.md", "CHANGELOG.md"]) assert.ok(pkg.files.includes(name));
+  for (const name of ["docs", "CONTRIBUTING.md", "IPR.md", "usage-rules.md", "SECURITY.md", "CHANGELOG.md"]) assert.ok(pkg.files.includes(name));
+});
+
+test("the verifier identifies its steward and publishes its IP statement", () => {
+  assert.ok(manifest.extras.includes("IPR.md"));
+  assert.match(readFileSync(join(root, "README.md"), "utf8"), /\]\(IPR\.md\) for contributions and use of the name\./);
+  assert.match(readFileSync(join(root, "CONTRIBUTING.md"), "utf8"), /Developer Certificate of Origin sign-off \(`git commit -s`\)/);
+  assert.match(readFileSync(join(root, "LICENSE"), "utf8"), /^   Copyright 2026 BaseLabs Holdings LLC$/m);
+  assert.ok(readFileSync(join(root, "NOTICE"), "utf8").startsWith([
+    "@bounded-authority-protocol/verifier",
+    "Copyright 2026 BaseLabs Holdings LLC",
+    "",
+    "This product includes software developed by BaseLabs Holdings LLC",
+    "(https://github.com/baselabs).",
+    "",
+  ].join("\n")));
 });
 
 test("all authored relative links and anchors resolve", () => {

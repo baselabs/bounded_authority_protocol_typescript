@@ -11,7 +11,7 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
 test("TypeDoc discovers exports, rejects undocumented API and stamps the package version", () => {
   const scratch = mkdtempSync(join(tmpdir(), "bap-api-docs-"));
   try {
-    for (const name of ["src", "package.json", "typedoc.json", "tsconfig.json", "tsconfig.build.json", "tools", "docs", "README.md", "usage-rules.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) {
+    for (const name of ["src", "package.json", "typedoc.json", "tsconfig.json", "tsconfig.build.json", "tools", "docs", "README.md", "usage-rules.md", "CONTRIBUTING.md", "IPR.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) {
       cpSync(join(REPO, name), join(scratch, name), { recursive: true });
     }
     symlinkSync(join(REPO, "node_modules"), join(scratch, "node_modules"), process.platform === "win32" ? "junction" : "dir");

@@ -25,7 +25,7 @@ export function buildDocumentation({ source = root, out = join(root, "build-docs
   const scratch = mkdtempSync(join(tmpdir(), "bap-documents-"));
   try {
     cpSync(join(root, "docs"), join(scratch, "docs"), { recursive: true });
-    for (const name of ["README.md", "usage-rules.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) {
+    for (const name of ["README.md", "usage-rules.md", "CONTRIBUTING.md", "IPR.md", "SECURITY.md", "CHANGELOG.md", "LICENSE", "NOTICE"]) {
       cpSync(join(root, name), join(scratch, name));
     }
     const documents = [...registry.pages.map((page) => page.path), ...registry.extras];
