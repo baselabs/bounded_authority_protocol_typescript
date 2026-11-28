@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { fsSource, CONFORMANCE_DIR } from "../conformance/node_source.js";
+import catalogue from "../conformance/catalogue.json" with {type: "json"};
 import { CORES } from "../conformance/core/index.js";
 import { CoreAbort, type Core, type VerdictEntry } from "../conformance/core/types.js";
 import { assertVerdictDigest, certifyCorpus, completeVerdicts, expectedOutcome, expectedVerdicts, snapshotDigest, assertSnapshot } from "../conformance/certification.js";
@@ -27,10 +28,17 @@ function repinTree(dir: string): void {
 function red(label: string, run: () => unknown, pattern: RegExp): void {
   assert.throws(run, (error: Error) => { assert.match(error.message, pattern); console.log(`RED ${label}: ${error.message}`); return true; });
 }
-test("every core has a SOURCE pin", () => {
-  assert.equal(CORES.length, 11);
+test("registered cores, catalogue entries, and SOURCE pins match one to one", () => {
+  const entries = Object.entries(catalogue);
+  const paths = Object.values(catalogue);
+  assert.ok(entries.length > 0, "catalogue must be nonempty");
+  assert.equal(new Set(paths).size, paths.length, "catalogue paths must be unique");
+  assert.deepEqual(
+    CORES.map(core => [core.corpus, core.dir]).sort(),
+    entries.map(([name, path]) => [name, `priv/conformance/${path}`]).sort(),
+  );
   const pins = JSON.parse(readFileSync(join(CONFORMANCE_DIR, "SOURCE"), "utf8")).indexes;
-  assert.deepEqual(Object.keys(pins).sort(), CORES.map(c => c.dir.slice("priv/conformance/".length)).sort());
+  assert.deepEqual(Object.keys(pins).sort(), paths.sort());
 });
 for (const core of CORES) {
   test(`${core.corpus}: all cases, index order, and corpus-derived digest`, () => {
