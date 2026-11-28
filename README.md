@@ -474,7 +474,7 @@ Promotion to main and publication require a released source pin.
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
 
 <!-- corpus-source:start -->
-Candidate corpus: monorepo commit `95ac5caf772c4cd18797674c46b796525b24d3b0`.
+Candidate corpus: monorepo commit `178a31b43f985443f43947be122ef482c04566c7`.
 
 | Corpus | Cases |
 |---|---|
@@ -485,10 +485,11 @@ Candidate corpus: monorepo commit `95ac5caf772c4cd18797674c46b796525b24d3b0`.
 | role-attestation | 40 |
 | content-assertion | 154 |
 | strict-ed25519 | 2410 |
+| string-or-uri | 6 |
 | producer-canonicality | 75 |
 | selector-float-zero | 161 |
-| content-assertion-es256 | 217 |
-| action-approval | 309 |
+| content-assertion-es256 | 223 |
+| action-approval | 331 |
 <!-- corpus-source:end -->
 
 Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.

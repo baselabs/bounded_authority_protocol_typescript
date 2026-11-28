@@ -28,11 +28,11 @@ function run(api: Api, id: string) {
 interface Edit { readonly file: string; readonly from: string; readonly to: string }
 async function compile(edits: readonly Edit[], probe = false) {
   const result = await build({
-    stdin: {contents: 'export * from "./src/action_approval.ts"; export { assembleCompact, verifyAssertion, verifySuccessor } from "./src/content_assertion_es256.ts";', resolveDir: root, loader: "ts"},
+    stdin: {contents: 'export * from "./src/action_approval.ts"; export { assembleCompact, decodeAssertion, verifyAssertion, verifySuccessor } from "./src/content_assertion_es256.ts";', resolveDir: root, loader: "ts"},
     bundle: true, platform: "node", format: "esm", write: false,
     plugins: [{name: "approval-mutation", setup(b) {
       b.onResolve({filter: /^#crypto$/}, () => ({path: join(root, `src/crypto/${BACKEND_ID}.ts`)}));
-      b.onLoad({filter: /src[/\\](action_approval|content_assertion_stages|approval_record|compact|es256)\.ts$/}, args => {
+      b.onLoad({filter: /src[/\\](action_approval|content_assertion_stages|approval_record|compact|es256|string_or_uri)\.ts$/}, args => {
         let contents = readFileSync(args.path, "utf8");
         for (const {file, from, to} of edits.filter(edit => args.path.endsWith(`/${edit.file}.ts`))) {
           assert.equal(contents.split(from).length - 1, 1, from);
@@ -51,6 +51,7 @@ async function compile(edits: readonly Edit[], probe = false) {
   return await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`) as Api & {
     calls: Record<string, number>;
     assembleCompact: typeof contentAssertionEs256.assembleCompact;
+    decodeAssertion: typeof contentAssertionEs256.decodeAssertion;
     verifyAssertion: typeof contentAssertionEs256.verifyAssertion;
     verifySuccessor: typeof contentAssertionEs256.verifySuccessor;
   };
@@ -68,6 +69,19 @@ test("valid foreign suites stop before parser, lookup and signature verification
   }
   assert.ok(run(probe, "es256-verified").ok);
   assert.deepEqual(probe.calls, {payload_parser: 1, key_lookup: 1, foreign_verifier: 1});
+});
+
+test("IPvFuture would pass approval and ES256 decode if admitted as an identifier host", async () => {
+  const compact = get("es256-ipvfuture-signed-id").compact;
+  assert.deepEqual(run(aa, "es256-ipvfuture-signed-id"), {ok: false, code: "malformed"});
+  assert.equal(contentAssertionEs256.decodeAssertion(compact).ok, false);
+  const mutant = await compile([{
+    file: "string_or_uri",
+    from: 'if (!isIpv6(hostport.slice(1, close))) return false;',
+    to: 'if (!isIpv6(hostport.slice(1, close)) && hostport.slice(1, close) !== "v1.a") return false;',
+  }]);
+  assert.equal(run(mutant, "es256-ipvfuture-signed-id").ok, true);
+  assert.equal(mutant.decodeAssertion(compact).ok, true);
 });
 
 const approval = (from: string, to = ""): Edit => ({file: "action_approval", from, to});

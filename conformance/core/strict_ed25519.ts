@@ -37,10 +37,7 @@ const sha256Hex = (b: Uint8Array) => Array.from(nobleSha256(b), (x) => x.toStrin
 
 // Load the certified snapshot vendored beside this runner. Its digest and exact file
 // set bind the runner to published bytes without consulting a sibling checkout.
-const DIR = corpusDir("strict-ed25519");
-
-// The profile identity and revision are part of the implemented contract.
-const PROFILE_IDENTITY = "bap-strict-ed25519/1";
+type AdditiveCorpus = "strict-ed25519" | "string-or-uri";
 const CERTIFIED_REVISION = 1;
 
 function abort(message: string): never {
@@ -80,20 +77,20 @@ interface Loaded {
   readonly cases: Array<{ family: string; file: string; c: CorpusCase }>;
 }
 
-function loadCorpus(source: CorpusSource): Loaded {
-  certifyCorpus(source, DIR);
-  const indexBytes = source.read(`${DIR}/index.json`);
+function loadCorpus(source: CorpusSource, dir: string, profile: string): Loaded {
+  certifyCorpus(source, dir);
+  const indexBytes = source.read(`${dir}/index.json`);
   const index = JSON.parse(utf8(indexBytes)) as Loaded["index"] & { profile: string; revision: number; private_material_tracked: boolean };
-  if (index.profile !== PROFILE_IDENTITY) abort(`profile identity: ${index.profile}`);
+  if (index.profile !== profile) abort(`profile identity: ${index.profile}`);
   if (index.revision !== CERTIFIED_REVISION) abort(`revision: ${index.revision}`);
   if (index.private_material_tracked !== false) abort("private_material_tracked must be false");
   // The exact file set: every file on disk is listed (or is index.json itself), and every listed file exists.
   const listed = index.files.map((f) => f.path).sort();
-  const onDisk = source.list(DIR).filter((p) => p !== "index.json").sort();
+  const onDisk = source.list(dir).filter((p) => p !== "index.json").sort();
   if (JSON.stringify(listed) !== JSON.stringify(onDisk)) abort("exact corpus file set required (unlisted or missing file)");
   const cases: Loaded["cases"] = [];
   for (const entry of index.files) {
-    const bytes = source.read(`${DIR}/${entry.path}`);
+    const bytes = source.read(`${dir}/${entry.path}`);
     const digest = sha256Hex(bytes);
     if (digest !== entry.sha256) abort(`${entry.path}: SHA-256 mismatch (${digest} != ${entry.sha256})`);
     if (!entry.path.startsWith("cases/")) continue; // profile.json, revision.json: identity checked by digest
@@ -453,8 +450,9 @@ function compareVerdict(c: CorpusCase, actual: Verdict): string | null {
 
 // ---- the runtime-neutral entry ----
 
-function runAll(source: CorpusSource): { failures: string[]; verdicts: VerdictEntry[]; summary: string[] } {
-  const { index, cases } = loadCorpus(source);
+function runAll(source: CorpusSource, corpus: AdditiveCorpus, dir: string): { failures: string[]; verdicts: VerdictEntry[]; summary: string[] } {
+  const profile = `bap-${corpus}/1`;
+  const { index, cases } = loadCorpus(source, dir, profile);
   const failures: string[] = [];
   const verdicts: VerdictEntry[] = [];
   const perSurface: Record<string, number> = {};
@@ -472,30 +470,36 @@ function runAll(source: CorpusSource): { failures: string[]; verdicts: VerdictEn
       problem = compareVerdict(c, actual);
     }
     verdicts.push([c.id, projection]);
-    if (problem !== null) failures.push(`${family} ${c.id} [${c.rule}]: ${problem}`);
+    if (problem !== null) failures.push(`${family} ${c.id} [${c.rule ?? corpus}]: ${problem}`);
   }
   const pass = cases.length - failures.length;
   return {
     failures,
-    verdicts: completeVerdicts(source, DIR, verdicts),
+    verdicts: completeVerdicts(source, dir, verdicts),
     summary: [
-      `strict-ed25519 conformance: ${pass}/${cases.length} cases agree (profile ${PROFILE_IDENTITY}, revision ${CERTIFIED_REVISION}, index SHA-256 ${certifyCorpus(source, DIR).indexSha.slice(0, 8)}…)`,
+      `${corpus} conformance: ${pass}/${cases.length} cases agree (profile ${profile}, revision ${CERTIFIED_REVISION}, index SHA-256 ${certifyCorpus(source, dir).indexSha.slice(0, 8)}…)`,
       `families: ${Object.entries(index.families).map(([k, n]) => `${k} ${n}`).join(", ")}`,
       `surfaces: ${Object.entries(perSurface).sort().map(([k, n]) => `${k} ${n}`).join(", ")}`,
-      "strict-ed25519 conformance: PASS (every case agrees)",
+      `${corpus} conformance: PASS (every case agrees)`,
     ],
   };
 }
 
-export const core: Core = {
-  corpus: "strict-ed25519",
-  dir: DIR,
-  run(source: CorpusSource) {
-    try {
-      return { corpus: "strict-ed25519", ...runAll(source) };
-    } catch (e) {
-      if (e instanceof InvalidError) abort(`unexpected InvalidError escaped a Result surface: ${e.message}`);
-      throw e;
-    }
-  },
-};
+function additiveCore(corpus: AdditiveCorpus): Core {
+  const dir = corpusDir(corpus);
+  return {
+    corpus,
+    dir,
+    run(source: CorpusSource) {
+      try {
+        return { corpus, ...runAll(source, corpus, dir) };
+      } catch (e) {
+        if (e instanceof InvalidError) abort(`unexpected InvalidError escaped a Result surface: ${e.message}`);
+        throw e;
+      }
+    },
+  };
+}
+
+export const core = additiveCore("strict-ed25519");
+export const stringOrUri = additiveCore("string-or-uri");

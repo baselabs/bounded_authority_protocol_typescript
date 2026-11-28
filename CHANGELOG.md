@@ -4,6 +4,8 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Qualify IPv6-only StringOrURI hosts with the additive erratum corpus and candidate rejection cases.
+
 - Implement ES256 content assertions and action approval verification for explicitly selected
   Ed25519 and ES256 profiles. Qualify against immutable candidate corpus indexes and preserve
   the existing verdict pins.

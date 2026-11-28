@@ -6,6 +6,7 @@
   "role-attestation": "attestation-profiles/role-attestation/v1",
   "content-assertion": "attestation-profiles/content-assertion/v1",
   "strict-ed25519": "strict-ed25519",
+  "string-or-uri": "string-or-uri",
   "producer-canonicality": "producer-canonicality",
   "selector-float-zero": "selector-float-zero",
   "content-assertion-es256": "attestation-profiles/content-assertion-es256/v1",

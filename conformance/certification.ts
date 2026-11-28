@@ -6,8 +6,8 @@ import { hash64, hashHex, jcs, verdictDigest } from "./digest.js";
 export const SNAPSHOT = "priv/conformance";
 const paths = Object.values(catalogue).sort();
 const candidatePins: Readonly<Record<string, string>> = {
-  [catalogue["content-assertion-es256"]]: "15Mp1DHeCT8WJhP70qL-g4dmtpD6Z8-8FHjq-jIrPGM",
-  [catalogue["action-approval"]]: "NUcBmDSfKwOwxd9DaFaaQ36uOYR_pLjfHNHySzPW-CY",
+  [catalogue["content-assertion-es256"]]: "K7Qbj7yfvcAmf3KXbVYoC-BUFCDkwUJBymIvHdBx0Ms",
+  [catalogue["action-approval"]]: "U4S4aA-2dXNgaWxoicXWs7cG6HKO3Mrm3QxcRoqBmmQ",
 };
 const releasedPaths = paths.filter(path => !Object.hasOwn(candidatePins, path));
 const stop = (message: string): never => { throw new CoreAbort("corpus certification", message); };
@@ -41,7 +41,7 @@ export function expectedOutcome(path: string, file: string, c: Record<string, un
   } else if ((path === catalogue["local-loopback-http"] && file === "proof-cases.json") || (path === catalogue["strict-ed25519"] && c.surface === "local_loopback_http")) {
     members = ["decode_local", "decode_standard", "envelope_local"];
     if (members.some(k => typeof c[k] !== "boolean")) stop(`${c.id}: invalid loopback outcome schema`);
-  } else if ((path === catalogue["role-attestation"] && file === "attestation-cases.json") || (path === catalogue["strict-ed25519"] && c.surface === "role_attestation")) {
+  } else if ((path === catalogue["role-attestation"] && file === "attestation-cases.json") || ((path === catalogue["strict-ed25519"] || path === catalogue["string-or-uri"]) && c.surface === "role_attestation")) {
     members = ["decode", "verify"];
     if (members.some(k => typeof c[k] !== "boolean")) stop(`${c.id}: invalid attestation outcome schema`);
   } else return stop(`${c.id}: no expected or declared outcome schema`);

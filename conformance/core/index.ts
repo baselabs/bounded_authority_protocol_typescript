@@ -6,11 +6,11 @@ import { core as v3 } from "./v3.js";
 import { core as localLoopbackHttp } from "./local_loopback_http.js";
 import { core as roleAttestation } from "./role_attestation.js";
 import { core as contentAssertion } from "./content_assertion.js";
-import { core as strictEd25519 } from "./strict_ed25519.js";
+import { core as strictEd25519, stringOrUri } from "./strict_ed25519.js";
 import { core as producerCanonicality } from "./producer_canonicality.js";
 import { core as selectorFloatZero } from "./selector_float_zero.js";
 
 import { core as contentAssertionEs256 } from "./content_assertion_es256.js";
 import { core as actionApproval } from "./action_approval.js";
 
-export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, producerCanonicality, selectorFloatZero, contentAssertionEs256, actionApproval];
+export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, stringOrUri, producerCanonicality, selectorFloatZero, contentAssertionEs256, actionApproval];
