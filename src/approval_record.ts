@@ -60,14 +60,16 @@ export function resources(value: readonly string[], b: Limits, canonicalize: boo
     }
     return [...unique].sort((a, z) => compare(a[1], z[1])).map(([name]) => name);
   }
+  const names: string[] = [];
   let previous: Uint8Array | undefined;
   for (const name of value) {
     scalar(name, b.stringBytes);
     const current = strUtf8(name);
     assert(previous === undefined || compare(previous, current) < 0, "resource order");
     previous = current;
+    names.push(name);
   }
-  return value;
+  return names;
 }
 
 const FIELDS = ["action", "approverRole", "requestId", "resources", "revisionDigest", "subject"] as const;

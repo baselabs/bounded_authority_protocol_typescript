@@ -253,52 +253,63 @@ function cap(value: unknown, b: Bounds): asserts value is number {
 
 function preflight(context: ApprovalContext) {
   ca.object(context);
-  assert(context.bounds !== undefined, "explicit bounds");
-  const bounds = ca.bounded(context.bounds), limits = record.limits(bounds, context.recordBounds);
-  record.scalar(context.trustDomain, resolve(bounds, "identifier_bytes"));
-  ca.identifier(context.audience, bounds);
-  record.requestId(context.requestId, limits, bounds);
-  ca.bytes(context.revisionDigest, 32);
-  assert(context.revisionDigest.buffer instanceof ArrayBuffer, "borrowed revision bytes");
-  record.scalar(context.subject, limits.stringBytes);
-  record.scalar(context.action, limits.stringBytes);
-  record.resources(context.resources, limits, false);
-  const expectedRoles = roles(context.roles, limits, true);
-  ca.integer(context.now, bounds);
-  cap(context.maxStaleness, bounds);
-  cap(context.maxLifetime, bounds);
-  if (Object.hasOwn(context, "maxActive")) cap(context.maxActive, bounds);
-  return {bounds, limits, expectedRoles};
+  const {
+    bounds: suppliedBounds, recordBounds, trustDomain, audience, requestId, revisionDigest,
+    subject, action, resources: suppliedResources, roles: suppliedRoles, now, maxStaleness, maxLifetime, maxActive,
+  } = context;
+  assert(suppliedBounds !== undefined, "explicit bounds");
+  const bounds = ca.bounded(suppliedBounds), limits = record.limits(bounds, recordBounds);
+  record.scalar(trustDomain, resolve(bounds, "identifier_bytes"));
+  ca.identifier(audience, bounds);
+  record.requestId(requestId, limits, bounds);
+  ca.bytes(revisionDigest, 32);
+  assert(revisionDigest.buffer instanceof ArrayBuffer, "borrowed revision bytes");
+  record.scalar(subject, limits.stringBytes);
+  record.scalar(action, limits.stringBytes);
+  const resources = record.resources(suppliedResources, limits, false);
+  const expectedRoles = roles(suppliedRoles, limits, true);
+  ca.integer(now, bounds);
+  cap(maxStaleness, bounds);
+  cap(maxLifetime, bounds);
+  if (maxActive !== undefined || Object.hasOwn(context, "maxActive")) cap(maxActive, bounds);
+  return {
+    bounds, limits, expectedRoles,
+    context: {trustDomain, audience, requestId, revisionDigest, subject, action, resources, now, maxStaleness, maxLifetime, maxActive},
+  };
 }
 
-function snapshot(context: ApprovalContext, suite: ca.Suite, name: Suite, bounds: Bounds, limits: record.Limits) {
-  const value = context.snapshot;
+function snapshot(value: ApprovalContext["snapshot"], trustDomain: string, suite: ca.Suite, name: Suite, bounds: Bounds, limits: record.Limits) {
   ca.object(value);
-  assert(value.trustDomain === context.trustDomain && value.suite === name, "snapshot domain and suite");
-  record.scalar(value.provenance, resolve(bounds, "identifier_bytes"));
-  ca.integer(value.asOf, bounds);
-  assert(Array.isArray(value.entries), "snapshot entries");
+  const {trustDomain: domain, suite: selectedSuite, provenance, asOf, entries} = value;
+  assert(domain === trustDomain && selectedSuite === name, "snapshot domain and suite");
+  record.scalar(provenance, resolve(bounds, "identifier_bytes"));
+  ca.integer(asOf, bounds);
+  assert(Array.isArray(entries), "snapshot entries");
   const keys = new Map<string, {entry: TrustedApprover; roles: Set<string>; fingerprint: Uint8Array}>();
-  for (const entry of value.entries as readonly TrustedApprover[]) {
-    ca.object(entry);
-    ca.object(entry.key);
-    assert(Object.keys(entry.key).length === 4 &&
-      ["keyId", "publicKey", "validFrom", "validBefore"].every(k => Object.hasOwn(entry.key, k)), "historical key fields");
-    ca.validateHistoricalKey(entry.key, bounds, suite);
-    assert(entry.key.publicKey.buffer instanceof ArrayBuffer, "borrowed key bytes");
-    ca.identifier(entry.issuer, bounds);
-    const names = roles(entry.roles, limits, false);
+  for (const supplied of entries as readonly TrustedApprover[]) {
+    ca.object(supplied);
+    const {key: suppliedKey, issuer, roles: suppliedRoles} = supplied;
+    ca.object(suppliedKey);
+    assert(Object.keys(suppliedKey).length === 4 &&
+      ["keyId", "publicKey", "validFrom", "validBefore"].every(k => Object.hasOwn(suppliedKey, k)), "historical key fields");
+    const {keyId, publicKey, validFrom, validBefore} = suppliedKey;
+    const key = {keyId, publicKey, validFrom, validBefore};
+    ca.validateHistoricalKey(key, bounds, suite);
+    assert(publicKey.buffer instanceof ArrayBuffer, "borrowed key bytes");
+    ca.identifier(issuer, bounds);
+    const names = roles(suppliedRoles, limits, false);
+    const entry = {issuer, key, roles: [...names]};
     assert(!keys.has(entry.key.keyId), "unique key IDs");
-    keys.set(entry.key.keyId, {entry, roles: names, fingerprint: ca.admittedFingerprint(suite, entry.key.publicKey)});
+    keys.set(keyId, {entry, roles: names, fingerprint: ca.admittedFingerprint(suite, publicKey)});
   }
-  return {keys, asOf: value.asOf};
+  return {keys, asOf};
 }
 
 function age(end: number, start: number): bigint {
   return BigInt(end) - BigInt(start);
 }
 
-function authenticatedCode(p: ContentAssertionProducer, encoded: Uint8Array, r: ApprovalRecord, context: ApprovalContext,
+function authenticatedCode(p: ContentAssertionProducer, encoded: Uint8Array, r: ApprovalRecord, context: ReturnType<typeof preflight>["context"],
   trusted: TrustedApprover, enrolled: Set<string>, expectedRoles: Set<string>): Diagnostic | null {
   if (!ca.keyWindow(p, trusted.key)) return "key_window";
   if (!digestEqual(p.contentDigest, ca.hashContent(encoded)) ||
@@ -318,12 +329,12 @@ function authenticatedCode(p: ContentAssertionProducer, encoded: Uint8Array, r: 
   return null;
 }
 
-function verify<S extends Suite>(suite: ca.Suite, name: S, encoded: Uint8Array, compact: Uint8Array, context: ApprovalContext):
+function verify<S extends Suite>(suite: ca.Suite, name: S, encoded: Uint8Array, compact: Uint8Array, supplied: ApprovalContext):
   {readonly ok: true; readonly value: VerifiedApprovalFacts<S>; readonly entry: TrustedApprover} | {readonly ok: false; readonly code: Diagnostic} {
-  const expected = closed(() => preflight(context));
+  const expected = closed(() => preflight(supplied));
   if (!expected.ok) return failure("invalid_context");
-  const {bounds, limits, expectedRoles} = expected.value;
-  const trust = closed(() => snapshot(context, suite, name, bounds, limits));
+  const {bounds, limits, expectedRoles, context} = expected.value;
+  const trust = closed(() => snapshot(supplied.snapshot, context.trustDomain, suite, name, bounds, limits));
   if (!trust.ok) return failure("trust_unavailable");
   const staleness = age(context.now, trust.value.asOf);
   if (staleness < 0n || staleness > BigInt(context.maxStaleness)) return failure("stale_trust");

@@ -25,6 +25,38 @@ function run(api: Api, id: string) {
   return (suite === "es256" ? api.verifyEs256 : api.verifyEddsa)(record, compact, context);
 }
 
+test("approval uses the lifetime cap read during preflight", () => {
+  const {record, compact, context} = get("eddsa-verified");
+  assert.ok(aa.verifyEddsa(record, compact, context).ok);
+  let reads = 0;
+  const changing = {...context, get maxLifetime() {
+    return ++reads === 1 ? 0 : context.maxLifetime;
+  }};
+  assert.deepEqual(aa.verifyEddsa(record, compact, changing), {ok: false, code: "lifetime_too_long"});
+  assert.equal(reads, 1);
+});
+
+test("approval verifies and checks revocation with the same admitted key", () => {
+  const {record, compact, context} = get("es256-verified");
+  const snapshot = context.snapshot!;
+  const entry = snapshot.entries[0]!;
+  const publicKey = entry.key.publicKey;
+  let reads = 0;
+  const key = {...entry.key, get publicKey() {
+    return ++reads === 1 ? publicKey : new Uint8Array(0);
+  }};
+  const changing = {...context, snapshot: {...snapshot, entries: [{...entry, key}, ...snapshot.entries.slice(1)]}};
+  let checked = 0;
+  const result = aa.verifyEs256WithPredicates(record, compact, changing, () => false, admitted => {
+    checked++;
+    assert.deepEqual(admitted.key.publicKey, publicKey);
+    return false;
+  });
+  assert.ok(result.ok);
+  assert.equal(checked, 1);
+  assert.equal(reads, 1);
+});
+
 interface Edit { readonly file: string; readonly from: string; readonly to: string }
 async function compile(edits: readonly Edit[], probe = false) {
   const result = await build({
@@ -191,14 +223,14 @@ const precedence: readonly [string, aa.Diagnostic, readonly Edit[]][] = [
   ["context-before-snapshot", "trust_unavailable", [
     // For this control, the bounds are valid and the clock is invalid. Admit the snapshot first.
     approval('  if (!expected.ok) return failure("invalid_context");', `  if (!expected.ok) {
-    const bounds = ca.bounded(context.bounds);
-    const limits = record.limits(bounds, context.recordBounds);
-    const trust = closed(() => snapshot(context, suite, name, bounds, limits));
+    const bounds = ca.bounded(supplied.bounds);
+    const limits = record.limits(bounds, supplied.recordBounds);
+    const trust = closed(() => snapshot(supplied.snapshot, supplied.trustDomain, suite, name, bounds, limits));
     return failure(trust.ok ? "invalid_context" : "trust_unavailable");
   }`),
   ]],
   ["unavailable-before-stale-and-malformed", "stale_trust", [
-    approval('  const staleness = age(context.now, trust.value.asOf);', '  const staleness = age(context.now, context.snapshot!.asOf);'),
+    approval('  const staleness = age(context.now, trust.value.asOf);', '  const staleness = age(context.now, supplied.snapshot!.asOf);'),
     ...moveAfter(snapshotGate, freshGate),
   ]],
   ["stale-before-shape", "malformed", moveAfter(freshGate, shapeGate)],
