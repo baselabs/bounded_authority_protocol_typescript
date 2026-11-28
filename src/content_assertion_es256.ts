@@ -21,8 +21,8 @@ export interface ExpectedContentAssertion extends ca.ExpectedContentAssertion {
 export type DecodedContentAssertion = ca.DecodedContentAssertion;
 /** Verified P-256 assertion facts with ES256 profile provenance. */
 export interface ContentAssertionFacts extends ca.ContentAssertionFacts {
-  /** ES256 provenance carried with verified facts and their shallow copies. */
-  readonly [stages.ES256_FACTS]: true;
+  /** ES256 profile provenance preserved by cloning or explicit field projection. */
+  readonly suite: "es256";
 }
 
 /**

@@ -228,11 +228,11 @@ function closed<T>(fn: () => T): Result<T> {
 }
 
 function failure<C extends string>(code: C): {readonly ok: false; readonly code: C} {
-  return staticRendering({ok: false as const, code}, () => `{:error, :${code}}`);
+  return staticRendering({ok: false as const, code}, () => `{:error, :${code}}`, ["ok", "code"]);
 }
 
 function success<S extends Suite>(value: VerifiedApprovalFacts<S>) {
-  return staticRendering({ok: true as const, value}, () => `{:ok, ${String(value)}}`);
+  return staticRendering({ok: true as const, value}, () => `{:ok, ${String(value)}}`, ["ok"]);
 }
 
 function roles(value: readonly string[], b: record.Limits, required: boolean): Set<string> {
@@ -413,7 +413,7 @@ function withPredicates<S extends Suite>(suite: ca.Suite, name: S, encoded: Uint
   });
   if (!outcome.ok) return failure("predicate_failed");
   if (outcome.value !== null) return failure(outcome.value);
-  return staticRendering({ok: true as const, value: verified.value}, () => "#BoundedAuthorityProtocol.ActionApproval.V1.Approved<redacted>");
+  return staticRendering({ok: true as const, value: verified.value}, () => "#BoundedAuthorityProtocol.ActionApproval.V1.Approved<redacted>", ["ok"]);
 }
 
 /**

@@ -14,9 +14,6 @@ import { canonicalSignature, es256VerifyStrict } from "./es256.js";
 import { checkedPublicKeyThumbprintRaw } from "./ec_jwk.js";
 import type { ContentAssertionProducer, ContentAssertionFacts, DecodedContentAssertion, ExpectedContentAssertion } from "./content_assertion.js";
 
-import type { ContentAssertionFacts as Es256Facts } from "./content_assertion_es256.js";
-
-export const ES256_FACTS: unique symbol = Symbol("content-assertion-es256");
 export interface Suite {
   readonly alg: "EdDSA" | "ES256";
   readonly typ: string;
@@ -133,6 +130,19 @@ function checkSignatureBounds(b: Bounds): void {
   assert(resolve(b,"encoded_segment_bytes") >= 86 && resolve(b,"decoded_segment_bytes") >= 64, "signature segment bound");
 }
 
+function checkAssemblyBounds(headerLength: number, payloadLength: number, b: Bounds): void {
+  checkSignatureBounds(b);
+  const encodedMaximum = resolve(b, "encoded_segment_bytes");
+  const decodedMaximum = resolve(b, "decoded_segment_bytes");
+  for (const length of [headerLength, payloadLength]) {
+    assert(length <= encodedMaximum, "encoded segment bound");
+    // Canonical unpadded base64url uses exactly floor(3 * n / 4) decoded bytes.
+    assert(Math.floor(length * 3 / 4) <= decodedMaximum, "decoded segment bound");
+  }
+  const length = headerLength + payloadLength + 2 + 86;
+  assert(length <= resolve(b, "compact_bytes") && length <= resolve(b, "anchor_bytes"), "projected compact bound");
+}
+
 function parseSegments(protectedBytes: Uint8Array, payloadBytes: Uint8Array, b: Bounds, suite: Suite): ContentAssertionProducer {
   const header = parseHeader(protectedBytes,b);
   assert(admitsSuite(header,suite),"protected profile");
@@ -156,22 +166,20 @@ export function assertionSigningInput(suite:Suite,p:ContentAssertionProducer,bou
       ["profile_digest",{t:"string",v:base64urlEncode(p.profileDigest)}],["content_digest",{t:"string",v:base64urlEncode(p.contentDigest)}],
       ["prev",{t:"string",v:base64urlEncode(p.prev)}],["gen",numeric(p.gen)],["iat",numeric(p.iat)],["nbf",numeric(p.nbf)],["exp",numeric(p.exp)]])};
     const h=jcsEncode(header,b),body=jcsEncode(payload,b);
-    parseSegments(h,body,b,suite);
-    checkSignatureBounds(b); // Validate emitted number lexemes and JSON limits independently of producer shapes.
+    parseSegments(h,body,b,suite); // Validate number lexemes and JSON limits independently of producer shapes.
     const protectedSegment=base64urlEncode(h),payloadSegment=base64urlEncode(body);
-    for(const segment of [protectedSegment,payloadSegment]) assert(segment.length<=resolve(b,"encoded_segment_bytes"),"encoded segment bound");
-    for(const segment of [h,body]) assert(segment.length<=resolve(b,"decoded_segment_bytes"),"decoded segment bound");
-    const length=protectedSegment.length+payloadSegment.length+2+86;
-    assert(length<=resolve(b,"compact_bytes") && length<=resolve(b,"anchor_bytes"),"projected compact bound");
+    checkAssemblyBounds(protectedSegment.length, payloadSegment.length, b);
     return {kind:suite.kind,protectedSegment,payloadSegment};
   });
 }
 export function assembleCompact(suite:Suite,input:SigningInput,signature:Uint8Array,bounds?:Bounds):Result<Uint8Array> {
   return trying(()=>{
     object(input); assert(input.kind===suite.kind,"signing kind");
-    assert(input.protectedSegment instanceof Uint8Array && input.payloadSegment instanceof Uint8Array,"signing segments");
+    const {kind, protectedSegment, payloadSegment} = input;
+    assert(protectedSegment instanceof Uint8Array && payloadSegment instanceof Uint8Array,"signing segments");
     bytes(signature,64); const b=bounded(bounds);
-    const assembled=suite.assemble(input,signature); if(!assembled.ok) fail();
+    checkAssemblyBounds(protectedSegment.length, payloadSegment.length, b);
+    const assembled=suite.assemble({kind, protectedSegment, payloadSegment},signature); if(!assembled.ok) fail();
     parse(assembled.value,b,suite); return assembled.value;
   });
 }
@@ -214,8 +222,8 @@ export function currentWindow(p: ContentAssertionProducer, now: number): "not_ye
 
 export function assertionFacts(suite: Suite,p: ContentAssertionProducer,compact: Uint8Array,fingerprint: Uint8Array, render = redacted): ContentAssertionFacts {
   const facts:ContentAssertionFacts={version:1,...p,attestorKeyFingerprint:fingerprint,digest:sha256(compact),verification:"signature_and_window",trust:"not_evaluated"};
-  if (suite.alg === "ES256") Object.defineProperty(facts, ES256_FACTS, {value:true,enumerable:true});
-  return render(facts,suite.name+".ContentAssertionFacts");
+  const withSuite = suite.alg === "ES256" ? {...facts, suite: "es256" as const} : facts;
+  return render(withSuite,suite.name+".ContentAssertionFacts");
 }
 
 function expectedContext(e:ExpectedContentAssertion,suite:Suite):Bounds {
@@ -240,7 +248,7 @@ export function verifyAssertion(suite:Suite,compact:Uint8Array,e:ExpectedContent
 }
 function validateFacts(f:ContentAssertionFacts,b:Bounds,suite:Suite):void {
   object(f); assert(f.version===1 && f.verification==="signature_and_window" && f.trust==="not_evaluated","facts markers");
-  assert(((f as Partial<Es256Facts>)[ES256_FACTS]===true)===(suite.alg==="ES256"),"facts suite");
+  assert(suite.alg === "ES256" ? Object.hasOwn(f, "suite") && f.suite === "es256" : !("suite" in f), "facts suite");
   validateProducer(f,b); bytes(f.attestorKeyFingerprint,32); bytes(f.digest,32);
 }
 export function verifySuccessor(suite:Suite,predecessor:ContentAssertionFacts,successor:ContentAssertionFacts,bounds:Bounds):Result<void> {

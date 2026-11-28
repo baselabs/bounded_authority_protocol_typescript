@@ -193,8 +193,8 @@ against both the host's role set for that operation and the enrolled key's curre
    do not replace the atomic execution transaction.
 
 Use the diagnostic code in host-local logs. Use `actionApproval.presenterResult` for
-presenter-facing results. Its failure code is always `invalid`. Default inspection and JSON
-rendering of approval results redact nested values. Read verified fields by name inside the host.
+presenter-facing results. Its failure code is always `invalid`. Approval values are available through named accessors inside the host. Default inspection,
+JSON rendering, object spread and structured cloning keep nested values private.
 
 The [offline example](../examples/action-approval.ts) shows atomic execution and delivery
 reconciliation. See the [API reference](../reference.md#action-approval) for callable surfaces

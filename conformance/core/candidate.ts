@@ -2,6 +2,7 @@
 import { base64urlDecode } from "../../src/base64url.js";
 import { strUtf8 } from "../../src/json.js";
 import { MAXIMA } from "../../src/bounds.js";
+import type { ContentAssertionFacts } from "../../src/content_assertion.js";
 import type { Result } from "../../src/error.js";
 import { certifyCorpus, completeVerdicts, type CertifiedCase } from "../certification.js";
 import { base64url, jcs } from "../digest.js";
@@ -32,6 +33,14 @@ export function project(value: unknown): unknown {
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [
     snake(key), key === "validBefore" && item === null ? "unbounded" : project(item),
   ]));
+}
+
+// Keep the frozen verdict schema independent of the TS-only suite discriminant and private accessors.
+export function projectAssertion(facts: ContentAssertionFacts): unknown {
+  const {attestorKeyId, jti, iss, aud, sub, profile, profileDigest, contentDigest, gen, prev, iat,
+    nbf, exp, version, attestorKeyFingerprint, digest, verification, trust} = facts;
+  return project({attestorKeyId, jti, iss, aud, sub, profile, profileDigest, contentDigest, gen, prev, iat,
+    nbf, exp, version, attestorKeyFingerprint, digest, verification, trust});
 }
 
 export function take<T>(result: Result<T>): T {

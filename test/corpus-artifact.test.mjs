@@ -13,8 +13,8 @@ import semver from "semver";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const source = parseSource(readFileSync(join(root, "conformance/SOURCE")));
 const files = treeFiles(join(root, "conformance/priv/conformance"));
-// A release newer than the pinned one, so every policy test holds for whichever release is pinned.
-const release = source.candidate === undefined ? source : sourceFor(files, {version: "1.0.0", checksum: "a".repeat(64)});
+// A release-shaped policy fixture with the same snapshot inventory and independent identity.
+const release = sourceFor(files, {version: "1.0.0", checksum: "a".repeat(64)});
 const later = semver.inc(release.version, "minor");
 function tar(entries) {
   const chunks = [];
@@ -97,15 +97,15 @@ test("release metadata refuses retirement and missing retirement before acceptin
   assert.deepEqual(validateReleaseMetadata(metadata, release.version), metadata);
 });
 
-test("prereleases and build metadata never become a source, adoption target, or release target", () => {
+test("prereleases and build metadata never become a release pin, adoption target, or release target", () => {
   for (const version of ["99.0.0-rc.1", "99.0.0+build.1"]) {
-    assert.throws(() => parseSource(JSON.stringify({...source, version})), /invalid release/);
-    assert.throws(() => adoptionDecision(source, {version, checksum: release.checksum}), /stable versions/);
-    assert.throws(() => assertCurrent(source, {version, checksum: release.checksum}), /stable versions/);
+    assert.throws(() => parseSource(JSON.stringify({...release, version})), /invalid release/);
+    assert.throws(() => adoptionDecision(release, {version, checksum: release.checksum}), /stable versions/);
+    assert.throws(() => assertCurrent(release, {version, checksum: release.checksum}), /stable versions/);
   }
-  assert.equal(adoptionDecision(source, {...source, version: later}), "adopt");
-  assert.equal(adoptionDecision(source, source), "same");
-  assert.equal(adoptionDecision({...source, version: later}, source), "ahead");
+  assert.equal(adoptionDecision(release, {...release, version: later}), "adopt");
+  assert.equal(adoptionDecision(release, release), "same");
+  assert.equal(adoptionDecision({...release, version: later}, release), "ahead");
 });
 test("re-fetched registry metadata must agree with the eligibility checksum", () => {
   const metadata = {version: release.version, checksum: release.checksum, retirement: null};

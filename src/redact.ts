@@ -45,7 +45,14 @@ export function redactedRendering<T extends object>(fields: T, name: string): T 
   return staticRendering(fields, render);
 }
 
-export function staticRendering<T extends object>(fields: T, render: () => string): T {
+export function staticRendering<T extends object>(fields: T, render: () => string, markers: readonly (keyof T)[] = []): T {
+  // Browser inspectors ignore the Node hook. Store values behind named getters so default
+  // previews, enumeration and descriptor inspection expose only the public markers.
+  for (const key of Reflect.ownKeys(fields) as (keyof T)[]) {
+    if (markers.includes(key)) continue;
+    const value = fields[key];
+    Object.defineProperty(fields, key, {get: () => value, enumerable: false, configurable: false});
+  }
   Object.defineProperties(fields, {
     [INSPECT]: hidden(render), toJSON: hidden(render), toString: hidden(render),
     [Symbol.toPrimitive]: hidden(render),

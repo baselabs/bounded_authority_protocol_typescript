@@ -1,12 +1,11 @@
 import * as api from "../../src/index.js";
-import { ES256_FACTS } from "../../src/content_assertion_stages.js";
 import { utf8Str, strUtf8 } from "../../src/json.js";
 import { boundsNew } from "../../src/bounds.js";
 import { trying } from "../../src/error.js";
 import { corpusDir } from "../certification.js";
 import { base64url } from "../digest.js";
 import { CoreAbort } from "./types.js";
-import { candidateCore, check, fixture, project, raw, take } from "./candidate.js";
+import { candidateCore, check, fixture, project, projectAssertion, raw, take } from "./candidate.js";
 
 const ca = api.contentAssertionEs256;
 type Producer = api.contentAssertionEs256.ContentAssertionProducer;
@@ -59,7 +58,7 @@ export const core = candidateCore("content-assertion-es256", dir, source => {
     case "assertion-verification-cases.json": {
       const context = fixture({...c.context as object, bounds: {}}) as api.contentAssertionEs256.ExpectedContentAssertion;
       const result = ca.verifyAssertion(strUtf8(c.compact as string), context);
-      return result.ok ? project(result.value) : "invalid";
+      return result.ok ? projectAssertion(result.value) : "invalid";
     }
     case "digest-cases.json": {
       const bounds = trying(() => boundsNew(c.bounds as Record<string, number>));
@@ -77,7 +76,7 @@ export const core = candidateCore("content-assertion-es256", dir, source => {
     case "successor-cases.json": {
       const restore = (suite: unknown, input: unknown) => {
         const facts = fixture(input) as Facts;
-        return suite === "es256" ? {...facts, [ES256_FACTS]: true as const} : facts;
+        return suite === "es256" ? {...facts, suite: "es256" as const} : facts;
       };
       const previous = restore(c.previous_suite, c.predecessor), next = restore(c.next_suite, c.successor);
       if (c.previous_suite !== c.next_suite) check(api.contentAssertion.verifySuccessor(previous, next, boundsNew()).ok, false, "Ed25519 mixed lineage");

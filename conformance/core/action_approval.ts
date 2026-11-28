@@ -3,7 +3,7 @@ import type { CertifiedCase } from "../certification.js";
 import { corpusDir } from "../certification.js";
 import { base64url, hashHex } from "../digest.js";
 import { CoreAbort } from "./types.js";
-import { candidateCore, check, fixture, project, raw, take } from "./candidate.js";
+import { candidateCore, check, fixture, project, projectAssertion, raw, take } from "./candidate.js";
 
 const dir = corpusDir("action-approval");
 
@@ -60,8 +60,12 @@ function recordCase(c: Record<string, unknown>) {
 function verifyCase(c: Record<string, unknown>) {
   const result = pure(c);
   if (!result.ok) return result.code;
-  const facts = project(result.value) as {record: object};
-  return {...facts, record: {...facts.record, v: 1}};
+  const {suite, trustDomain, trust, assertion, record} = result.value;
+  const {action, approverRole, requestId, resources, revisionDigest, subject} = record;
+  return {
+    suite, trust_domain: trustDomain, trust, assertion: projectAssertion(assertion),
+    record: project({action, approverRole, requestId, resources, revisionDigest, subject, v: 1}),
+  };
 }
 
 function renderingCase(id: string, c: Record<string, unknown>, source: Record<string, unknown>) {
@@ -85,7 +89,13 @@ function renderingCase(id: string, c: Record<string, unknown>, source: Record<st
     return {local: String(local), presenter: String(presenter)};
   }
   const rendered = String(actual), serialized = JSON.stringify(actual);
-  rejectCanaries(c, [rendered, serialized]);
+  // Browser previews and structured clones must expose only static markers.
+  const clone = structuredClone(actual);
+  const markers = id === "verified-facts" ? {ok: true}
+    : id === "host-local-error" ? {ok: false, code: "unknown_key"}
+    : id === "presenter-error" ? {ok: false, code: "invalid"} : {};
+  check(clone, markers, `${id}: enumerable browser preview`);
+  rejectCanaries(c, [rendered, serialized, JSON.stringify(clone)]);
   check(JSON.parse(serialized), rendered, `${id}: log rendering`);
   return rendered;
 }

@@ -62,7 +62,7 @@ async function buildWith(cryptoModule: string | null, removeLowSGate: boolean): 
 }
 
 const nobleVerifyVariant = (zip215: boolean) => `
-export { BACKEND_ID, sha256, sha256Concat, ed25519Key, p256Key, p256Verify } from ${JSON.stringify(PORTABLE)};
+export { BACKEND_ID, digestEqual, sha256, sha256Concat, ed25519Key, p256Key, p256Verify } from ${JSON.stringify(PORTABLE)};
 import { verify, hashes } from "@noble/ed25519";
 import { sha512 } from "@noble/hashes/sha2.js";
 hashes.sha512 = sha512;
@@ -72,7 +72,7 @@ export function ed25519Cofactorless(key: { raw: Uint8Array }, message: Uint8Arra
 `;
 
 const lowSTrueVariant = `
-export { BACKEND_ID, sha256, sha256Concat, ed25519Key, ed25519Cofactorless, p256Key } from ${JSON.stringify(PORTABLE)};
+export { BACKEND_ID, digestEqual, sha256, sha256Concat, ed25519Key, ed25519Cofactorless, p256Key } from ${JSON.stringify(PORTABLE)};
 import { p256 } from "@noble/curves/nist.js";
 export function p256Verify(key: { raw: Uint8Array }, message: Uint8Array, sig: Uint8Array): boolean {
   return p256.verify(sig, message, key.raw, { lowS: true, prehash: true, format: "compact" });

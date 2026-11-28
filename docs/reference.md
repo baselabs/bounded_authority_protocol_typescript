@@ -385,7 +385,7 @@ Facts are plain readonly objects. They carry identifiers, times and digests, nev
 selector values, signatures, JWK containers or nonces, and none of them is a credential. No facts
 type has an "allowed" or decision field.
 
-Facts follow the profile's redaction rule ("fixed redacted rendering and
+Standalone verification facts follow the profile's redaction rule ("fixed redacted rendering and
 no generic encoder, string, or enumeration protocol") the way the Elixir reference does:
 
 - Fields are ordinary read-only properties. They read, spread, `structuredClone` and compare by
@@ -840,7 +840,10 @@ assert.deepEqual(contentAssertion.contentDigest(new Uint8Array(0)), { ok: false 
 `decodeAssertion`, `assertionDigest`, `contentDigest`, `verifyAssertion`, and
 `verifySuccessor` for the ES256 sibling. The namespace uses the same producer,
 decoded attributes and expected context described above, with a 65-byte uncompressed
-SEC1 key and ES256-specific verified facts. Signing input kind is
+SEC1 key and ES256-specific verified facts. Their enumerable `suite: "es256"` field
+survives ordinary object copies and `structuredClone`. ES256 successor verification
+requires it on both facts. The Ed25519 profile retains its original field shape and
+refuses facts that carry a suite field. Signing input kind is
 `content_assertion_es256`. Assembly enforces canonical raw, low-S signatures.
 Decode and assertion digest validate framing, and verification checks the signature equation.
 
@@ -867,6 +870,10 @@ The helper accepts two synchronous read-only callbacks. `IsRevoked` receives the
 entry and its verified fingerprint. `IsReplayed` receives the trust domain, verified issuer,
 and artifact ID. `PredicateDiagnostic` reports `revoked_key`, `replayed`, or
 `predicate_failed`. A presenter receives the same `invalid` code for every refusal.
+
+Approval results and their nested data keep values behind named accessors. Generic
+inspection, spreading and cloning expose only static result markers and the local code
+on a failure. Read the fields you need by name.
 
 [Approval guide](guides/content-assertions.md#approve-one-request-revision) ·
 [Diagnostic ordering](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-action-approval-v1.md#43-ordered-outcome-contract)

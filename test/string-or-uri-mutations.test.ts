@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import * as content from "../src/content_assertion.js";
+import { BACKEND_ID } from "../src/index.js";
 import { strUtf8, utf8Str } from "../src/json.js";
 import type { Result } from "../src/error.js";
 
@@ -23,16 +24,28 @@ function moduleUrl(source:string):string {
   const emitted=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
   return `data:text/javascript;base64,${Buffer.from(emitted).toString("base64")}`;
 }
-async function mutatedDependency(needle:string, name = "string_or_uri"):Promise<typeof content> {
-  const dependencyUrl=new URL(`../src/${name}.ts`,import.meta.url);
-  const helper=readFileSync(dependencyUrl,"utf8");
-  assert.equal(helper.split(needle).length-1,1,"exact one guard mutation");
-  const helperSource=helper.replace(needle,"").replace(/from "(\.\/[^" ]+)\.js"/g,(_m,s:string)=>`from "${new URL(s+".ts",dependencyUrl).href}"`);
-  const helperUrl=moduleUrl(helperSource);
-  const contentUrl=new URL("../src/content_assertion.ts",import.meta.url);
-  const source=readFileSync(contentUrl,"utf8").replace(JSON.stringify(`./${name}.js`),JSON.stringify(helperUrl))
-    .replace(/from "(\.\/[^" ]+)\.js"/g,(_m,s:string)=>`from "${new URL(s+".ts",contentUrl).href}"`);
-  return await import(moduleUrl(source)) as typeof content;
+function resolveImports(source: string, base: URL): string {
+  return source.replace('from "#crypto"', `from "./crypto/${BACKEND_ID}.js"`)
+    .replace(/from "(\.\/[^" ]+)\.js"/g, (_match, relative: string) => `from "${new URL(relative + ".ts", base).href}"`);
+}
+
+async function mutatedDependency(needle: string, name = "string_or_uri"): Promise<typeof content> {
+  const dependency = new URL(`../src/${name}.ts`, import.meta.url);
+  const helper = readFileSync(dependency, "utf8");
+  assert.equal(helper.split(needle).length - 1, 1, "exact one guard mutation");
+  const helperUrl = moduleUrl(resolveImports(helper.replace(needle, ""), dependency));
+
+  const stages = new URL("../src/content_assertion_stages.ts", import.meta.url);
+  const shared = readFileSync(stages, "utf8");
+  const dependencyImport = JSON.stringify(`./${name}.js`);
+  assert.equal(shared.split(dependencyImport).length - 1, 1, "shared stages import mutated dependency");
+  const stagesUrl = moduleUrl(resolveImports(shared.replace(dependencyImport, JSON.stringify(helperUrl)), stages));
+
+  const facade = new URL("../src/content_assertion.ts", import.meta.url);
+  const source = readFileSync(facade, "utf8");
+  const stagesImport = '"./content_assertion_stages.js"';
+  assert.equal(source.split(stagesImport).length - 1, 1, "public facade imports the shared stages");
+  return await import(moduleUrl(resolveImports(source.replace(stagesImport, JSON.stringify(stagesUrl)), facade))) as typeof content;
 }
 for(const c of [
   {name:"IPv6 group shape",needle:'if (!isIpv6(hostport.slice(1, close))) return false;',id:"http://[abc]/x"},

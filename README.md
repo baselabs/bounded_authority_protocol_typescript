@@ -452,8 +452,8 @@ indeterminate outcome at the destination before reconciling delivery.
 
 The [offline TypeScript example](docs/examples/action-approval.ts) uses SQLite and real
 Ed25519 signatures. It checks exact resource matching, both uniqueness constraints, rollback,
-and a concurrent revision update. It then runs a second process to reconcile delivery of the
-same committed intent. CI executes the example against the packed candidate.
+a mismatched prepared effect, and a concurrent revision update. Fresh workers reconcile each
+committed intent after interruptions before and after the destination commits. CI executes the example against the packed candidate.
 
 Use a capability grant with an exact record-digest selector and a holder proof when the
 executor must prove possession of a key. See the

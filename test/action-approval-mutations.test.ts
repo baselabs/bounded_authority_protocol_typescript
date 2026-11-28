@@ -5,9 +5,9 @@ import { test } from "node:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { actionApproval as aa, contentAssertionEs256, strUtf8, BACKEND_ID } from "../src/index.js";
+import { actionApproval as aa, boundsNew, contentAssertion, contentAssertionEs256, strUtf8, BACKEND_ID } from "../src/index.js";
 import { certifyCorpus, corpusDir } from "../conformance/certification.js";
-import { fixture } from "../conformance/core/candidate.js";
+import { fixture, raw, take } from "../conformance/core/candidate.js";
 import { input } from "../conformance/core/action_approval.js";
 import { fsSource } from "../conformance/node_source.js";
 
@@ -28,11 +28,11 @@ function run(api: Api, id: string) {
 interface Edit { readonly file: string; readonly from: string; readonly to: string }
 async function compile(edits: readonly Edit[], probe = false) {
   const result = await build({
-    stdin: {contents: 'export * from "./src/action_approval.ts"; export { verifyAssertion } from "./src/content_assertion_es256.ts";', resolveDir: root, loader: "ts"},
+    stdin: {contents: 'export * from "./src/action_approval.ts"; export { assembleCompact, verifyAssertion, verifySuccessor } from "./src/content_assertion_es256.ts";', resolveDir: root, loader: "ts"},
     bundle: true, platform: "node", format: "esm", write: false,
     plugins: [{name: "approval-mutation", setup(b) {
       b.onResolve({filter: /^#crypto$/}, () => ({path: join(root, `src/crypto/${BACKEND_ID}.ts`)}));
-      b.onLoad({filter: /src[/\\](action_approval|content_assertion_stages|approval_record|es256)\.ts$/}, args => {
+      b.onLoad({filter: /src[/\\](action_approval|content_assertion_stages|approval_record|compact|es256)\.ts$/}, args => {
         let contents = readFileSync(args.path, "utf8");
         for (const {file, from, to} of edits.filter(edit => args.path.endsWith(`/${edit.file}.ts`))) {
           assert.equal(contents.split(from).length - 1, 1, from);
@@ -50,7 +50,9 @@ async function compile(edits: readonly Edit[], probe = false) {
   });
   return await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`) as Api & {
     calls: Record<string, number>;
+    assembleCompact: typeof contentAssertionEs256.assembleCompact;
     verifyAssertion: typeof contentAssertionEs256.verifyAssertion;
+    verifySuccessor: typeof contentAssertionEs256.verifySuccessor;
   };
 }
 
@@ -109,12 +111,24 @@ for (const [label, id, edit] of mutations) {
 test("approval default inspection redacts nested facts and closes presenter failures", () => {
   const result = run(aa, "rendering-canaries-verified");
   assert.ok(result.ok);
-  for (const value of [result, result.value, result.value.record, result.value.assertion]) {
+  const {record, compact, context} = get("rendering-canaries-verified");
+  const helper = aa.verifyEs256WithPredicates(record, compact, context, () => false, () => false);
+  assert.ok(helper.ok);
+  assert.deepEqual({...result}, {ok: true});
+  assert.deepEqual({...helper}, {ok: true});
+  assert.match(result.value.record.subject, /canary/);
+  assert.ok(result.value.record.revisionDigest instanceof Uint8Array);
+  for (const value of [result, helper, result.value, result.value.record, result.value.assertion]) {
     assert.equal(inspect(value), String(value));
     assert.equal(JSON.parse(JSON.stringify(value)), String(value));
     assert.match(inspect(value), /<redacted>/);
     assert.doesNotMatch(inspect(value), /canary/);
+    assert.doesNotMatch(inspect(value, {customInspect: false, getters: false, showHidden: true}), /canary/);
   }
+  const subject = Object.getOwnPropertyDescriptor(result.value.record, "subject");
+  assert.equal(subject?.enumerable, false);
+  assert.equal(typeof subject?.get, "function");
+  assert.equal(Object.hasOwn(subject!, "value"), false);
   const error = run(aa, "unknown-key");
   assert.equal(inspect(error), "{:error, :unknown_key}");
   assert.equal(inspect(aa.presenterResult(error)), "{:error, :invalid}");
@@ -132,4 +146,156 @@ test("ES256 low-S verification gate rejects a valid high-S counterpart", async (
   assert.equal(accept(contentAssertionEs256.verifyAssertion, "high-s"), false);
   const mutant = await compile([{file: "es256", from: "s <= HALF_N", to: "s < N"}]);
   assert.equal(accept(mutant.verifyAssertion, "high-s"), true);
+});
+
+const suiteGate = '  if (!ca.admitsSuite(header, suite)) return failure("unsupported_algorithm");';
+const snapshotGate = '  if (!trust.ok) return failure("trust_unavailable");';
+const freshGate = '  if (staleness < 0n || staleness > BigInt(context.maxStaleness)) return failure("stale_trust");';
+const shapeGate = '  if (!framed.ok) return failure("malformed");';
+const payloadStart = '  const payload = closed(() => {';
+const payloadGate = '  if (!payload.ok) return failure("malformed");';
+const lookup = '  const trusted = trust.value.keys.get(header.keyId);';
+const lookupGate = '  if (trusted === undefined) return failure("unknown_key");';
+const signatureGate = '  if (!suite.verify(seg.signingInput, seg.signature, trusted.entry.key.publicKey)) return failure("bad_signature");';
+const keyWindowGate = '  if (!ca.keyWindow(p, trusted.key)) return "key_window";';
+const recordGate = '  if (!digestEqual(p.contentDigest, ca.hashContent(encoded)) ||\n' +
+  '      p.profile !== PROFILE || !digestEqual(p.profileDigest, profileDigest())) return "record_mismatch";';
+const issuerGate = '  if (p.iss !== trusted.issuer) return "issuer_mismatch";';
+const audienceGate = '  if (p.aud !== context.audience) return "audience_mismatch";';
+const requestGate = '  if (r.requestId !== context.requestId || r.requestId !== p.sub ||\n' +
+  '      !digestEqual(r.revisionDigest, context.revisionDigest)) return "request_mismatch";';
+const subjectGate = '  if (r.subject !== context.subject) return "subject_mismatch";';
+const scopeGate = '  if (r.action !== context.action || r.resources.length !== context.resources.length ||\n' +
+  '      !r.resources.every((name, i) => name === context.resources[i])) return "scope_mismatch";';
+const windowGate = '  const window = ca.currentWindow(p, context.now);\n  if (window !== null) return window;';
+const lifetimeGate = '  if (age(p.exp, p.iat) > BigInt(context.maxLifetime)) return "lifetime_too_long";';
+const activeGate = '  if (context.maxActive !== undefined && age(p.exp, p.nbf) > BigInt(context.maxActive)) return "active_too_long";';
+const roleGate = '  if (!expectedRoles.has(r.approverRole) || !enrolled.has(r.approverRole)) return "role_not_permitted";';
+
+const moveAfter = (check: string, after: string): Edit[] => [approval(check), approval(after, `${after}\n${check}`)];
+const precedence: readonly [string, aa.Diagnostic, readonly Edit[]][] = [
+  ["context-before-snapshot", "trust_unavailable", [
+    // For this control, the bounds are valid and the clock is invalid. Admit the snapshot first.
+    approval('  if (!expected.ok) return failure("invalid_context");', `  if (!expected.ok) {
+    const bounds = ca.bounded(context.bounds);
+    const limits = record.limits(bounds, context.recordBounds);
+    const trust = closed(() => snapshot(context, suite, name, bounds, limits));
+    return failure(trust.ok ? "invalid_context" : "trust_unavailable");
+  }`),
+  ]],
+  ["unavailable-before-stale-and-malformed", "stale_trust", [
+    approval('  const staleness = age(context.now, trust.value.asOf);', '  const staleness = age(context.now, context.snapshot!.asOf);'),
+    ...moveAfter(snapshotGate, freshGate),
+  ]],
+  ["stale-before-shape", "malformed", moveAfter(freshGate, shapeGate)],
+  ["shape-before-suite", "unsupported_algorithm", [
+    {file: "content_assertion_stages", from: '  kid(keyId,b);', to: ""},
+    approval(payloadStart, `${payloadStart}\n    ca.kid(header.keyId, bounds);`),
+  ]],
+  ["signature-width-before-suite", "unsupported_algorithm", [
+    {file: "compact", from: '  if (signature.length !== resolve(b, "signature_bytes" as MaximaKey)) fail("compact: signature width");', to: ""},
+    approval(suiteGate, `${suiteGate}\n  if (seg.signature.length !== resolve(bounds, "signature_bytes")) return failure("malformed");`),
+  ]],
+  ["suite-before-claims", "malformed", moveAfter(suiteGate, payloadGate)],
+  ["suite-before-key", "unknown_key", moveAfter(suiteGate, lookupGate)],
+  ["record-shape-before-key", "unknown_key", [
+    approval(`${lookup}\n${lookupGate}`),
+    approval(payloadStart, `${lookup}\n${lookupGate}\n${payloadStart}`),
+  ]],
+  ["key-before-signature", "bad_signature", [
+    // Supply an admitted fallback key to run the equation before reporting an unknown key ID.
+    approval(`${lookupGate}\n${signatureGate}`, `  const key = trusted?.entry.key ?? trust.value.keys.values().next().value?.entry.key;
+  if (key === undefined || !suite.verify(seg.signingInput, seg.signature, key.publicKey)) return failure("bad_signature");
+${lookupGate}`),
+  ]],
+  ["signature-before-times", "key_window", [
+    approval(keyWindowGate),
+    approval(signatureGate, `  if (!ca.keyWindow(claims, trusted.entry.key)) return failure("key_window");\n${signatureGate}`),
+  ]],
+  ["key-window-before-record-binding", "record_mismatch", moveAfter(keyWindowGate, recordGate)],
+  ["record-binding-before-issuer", "issuer_mismatch", moveAfter(recordGate, issuerGate)],
+  ["issuer-before-audience", "audience_mismatch", moveAfter(issuerGate, audienceGate)],
+  ["audience-before-request", "request_mismatch", moveAfter(audienceGate, requestGate)],
+  ["request-before-subject", "subject_mismatch", moveAfter(requestGate, subjectGate)],
+  ["request-before-scope", "scope_mismatch", moveAfter(requestGate, scopeGate)],
+  ["subject-before-scope", "scope_mismatch", moveAfter(subjectGate, scopeGate)],
+  ["scope-before-time", "not_yet_valid", moveAfter(scopeGate, windowGate)],
+  ["window-before-duration", "lifetime_too_long", moveAfter(windowGate, lifetimeGate)],
+  ["lifetime-before-active", "active_too_long", moveAfter(lifetimeGate, activeGate)],
+  ["active-before-role", "role_not_permitted", moveAfter(activeGate, roleGate)],
+];
+
+for (const [id, reorderedCode, edits] of precedence) {
+  test(`approval precedence mutation changes the first diagnostic: ${id}`, async () => {
+    const vector = cases.find(c => c.file === "multi-fault-cases.json" && c.id === id);
+    assert.ok(vector, "pinned multi-fault vector");
+    assert.notEqual(vector.value, reorderedCode, "two distinguishable failures");
+    assert.deepEqual(run(aa, id), {ok: false, code: vector.value});
+    const mutant = await compile(edits);
+    assert.deepEqual(run(mutant, id), {ok: false, code: reorderedCode});
+  });
+}
+
+test("ES256 lineage survives structuredClone and another SDK copy, and both suites reject mixed facts", async () => {
+  const vectors = certifyCorpus(fsSource(), corpusDir("content-assertion-es256")).cases;
+  const facts = (id: string) => {
+    const item = vectors.find(c => c.id === id)!.data;
+    const context = fixture({...item.context as object, bounds: {}}) as contentAssertionEs256.ExpectedContentAssertion;
+    return take(contentAssertionEs256.verifyAssertion(strUtf8(item.compact as string), context));
+  };
+  const old = structuredClone(facts("verified")), next = structuredClone(facts("successor"));
+  const bounds = boundsNew();
+  assert.equal(old.suite, "es256");
+  assert.equal(next.suite, "es256");
+  assert.equal(contentAssertionEs256.verifySuccessor(old, next, bounds).ok, true);
+  const second = await compile([]);
+  assert.equal(second.verifySuccessor(old, next, bounds).ok, true);
+
+  const {suite: _oldSuite, ...ed25519Old} = old;
+  const {suite: _nextSuite, ...ed25519Next} = next;
+  assert.equal(contentAssertion.verifySuccessor(ed25519Old, ed25519Next, bounds).ok, true, "legacy facts shape");
+  assert.equal(contentAssertion.verifySuccessor(old, next, bounds).ok, false);
+  assert.equal(contentAssertion.verifySuccessor(ed25519Old, next, bounds).ok, false);
+  assert.equal(contentAssertion.verifySuccessor(old, ed25519Next, bounds).ok, false);
+  assert.equal(contentAssertionEs256.verifySuccessor(ed25519Old as typeof old, next, bounds).ok, false);
+  assert.equal(contentAssertionEs256.verifySuccessor(old, ed25519Next as typeof next, bounds).ok, false);
+  assert.equal(contentAssertionEs256.verifySuccessor(ed25519Old as typeof old, ed25519Next as typeof next, bounds).ok, false);
+});
+
+test("ES256 assembly enforces caller bounds before allocating the compact", async () => {
+  const {signing} = JSON.parse(Buffer.from(fsSource().read(`${corpusDir("content-assertion-es256")}/profile.json`)).toString("utf8")) as {
+    signing: {payload: Record<string, unknown>; kid: string; signature: string; compact: string};
+  };
+  const producer = fixture({...signing.payload, attestor_key_id: signing.kid}) as contentAssertionEs256.ContentAssertionProducer;
+  const input = take(contentAssertionEs256.assertionSigningInput(producer));
+  const signature = raw(signing.signature);
+  const probe: Edit = {
+    file: "compact",
+    from: 'function concat(...parts: Uint8Array[]): Uint8Array {',
+    to: 'function concat(...parts: Uint8Array[]): Uint8Array {\n  if (parts.length === 5) throw new Error("compact allocation reached");',
+  };
+  const instrumented = await compile([probe]);
+  assert.equal(contentAssertionEs256.assembleCompact(input, signature).ok, true);
+  assert.throws(() => instrumented.assembleCompact(input, signature), /compact allocation reached/);
+
+  const header = {...input, protectedSegment: new Uint8Array(1024).fill(65)};
+  const payload = {...input, payloadSegment: new Uint8Array(1024).fill(65)};
+  const cases = [
+    [header, boundsNew({encoded_segment_bytes: 1023})],
+    [payload, boundsNew({encoded_segment_bytes: 1023})],
+    [payload, boundsNew({decoded_segment_bytes: 767})],
+    [input, boundsNew({compact_bytes: signing.compact.length - 1})],
+    [input, boundsNew({anchor_bytes: signing.compact.length - 1})],
+  ] as const;
+  for (const [segments, limits] of cases) {
+    assert.deepEqual(instrumented.assembleCompact(segments, signature, limits), {ok: false});
+  }
+  const mutant = await compile([
+    probe,
+    {file: "content_assertion_stages", from: "    checkAssemblyBounds(protectedSegment.length, payloadSegment.length, b);\n    const assembled",
+      to: "    const assembled"},
+  ]);
+  for (const [segments, limits] of cases) {
+    assert.throws(() => mutant.assembleCompact(segments, signature, limits), /compact allocation reached/);
+  }
 });

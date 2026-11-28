@@ -75,7 +75,7 @@ const WIRE = ["action", "approver_role", "request_id", "resources", "revision_di
 
 export function encode(record: ApprovalRecord, ca: Bounds, b: Limits, canonicalize: boolean): Uint8Array {
   object(record);
-  assert(Object.keys(record).length === FIELDS.length && FIELDS.every(k => Object.hasOwn(record, k)), "closed record fields");
+  assert(FIELDS.every(k => Object.hasOwn(record, k)) && Object.keys(record).every(k => FIELDS.some(field => field === k)), "closed record fields");
   assert(typeof canonicalize === "boolean", "canonicalize option");
   scalar(record.action, b.stringBytes);
   scalar(record.approverRole, b.stringBytes);

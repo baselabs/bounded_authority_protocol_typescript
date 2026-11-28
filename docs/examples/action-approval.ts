@@ -26,7 +26,10 @@ function transaction<T>(db: DatabaseSync, work: () => T): T {
   }
 }
 
-function deliver(hostPath: string, destinationPath: string, intentId: string, reconcile: boolean): void {
+type DeliveryStep = "stop-before-commit" | "stop-after-commit" | "reconcile";
+const interruptedExit = 75;
+
+function deliver(hostPath: string, destinationPath: string, intentId: string, step: DeliveryStep): void {
   const host = new DatabaseSync(hostPath);
   const destination = new DatabaseSync(destinationPath);
   try {
@@ -34,12 +37,17 @@ function deliver(hostPath: string, destinationPath: string, intentId: string, re
     assert.ok(typeof intent?.effect === "string");
     const effect = intent.effect;
     const lookup = destination.prepare("SELECT effect FROM applied WHERE id = ?");
-    if (reconcile) assert.equal(lookup.get(intentId)?.effect, effect);
-
-    // The destination's uniqueness constraint makes retry of the same committed intent safe.
-    destination.prepare("INSERT INTO applied VALUES (?, ?) ON CONFLICT DO NOTHING").run(intentId, effect);
+    // An absent effect can be delivered under the same idempotency identity. A present effect
+    // must match the committed intent before the host records delivery.
+    if (lookup.get(intentId) === undefined) {
+      transaction(destination, () => {
+        destination.prepare("INSERT INTO applied VALUES (?, ?) ON CONFLICT DO NOTHING").run(intentId, effect);
+        if (step === "stop-before-commit") process.exit(interruptedExit);
+      });
+    }
     assert.equal(lookup.get(intentId)?.effect, effect);
-    if (reconcile) host.prepare("UPDATE intents SET delivered = 1 WHERE id = ?").run(intentId);
+    if (step === "stop-after-commit") process.exit(interruptedExit);
+    host.prepare("UPDATE intents SET delivered = 1 WHERE id = ?").run(intentId);
   } finally {
     destination.close();
     host.close();
@@ -47,7 +55,9 @@ function deliver(hostPath: string, destinationPath: string, intentId: string, re
 }
 
 if (process.argv[2] === "--deliver") {
-  deliver(process.argv[3]!, process.argv[4]!, process.argv[5]!, process.argv[6] === "reconcile");
+  const step = process.argv[6];
+  assert.ok(step === "stop-before-commit" || step === "stop-after-commit" || step === "reconcile");
+  deliver(process.argv[3]!, process.argv[4]!, process.argv[5]!, step);
 } else {
   const directory = mkdtempSync(join(tmpdir(), "bap-approval-"));
   try {
@@ -82,7 +92,7 @@ if (process.argv[2] === "--deliver") {
           entries: [{issuer, roles: ["release reviewer"], key: {keyId: "review-key",
             publicKey: Buffer.from(publicKey.export({format: "jwk"}).x!, "base64url"), validFrom: 0, validBefore: null}}]},
       };
-      for (const id of ["activate-7", "activate-copy", "activate-rollback", "activate-external", "activate-compare"]) {
+      for (const id of ["activate-7", "activate-copy", "activate-rollback", "activate-before", "activate-after", "activate-compare", "activate-mismatch"]) {
         host.prepare("INSERT INTO requests VALUES (?, ?)").run(id, version);
       }
 
@@ -104,9 +114,14 @@ if (process.argv[2] === "--deliver") {
       const subset = issue(context.requestId, "subset", [resources[0]!]);
       assert.deepEqual(approval.verifyEddsa(subset.record, subset.compact, context), {ok: false, code: "scope_mismatch"});
 
-      function claim(facts: approval.VerifiedApprovalFacts, effect: string, mode: "local" | "external"): string {
+      type Effect = Pick<approval.ApprovalRecord, "subject" | "action" | "resources">;
+
+      function claim(facts: approval.VerifiedApprovalFacts, prepared: Effect, mode: "local" | "external"): string {
         return transaction(host, () => {
-          const {requestId, revisionDigest: revision} = facts.record;
+          const {requestId, revisionDigest: revision, subject, action, resources} = facts.record;
+          const approvedEffect = {subject, action, resources};
+          assert.deepEqual(prepared, approvedEffect, "effect mismatch");
+          const effect = JSON.stringify(approvedEffect);
           const revisionHex = Buffer.from(revision).toString("hex");
           assert.equal(host.prepare("SELECT revision FROM requests WHERE id = ?").get(requestId)?.revision, revisionHex, "revision changed");
           const insertArtifact = host.prepare("INSERT INTO artifacts VALUES (?, ?, ?) ON CONFLICT DO NOTHING");
@@ -121,7 +136,18 @@ if (process.argv[2] === "--deliver") {
       }
 
       // The effect comes from the same host request used to form the expected context.
-      const effect = JSON.stringify({subject, action, resources});
+      const effect = {subject, action, resources};
+      const mismatch = verified("activate-mismatch", "artifact-mismatch");
+      const mismatchedEffects = [{...effect, subject: "other"}, {...effect, action: "inspect"},
+        {...effect, resources: [resources[0]!]}];
+      for (const prepared of mismatchedEffects) {
+        for (const mode of ["local", "external"] as const) {
+          assert.throws(() => claim(mismatch, prepared, mode), /effect mismatch/);
+        }
+      }
+      for (const table of ["artifacts", "claims", "effects", "intents"]) {
+        assert.equal(host.prepare(`SELECT count(*) AS total FROM ${table}`).get()?.total, 0);
+      }
       claim(verified("activate-7", "artifact-1"), effect, "local");
       assert.throws(() => claim(verified("activate-copy", "artifact-1"), effect, "local"), /artifact collision/);
       assert.throws(() => claim(verified("activate-7", "artifact-2"), effect, "local"), /request revision collision/);
@@ -144,18 +170,26 @@ if (process.argv[2] === "--deliver") {
       }
       assert.throws(() => claim(comparison, effect, "external"), /revision changed/);
 
-      const id = claim(verified("activate-external", "artifact-5"), effect, "external");
-      const worker = (step: "apply" | "reconcile") => {
+      const worker = (id: string, step: DeliveryStep) => {
         const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "--deliver", hostPath, destinationPath, id, step], {encoding: "utf8"});
-        assert.equal(child.status, 0, child.stderr);
+        assert.equal(child.status, step === "reconcile" ? 0 : interruptedExit, child.stderr);
       };
-      // The first worker exits after the destination commits, before the host records delivery.
-      worker("apply");
-      assert.equal(host.prepare("SELECT delivered FROM intents WHERE id = ?").get(id)?.delivered, 0);
-      worker("reconcile");
-      assert.equal(destination.prepare("SELECT count(*) AS total FROM applied").get()?.total, 1);
-      assert.equal(host.prepare("SELECT delivered FROM intents WHERE id = ?").get(id)?.delivered, 1);
-      console.log("approval: exact effect, atomic claims, and one durable delivery");
+      for (const [request, step, destinationCommitted] of [
+        ["activate-before", "stop-before-commit", false],
+        ["activate-after", "stop-after-commit", true],
+      ] as const) {
+        const id = claim(verified(request, `artifact-${request}`), effect, "external");
+        worker(id, step);
+        const delivered = host.prepare("SELECT delivered FROM intents WHERE id = ?");
+        const applied = destination.prepare("SELECT effect FROM applied WHERE id = ?");
+        assert.equal(delivered.get(id)?.delivered, 0);
+        assert.equal(applied.get(id) !== undefined, destinationCommitted);
+        worker(id, "reconcile");
+        assert.equal(applied.get(id)?.effect, JSON.stringify(effect));
+        assert.equal(delivered.get(id)?.delivered, 1);
+      }
+      assert.equal(destination.prepare("SELECT count(*) AS total FROM applied").get()?.total, 2);
+      console.log("approval: exact effect, atomic claims, and recovered deliveries");
     } finally {
       revisions.close();
       destination.close();
