@@ -44,6 +44,10 @@
       "title": "Role attestations"
     },
     {
+      "path": "docs/guides/holder-custody-attestations.md",
+      "title": "Holder custody attestations"
+    },
+    {
       "path": "docs/guides/content-assertions.md",
       "title": "Content assertions"
     },

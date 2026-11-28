@@ -8,11 +8,10 @@ digest. The online artifact job and release gate bind that snapshot to the named
 Hex outages and retirement fail closed. See [Corpus adoption](guides/corpus-adoption.md) for the
 vendoring tool, candidate mode, weekly adoption branches, dispatched CI, and issues, release eligibility, and verdict digest contract.
 
-This page lists every export of `@bounded-authority-protocol/verifier` 2.0.1, whose
-exports are the same as 1.0.0's; behavior new in 2.0.0 is marked where it is described, and the
-[changelog](../CHANGELOG.md) records every earlier change. The task guides show
-the functions in context; every `ts` sample on this page and in the guides is typechecked and run
-by the repository's test suite.
+This page covers the public exports of `@bounded-authority-protocol/verifier`. The
+[changelog](../CHANGELOG.md) records when profiles and other behavior were added. The task
+guides show the functions in context. The repository's test suite typechecks and runs
+the `ts` samples on this page and in the guides.
 
 - [Conventions](#conventions)
 - [Contract-major 1: the package root](#contract-major-1-the-package-root)
@@ -25,6 +24,7 @@ by the repository's test suite.
 - [The `v2` namespace](#the-v2-namespace)
 - [The `v3` namespace](#the-v3-namespace)
 - [The `roleAttestation` namespace](#the-roleattestation-namespace)
+- [The `holderCustodyAttestation` namespace](#the-holdercustodyattestation-namespace)
 - [The `contentAssertion` namespace](#the-contentassertion-namespace)
 
 ## Conventions
@@ -776,6 +776,25 @@ assert.ok(decoded.ok);
 assert.equal(decoded.value.role, "holder");
 assert.equal(decoded.value.verification, "not_evaluated");
 ```
+
+## The `holderCustodyAttestation` namespace
+
+Import `holderCustodyAttestation` from `@bounded-authority-protocol/verifier` to select
+`bap-holder-custody-attestation/1`. See the [guide](guides/holder-custody-attestations.md).
+
+| Function | Result value |
+|---|---|
+| `attestationSigningInput(attestation, bounds?)` | Canonical `SigningInput` with kind `holder_custody_attestation` |
+| `assembleAttestationCompact(input, signature, bounds?)` | Compact JWS bytes after structural and Ed25519 signature encoding checks |
+| `decodeAttestation(compact, bounds?)` | `AttestationDecoded` with the unverified holder key and custody claims |
+| `verifyAttestation(compact, expected)` | Redacted `AttestationFacts` with IDs, thumbprints, custody class, and window |
+
+`AttestationProducer` takes the attestor `keyId`, attestation `jti`, `subjectKeyId`,
+`subjectPublicKey`, `custodyClass`, `notBefore`, and `expiresAt`. `AttestationDecoded`
+adds `version: 1` and `verification: "not_evaluated"`. `ExpectedAttestation` takes a
+`HistoricalPublicKey` as `attestor`, the expected `subjectKeyId` and `subjectPublicKey`,
+integer `now`, and optional `bounds`. The holder and attestor keys are raw 32-byte Ed25519
+public keys. Each function returns the closed `{ ok: false }` on rejection.
 
 ## The `contentAssertion` namespace
 

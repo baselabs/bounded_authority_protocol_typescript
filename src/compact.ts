@@ -91,7 +91,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
  * @inline
  * @category Canonical bytes
  */
-export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion" | "content_assertion_es256";
+export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "holder_custody_attestation" | "content_assertion" | "content_assertion_es256";
 
 /**
  * Canonical unpadded-base64url JWS segments for external signing. Sign the exact ASCII
@@ -115,7 +115,7 @@ export interface SigningInput {
 // and payload for the selected kind. All Ed25519 profiles share this assembler. See erratum 3.
 export function assembleSegments(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
-    const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation", "content_assertion"];
+    const KINDS: SigningInputKind[] = ["grant", "proof", "local_loopback_http_proof", "boundary_anchor", "key_transition", "role_attestation", "holder_custody_attestation", "content_assertion"];
     if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
     assert(signature.length === 64, "assemble_segments: signature width 64");
     if (!signatureGate(signature)) fail("assemble_segments: signature canonicality");

@@ -8,6 +8,7 @@ const paths = Object.values(catalogue).sort();
 const candidatePins: Readonly<Record<string, string>> = {
   [catalogue["content-assertion-es256"]]: "K7Qbj7yfvcAmf3KXbVYoC-BUFCDkwUJBymIvHdBx0Ms",
   [catalogue["action-approval"]]: "U4S4aA-2dXNgaWxoicXWs7cG6HKO3Mrm3QxcRoqBmmQ",
+  [catalogue["holder-custody-attestation"]]: "b59Jd5LcqLr3eEuj52ugUHcx54WZhuidhl9fiaBLz6o",
 };
 const releasedPaths = paths.filter(path => !Object.hasOwn(candidatePins, path));
 const stop = (message: string): never => { throw new CoreAbort("corpus certification", message); };

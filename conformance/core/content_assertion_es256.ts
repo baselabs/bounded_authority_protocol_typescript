@@ -5,29 +5,12 @@ import { trying } from "../../src/error.js";
 import { corpusDir } from "../certification.js";
 import { base64url } from "../digest.js";
 import { CoreAbort } from "./types.js";
-import { candidateCore, check, fixture, project, projectAssertion, raw, take } from "./candidate.js";
+import { acceptsCompact, candidateCore, check, fixture, project, projectAssertion, raw, take } from "./candidate.js";
 
 const ca = api.contentAssertionEs256;
 type Producer = api.contentAssertionEs256.ContentAssertionProducer;
 type Facts = api.contentAssertionEs256.ContentAssertionFacts;
 const dir = corpusDir("content-assertion-es256");
-
-function foreign(id: string, compact: string): boolean {
-  const bytes = strUtf8(compact);
-  if (id === "ca1") return api.contentAssertion.decodeAssertion(bytes).ok;
-  if (id === "role-attestation") return api.roleAttestation.decodeAttestation(bytes).ok;
-  if (id === "loopback") return api.decodeLocalLoopbackHttpProof(bytes).ok;
-  const [major, artifact] = id.split("-");
-  const profile = major === "v1" ? api : major === "v2" ? api.v2 : api.v3;
-  if (artifact === "grant") return profile.decodeGrant(bytes).ok;
-  if (artifact === "proof") return profile.decodeProof(bytes).ok;
-  const [header, payload, signature] = compact.split(".");
-  if (artifact !== "anchor" && artifact !== "transition") throw new CoreAbort("candidate conformance", "unknown compact profile");
-  return profile.assembleCompact({
-    kind: artifact === "anchor" ? "boundary_anchor" : "key_transition",
-    protectedSegment: strUtf8(header!), payloadSegment: strUtf8(payload!),
-  }, raw(signature!)).ok;
-}
 
 export const core = candidateCore("content-assertion-es256", dir, source => {
   const {signing} = JSON.parse(utf8Str(source.read(`${dir}/profile.json`))) as {
@@ -84,7 +67,7 @@ export const core = candidateCore("content-assertion-es256", dir, source => {
     }
     case "separation-cases.json":
       return !ca.decodeAssertion(strUtf8(c.foreign as string)).ok &&
-        foreign(id, c.foreign as string) && !foreign(id, c.candidate as string) ? "both_reject" : "unexpected";
+        acceptsCompact(id, c.foreign as string) && !acceptsCompact(id, c.candidate as string) ? "both_reject" : "unexpected";
     default: throw new CoreAbort("candidate conformance", `unknown ES256 case family ${file}`);
   }
 });

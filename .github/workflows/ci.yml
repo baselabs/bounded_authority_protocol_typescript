@@ -209,6 +209,9 @@ jobs:
       - name: Check conformance for vendored strict Ed25519 snapshot
         run: pnpm conformance:strict-ed25519
 
+      - name: Check conformance for vendored StringOrURI snapshot
+        run: pnpm conformance:string-or-uri
+
       - name: Check conformance for vendored local-loopback HTTP profile snapshot
         run: pnpm conformance:local-loopback-http
 
@@ -218,8 +221,8 @@ jobs:
       - name: Check conformance for vendored selector-float-zero snapshot
         run: pnpm conformance:selector-float-zero
 
-      - name: Candidate content assertion and approval conformance
-        run: pnpm conformance:content-assertion-es256 && pnpm conformance:action-approval
+      - name: Candidate profile conformance
+        run: pnpm conformance:content-assertion-es256 && pnpm conformance:action-approval && pnpm conformance:holder-custody-attestation
 
       - name: Unit + permissiveness under the portable backend (--conditions=bap-portable)
         run: pnpm test:portable

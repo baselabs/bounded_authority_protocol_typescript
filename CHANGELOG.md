@@ -4,6 +4,9 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Add the holder custody attestation profile with explicit Ed25519 signing inputs, compact
+  assembly, bounded decode, and signature and window verification against a pinned corpus.
+
 - Qualify IPv6-only StringOrURI hosts with the additive erratum corpus and candidate rejection cases.
 
 - Implement ES256 content assertions and action approval verification for explicitly selected

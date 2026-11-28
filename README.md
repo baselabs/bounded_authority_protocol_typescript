@@ -321,8 +321,7 @@ artifact rejects under `v3` with the closed error, and the same holds in every o
 
 ## Sibling profiles
 
-Three profiles share major 1's primitives but are byte-distinct: no contract-major parses them,
-and they parse no major's bytes.
+Standalone profiles use their own wire types. Select the profile explicitly when you call its API.
 
 - **Local-loopback proofs** (`bap-application-proof/local-loopback-http/1`): a proof profile for
   local development servers, with literal `127.0.0.1` or `[::1]` HTTP targets and a mandatory
@@ -333,6 +332,8 @@ and they parse no major's bytes.
 - **Role attestations** (`bap-role-attestation/1`, the `roleAttestation` namespace): an attestor
   key binds a subject key to the `issuer` or `holder` role for a window inside the attestor key's
   validity. See [Role attestations](docs/guides/role-attestations.md).
+- **Holder custody attestations** (`bap-holder-custody-attestation/1`, the `holderCustodyAttestation`
+  namespace) bind an Ed25519 holder key to a custody class for a bounded window.
 - **Content assertions** (`bap-content-assertion/1`, the `contentAssertion` namespace): an
   attestor binds the digest of exact content bytes to an issuer, one audience, a subject lineage,
   a pinned semantic profile, a generation and predecessor, and a validity window. See
@@ -433,6 +434,14 @@ fault or a wrong-key rotation race fails as `signing_failed` instead of producin
 package rejects. Its full key-handle contract is in the
 [signer's README](https://github.com/baselabs/bounded_authority_signer_typescript#readme).
 
+## Verifying holder custody
+
+Call `holderCustodyAttestation.verifyAttestation(compact, expected)` with the trusted attestor
+and its key window, the expected holder key ID and raw public key, and the evaluation time.
+The returned facts report `custodyClass` as `standard` for a holder-controlled key or `hosted`
+for a key an operator holds under a non-exporting handle. The host decides which attestors
+and custody classes to accept. See [Holder custody attestations](docs/guides/holder-custody-attestations.md).
+
 ## Verifying a grant before issuing it
 
 A host can require approval before it issues a capability grant, activates a configuration,
@@ -474,7 +483,7 @@ Promotion to main and publication require a released source pin.
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
 
 <!-- corpus-source:start -->
-Candidate corpus: monorepo commit `c966228b4b3be26a9295cae96c537bc938c8146b`.
+Candidate corpus: monorepo commit `468a914dfe11235869855f3e0a08c0d8c6271270`.
 
 | Corpus | Cases |
 |---|---|
@@ -485,17 +494,18 @@ Candidate corpus: monorepo commit `c966228b4b3be26a9295cae96c537bc938c8146b`.
 | role-attestation | 40 |
 | content-assertion | 154 |
 | strict-ed25519 | 2410 |
-| string-or-uri | 6 |
+| string-or-uri | 24 |
 | producer-canonicality | 75 |
 | selector-float-zero | 161 |
 | content-assertion-es256 | 223 |
 | action-approval | 331 |
+| holder-custody-attestation | 76 |
 <!-- corpus-source:end -->
 
 Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.
 Expected values come from the certified cases; computed values come from the SDK. A future
-published `bap-corpus-verdict-digests/1` file must agree as well. The approval and ES256
-assertion indexes also pin the SHA-256 of JCS verdicts keyed by file and case ID.
+published `bap-corpus-verdict-digests/1` file must agree as well. The approval, ES256
+assertion, and holder custody indexes also pin the SHA-256 of JCS verdicts keyed by file and case ID.
 The npm tarball excludes the corpus.
 
 [Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring

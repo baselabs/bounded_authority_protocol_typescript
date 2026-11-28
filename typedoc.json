@@ -57,6 +57,7 @@
     "docs/guides/rotate-keys.md",
     "docs/guides/chains-and-archives.md",
     "docs/guides/role-attestations.md",
+    "docs/guides/holder-custody-attestations.md",
     "docs/guides/content-assertions.md",
     "docs/guides/durable-replay.md",
     "docs/guides/integration-security.md",

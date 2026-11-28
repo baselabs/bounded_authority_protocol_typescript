@@ -1,3 +1,4 @@
+import * as api from "../../src/index.js";
 // Fixture representation only. Outputs are projected from SDK results.
 import { base64urlDecode } from "../../src/base64url.js";
 import { strUtf8 } from "../../src/json.js";
@@ -64,4 +65,23 @@ export function candidateCore<T>(corpus: string, dir: string, prepare: (source: 
     }));
     return {corpus, verdicts, failures: [], summary: [`${corpus}: ${cases.length} cases agree; pinned index ${indexSha}`]};
   }};
+}
+
+export function acceptsCompact(id: string, compact: string): boolean {
+  const bytes = strUtf8(compact);
+  if (id === "ca-es256") return api.contentAssertionEs256.decodeAssertion(bytes).ok;
+  if (id === "ca1") return api.contentAssertion.decodeAssertion(bytes).ok;
+  if (id === "role-attestation") return api.roleAttestation.decodeAttestation(bytes).ok;
+  if (id === "loopback") return api.decodeLocalLoopbackHttpProof(bytes).ok;
+  const [major, artifact] = id.split("-");
+  const profile = major === "v1" ? api : major === "v2" ? api.v2 : major === "v3" ? api.v3 : undefined;
+  if (profile === undefined) throw new CoreAbort("candidate conformance", `unknown compact profile ${id}`);
+  if (artifact === "grant") return profile.decodeGrant(bytes).ok;
+  if (artifact === "proof") return profile.decodeProof(bytes).ok;
+  const [header, payload, signature] = compact.split(".");
+  if (artifact !== "anchor" && artifact !== "transition") throw new CoreAbort("candidate conformance", `unknown compact profile ${id}`);
+  return profile.assembleCompact({
+    kind: artifact === "anchor" ? "boundary_anchor" : "key_transition",
+    protectedSegment: strUtf8(header!), payloadSegment: strUtf8(payload!),
+  }, raw(signature!)).ok;
 }

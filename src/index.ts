@@ -84,6 +84,9 @@ export * as v3 from "./v3.js";
  */
 export * as roleAttestation from "./role_attestation.js";
 
+/** Standalone Ed25519 holder custody attestations selected by the caller. */
+export * as holderCustodyAttestation from "./holder_custody_attestation.js";
+
 /**
  * The bap-content-assertion/1 sibling profile binds exact content and application-profile digests to a
  * signed assertion under an already-trusted Ed25519 attestor. Generation and predecessor digests

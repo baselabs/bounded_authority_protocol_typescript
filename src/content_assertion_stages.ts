@@ -130,7 +130,7 @@ function checkSignatureBounds(b: Bounds): void {
   assert(resolve(b,"encoded_segment_bytes") >= 86 && resolve(b,"decoded_segment_bytes") >= 64, "signature segment bound");
 }
 
-function checkAssemblyBounds(headerLength: number, payloadLength: number, b: Bounds): void {
+export function checkAssemblyBounds(headerLength: number, payloadLength: number, b: Bounds): void {
   checkSignatureBounds(b);
   const encodedMaximum = resolve(b, "encoded_segment_bytes");
   const decodedMaximum = resolve(b, "decoded_segment_bytes");

@@ -12,5 +12,6 @@ import { core as selectorFloatZero } from "./selector_float_zero.js";
 
 import { core as contentAssertionEs256 } from "./content_assertion_es256.js";
 import { core as actionApproval } from "./action_approval.js";
+import { core as holderCustodyAttestation } from "./holder_custody_attestation.js";
 
-export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, stringOrUri, producerCanonicality, selectorFloatZero, contentAssertionEs256, actionApproval];
+export const CORES: readonly Core[] = [v1, v2, v3, localLoopbackHttp, roleAttestation, contentAssertion, strictEd25519, stringOrUri, producerCanonicality, selectorFloatZero, contentAssertionEs256, actionApproval, holderCustodyAttestation];

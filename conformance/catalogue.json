@@ -10,5 +10,6 @@
   "producer-canonicality": "producer-canonicality",
   "selector-float-zero": "selector-float-zero",
   "content-assertion-es256": "attestation-profiles/content-assertion-es256/v1",
-  "action-approval": "content-profiles/action-approval/v1"
+  "action-approval": "content-profiles/action-approval/v1",
+  "holder-custody-attestation": "attestation-profiles/holder-custody-attestation/v1"
 }
