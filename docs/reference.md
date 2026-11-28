@@ -789,6 +789,9 @@ Import `holderCustodyAttestation` from `@bounded-authority-protocol/verifier` to
 | `decodeAttestation(compact, bounds?)` | `AttestationDecoded` with the unverified holder key and custody claims |
 | `verifyAttestation(compact, expected)` | Redacted `AttestationFacts` with IDs, thumbprints, custody class, and window |
 
+`CustodyClass` is `"standard"` when the holder holds its own key and `"hosted"` when an
+operator holds the key under a non-exporting handle.
+
 `AttestationProducer` takes the attestor `keyId`, attestation `jti`, `subjectKeyId`,
 `subjectPublicKey`, `custodyClass`, `notBefore`, and `expiresAt`. `AttestationDecoded`
 adds `version: 1` and `verification: "not_evaluated"`. `ExpectedAttestation` takes a

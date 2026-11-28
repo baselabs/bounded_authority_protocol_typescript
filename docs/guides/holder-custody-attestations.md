@@ -62,3 +62,7 @@ binding.
 
 [API reference](../reference.md#the-holdercustodyattestation-namespace) ·
 [Normative specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-holder-custody-attestation-v1.md)
+
+---
+
+Documentation navigation: [Previous: Role attestations](role-attestations.md) · [Next: Content assertions](content-assertions.md)

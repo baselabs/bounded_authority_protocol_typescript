@@ -141,6 +141,22 @@ const numeric = (value: number): Tagged => ({t: "int", v: value});
 /**
  * Produces canonical protected and payload segments for external Ed25519 signing.
  * Sign the ASCII segments joined by a single period. Invalid inputs return `{ok: false}`.
+ * @category Holder custody attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync } from "node:crypto";
+ * import { holderCustodyAttestation } from "@bounded-authority-protocol/verifier";
+ *
+ * const holder = generateKeyPairSync("ed25519");
+ * const holderPublicKey = Buffer.from(holder.publicKey.export({ format: "jwk" }).x!, "base64url");
+ * const input = holderCustodyAttestation.attestationSigningInput({
+ *   keyId: "custody-attestor-1", jti: "custody-1", subjectKeyId: "holder-1",
+ *   subjectPublicKey: holderPublicKey, custodyClass: "standard", notBefore: 100, expiresAt: 200,
+ * });
+ * assert.ok(input.ok);
+ * assert.equal(input.value.kind, "holder_custody_attestation");
+ * ```
  */
 export function attestationSigningInput(attestation: AttestationProducer, bounds?: Bounds): Result<SigningInput> {
   return trying(() => {
@@ -168,6 +184,33 @@ export function attestationSigningInput(attestation: AttestationProducer, bounds
 /**
  * Assembles a compact JWS from the signing input and a canonical Ed25519 signature.
  * Assembly checks encoding and structure. Invalid inputs return `{ok: false}`.
+ * @category Holder custody attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign } from "node:crypto";
+ * import { holderCustodyAttestation } from "@bounded-authority-protocol/verifier";
+ *
+ * const attestor = generateKeyPairSync("ed25519");
+ * const holder = generateKeyPairSync("ed25519");
+ * const holderPublicKey = Buffer.from(holder.publicKey.export({ format: "jwk" }).x!, "base64url");
+ * const input = holderCustodyAttestation.attestationSigningInput({
+ *   keyId: "custody-attestor-1", jti: "custody-1", subjectKeyId: "holder-1",
+ *   subjectPublicKey: holderPublicKey, custodyClass: "standard", notBefore: 100, expiresAt: 200,
+ * });
+ * assert.ok(input.ok);
+ *
+ * const { protectedSegment, payloadSegment } = input.value;
+ * const message = Buffer.concat([protectedSegment, Buffer.from("."), payloadSegment]);
+ * const signature = sign(null, message, attestor.privateKey);
+ * const compact = holderCustodyAttestation.assembleAttestationCompact(input.value, signature);
+ * assert.ok(compact.ok);
+ *
+ * const decoded = holderCustodyAttestation.decodeAttestation(compact.value);
+ * assert.ok(decoded.ok);
+ * assert.equal(decoded.value.custodyClass, "standard");
+ * assert.equal(decoded.value.verification, "not_evaluated");
+ * ```
  */
 export function assembleAttestationCompact(input: SigningInput, signature: Uint8Array, bounds?: Bounds): Result<Uint8Array> {
   return trying(() => {
@@ -185,7 +228,17 @@ export function assembleAttestationCompact(input: SigningInput, signature: Uint8
   });
 }
 
-/** Decodes bounded, structurally valid custody claims. Invalid inputs return `{ok: false}`. */
+/**
+ * Decodes bounded, structurally valid custody claims. Invalid inputs return `{ok: false}`.
+ * @category Holder custody attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { holderCustodyAttestation, strUtf8 } from "@bounded-authority-protocol/verifier";
+ *
+ * assert.deepEqual(holderCustodyAttestation.decodeAttestation(strUtf8("invalid")), { ok: false });
+ * ```
+ */
 export function decodeAttestation(compact: Uint8Array, bounds?: Bounds): Result<AttestationDecoded> {
   return trying(() => ({
     ...parse(compact, bounded(bounds)).claims,
@@ -204,6 +257,42 @@ function fingerprint(key: Uint8Array, bounds: Bounds): Uint8Array {
 /**
  * Verifies the Ed25519 signature, the expected holder binding, separation of attestor and holder,
  * and both validity windows. Returns redacted facts or the closed failure `{ok: false}`.
+ * @category Holder custody attestations
+ * @example
+ * ```ts
+ * import assert from "node:assert/strict";
+ * import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+ * import { holderCustodyAttestation } from "@bounded-authority-protocol/verifier";
+ *
+ * const raw = (key: KeyObject) => Buffer.from(key.export({ format: "jwk" }).x!, "base64url");
+ * const attestor = generateKeyPairSync("ed25519");
+ * const holder = generateKeyPairSync("ed25519");
+ * const holderPublicKey = raw(holder.publicKey);
+ * const input = holderCustodyAttestation.attestationSigningInput({
+ *   keyId: "custody-attestor-1", jti: "custody-1", subjectKeyId: "holder-1",
+ *   subjectPublicKey: holderPublicKey, custodyClass: "standard", notBefore: 100, expiresAt: 200,
+ * });
+ * assert.ok(input.ok);
+ *
+ * const { protectedSegment, payloadSegment } = input.value;
+ * const message = Buffer.concat([protectedSegment, Buffer.from("."), payloadSegment]);
+ * const signature = sign(null, message, attestor.privateKey);
+ * const compact = holderCustodyAttestation.assembleAttestationCompact(input.value, signature);
+ * assert.ok(compact.ok);
+ *
+ * const expected = {
+ *   attestor: { keyId: "custody-attestor-1", publicKey: raw(attestor.publicKey), validFrom: 0, validBefore: 200 },
+ *   subjectKeyId: "holder-1",
+ *   subjectPublicKey: holderPublicKey,
+ *   now: 150,
+ * };
+ * const verified = holderCustodyAttestation.verifyAttestation(compact.value, expected);
+ * assert.ok(verified.ok);
+ * assert.equal(verified.value.custodyClass, "standard");
+ * assert.equal(verified.value.verification, "signature_and_window");
+ * assert.equal(verified.value.trust, "not_evaluated");
+ * assert.deepEqual(holderCustodyAttestation.verifyAttestation(compact.value, { ...expected, now: 200 }), { ok: false });
+ * ```
  */
 export function verifyAttestation(compact: Uint8Array, expected: ExpectedAttestation): Result<AttestationFacts> {
   return trying(() => {

@@ -203,4 +203,4 @@ for exact bytes and diagnostic precedence.
 
 ---
 
-Documentation navigation: [Previous: Role attestations](role-attestations.md) · [Next: Durable replay reservations](durable-replay.md)
+Documentation navigation: [Previous: Holder custody attestations](holder-custody-attestations.md) · [Next: Durable replay reservations](durable-replay.md)

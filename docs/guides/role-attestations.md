@@ -84,4 +84,4 @@ The full rules are in the
 
 ---
 
-Documentation navigation: [Previous: Consumption chains and archives](chains-and-archives.md) · [Next: Content assertions](content-assertions.md)
+Documentation navigation: [Previous: Consumption chains and archives](chains-and-archives.md) · [Next: Holder custody attestations](holder-custody-attestations.md)
