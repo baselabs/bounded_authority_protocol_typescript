@@ -101,9 +101,11 @@ jobs:
           test "pnpm@$pnpm_version" = "$manager"
       - name: Install (frozen lockfile)
         run: pnpm install --frozen-lockfile
-      # Check the pinned artifact, not freshness. Hex outages and retirement fail closed.
-      - name: Fetch, verify both Hex checksums, and compare the whole tree both ways
-        run: node scripts/check-corpus.mjs ci --main
+      # Compare the pinned Hex release or immutable candidate commit archive.
+      - name: Compare the source artifact with the vendored corpus
+        run: node scripts/check-corpus.mjs ci
+      - name: Require released corpus provenance for promotion to main
+        run: node scripts/check-corpus.mjs offline --main
 
   verify:
     needs: toolchain
@@ -215,6 +217,9 @@ jobs:
 
       - name: Check conformance for vendored selector-float-zero snapshot
         run: pnpm conformance:selector-float-zero
+
+      - name: Candidate content assertion and approval conformance
+        run: pnpm conformance:content-assertion-es256 && pnpm conformance:action-approval
 
       - name: Unit + permissiveness under the portable backend (--conditions=bap-portable)
         run: pnpm test:portable

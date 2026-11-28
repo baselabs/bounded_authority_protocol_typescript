@@ -158,6 +158,49 @@ own policy. The verifier does not derive key windows or walk key transitions. Th
 in the
 [content-assertion profile specification](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-content-assertion-v1.md).
 
+## Select ES256 explicitly
+
+Use `contentAssertionEs256` when the enrolled signing backend uses P-256. Supply a raw
+uncompressed 65-byte SEC1 public key. Use a raw 64-byte low-S signature for assembly
+and leave hashing and signing to the external backend. The verifier checks the original
+JWS signing input and fingerprints the admitted public key using its P-256 JWK thumbprint.
+
+The ES256 compact has its own protected type and signing-input kind. Configure the suite
+independently of the presented compact. Each suite has its own lineage. To enroll a lineage
+under another suite, start at generation one with an all-zero predecessor. The exact content
+digest uses the same domain under both suites.
+
+## Approve one request revision
+
+An approval record binds the action and exact resource set for one subject and request
+revision. Publish documentation, activate a configuration, or authorize access to selected
+records by choosing the action and resources in host policy. The approver role is checked
+against both the host's role set for that operation and the enrolled key's current roles.
+
+1. Encode the record with `actionApproval.encodeRecord`. Authoring can explicitly sort and
+   deduplicate a resource list. Wire input must already be canonical. Ordering uses unsigned
+   UTF-8 bytes, and strings retain their original Unicode spelling.
+2. Sign a content assertion with `profile: actionApproval.PROFILE`,
+   `profileDigest: actionApproval.profileDigest()`, `sub` equal to the request ID, and
+   the content digest of the exact record bytes. Enroll the signer for the executing host's
+   audience and keep key custody outside the verifier.
+3. Select `verifyEddsa` or `verifyEs256` from the configured operation. Supply the expected
+   audience, request ID, revision digest, subject, action, exact ordered resource set, and
+   eligible approver roles. Pass trusted current time and the snapshot for that suite and trust
+   domain. A stale snapshot is refused even if the artifact is within its signed window.
+4. Use the verified facts to claim the exact request revision. The optional host helpers
+   query revocation once followed by replay once on a pure success. Their read-only checks
+   do not replace the atomic execution transaction.
+
+Use the diagnostic code in host-local logs. Use `actionApproval.presenterResult` for
+presenter-facing results. Its failure code is always `invalid`. Default inspection and JSON
+rendering of approval results redact nested values. Read verified fields by name inside the host.
+
+The [offline example](../examples/action-approval.ts) shows atomic execution and delivery
+reconciliation. See the [API reference](../reference.md#action-approval) for callable surfaces
+and the [wire contract](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-action-approval-v1.md)
+for exact bytes and diagnostic precedence.
+
 ---
 
 Documentation navigation: [Previous: Role attestations](role-attestations.md) · [Next: Durable replay reservations](durable-replay.md)

@@ -23,7 +23,7 @@ export function parseSource(bytes) {
   if (candidate ? typeof source.candidate !== "string" || !/^[a-f0-9]{40}$/.test(source.candidate) || source.version !== null || source.checksum !== null
     : typeof source.version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(source.version) || !/^[a-f0-9]{64}$/.test(source.checksum)) fail("SOURCE: invalid release or candidate identity");
   if (typeof source.tree_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(source.tree_sha256)) fail("SOURCE: invalid tree_sha256");
-  if (!source.indexes || !same(Object.keys(source.indexes).sort(), CORPORA) || Object.values(source.indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) fail("SOURCE: exactly nine index pins required");
+  if (!source.indexes || !same(Object.keys(source.indexes).sort(), CORPORA) || Object.values(source.indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) fail("SOURCE: exactly the catalogued index pins required");
   return source;
 }
 
@@ -56,7 +56,7 @@ export function assertTree(files, source) {
 export function validateArtifact(files, source) {
   assertTree(files, source);
   const indexes = [...files.keys()].filter(p => p.endsWith("/index.json")).map(p => p.slice(0, -11)).sort();
-  if (!same(indexes, CORPORA)) fail("artifact: index inventory differs from the nine certified corpora");
+  if (!same(indexes, CORPORA)) fail("artifact: index inventory differs from the certified corpus catalogue");
   for (const path of CORPORA) {
     const indexBytes = files.get(`${path}/index.json`);
     if (!indexBytes || hash(indexBytes, "base64url") !== source.indexes[path]) fail(`${path}/index.json: SOURCE pin mismatch`);

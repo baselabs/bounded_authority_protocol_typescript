@@ -14,6 +14,7 @@
 // noble's default the backend would be a second, hidden gate, and removing the profile gate would not
 // turn its mutation test red (test/noble-options.test.ts proves the option name is honored).
 import { Point } from "@noble/ed25519";
+export { equalBytes as digestEqual } from "@noble/curves/utils.js";
 import { p256 } from "@noble/curves/nist.js";
 import { sha256 as nobleSha256, sha512 } from "@noble/hashes/sha2.js";
 import { checkedParts } from "./parts.js";

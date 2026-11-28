@@ -11,7 +11,7 @@ export function corpusSummary(files, source) {
     : `Candidate corpus: monorepo commit \`${source.candidate}\`.`;
   const rows = Object.entries(catalogue).map(([name, path]) => {
     const i = JSON.parse(files.get(`${path}/index.json`));
-    const total = i.total_cases ?? i.attestation_cases ?? (i.uri_cases !== undefined ? i.uri_cases + i.proof_cases : i.assertion_cases + i.digest_cases + i.successor_cases);
+    const total = i.total_cases ?? (i.verdict_sha256 ? i.files.reduce((sum, file) => sum + (file.cases ?? 0), 0) : undefined) ?? i.attestation_cases ?? (i.uri_cases !== undefined ? i.uri_cases + i.proof_cases : i.assertion_cases + i.digest_cases + i.successor_cases);
     return `| ${name} | ${total} |`;
   });
   return [START, identity, "", "| Corpus | Cases |", "|---|---|", ...rows, END].join("\n");

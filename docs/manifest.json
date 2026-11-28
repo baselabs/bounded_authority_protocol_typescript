@@ -102,6 +102,7 @@
     "CHANGELOG.md"
   ],
   "runnableSources": [
+    "docs/examples/action-approval.ts",
     "docs/examples/durable-replay.ts",
     "docs/examples/local-loopback.ts",
     "docs/examples/primitives.ts",

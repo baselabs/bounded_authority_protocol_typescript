@@ -14,6 +14,8 @@ pnpm conformance:v2                    # vendored contract-major v2
 pnpm conformance:v3                    # vendored contract-major v3
 pnpm conformance:role-attestation      # and the cross-profile legs
 pnpm conformance:content-assertion     # and producer/assembly byte agreement
+pnpm conformance:content-assertion-es256 # P-256 content assertion profile
+pnpm conformance:action-approval        # record, approval, predicates, and rendering
 pnpm conformance:strict-ed25519        # strict-Ed25519 verdicts
 pnpm conformance:local-loopback-http   # local-loopback proof verdicts
 pnpm conformance:producer-canonicality # producer-surface canonicality verdicts
@@ -28,7 +30,7 @@ pnpm test:tarball            # packed tarball: consumer typecheck and Node/Deno/
 pnpm test:runtimes           # Deno and Bun conformance lanes (BAP_RUNTIMES=deno,bun)
 pnpm test:browser            # Playwright lanes (BAP_BROWSERS=chromium,firefox,webkit)
 pnpm check:corpus            # complete snapshot and documentation self-consistency (offline)
-pnpm check:corpus:artifact   # real Hex identity, both checksums, and whole-tree byte comparison
+pnpm check:corpus:artifact   # pinned release or candidate artifact and whole-tree byte comparison
 pnpm secrets                 # full-history, sensitivity, staged and unstaged secret scans
 pnpm check:currency          # dependency-currency gate (latest-first)
 pnpm test:readback           # post-publish read-back

@@ -87,6 +87,8 @@
     "conformance:v3": "tsx --conditions=bap-source conformance/run_v3.ts",
     "conformance:role-attestation": "tsx --conditions=bap-source conformance/run_role_attestation.ts",
     "conformance:content-assertion": "tsx --conditions=bap-source conformance/run_content_assertion.ts",
+    "conformance:content-assertion-es256": "tsx --conditions=bap-source conformance/run_content_assertion_es256.ts",
+    "conformance:action-approval": "tsx --conditions=bap-source conformance/run_action_approval.ts",
     "conformance:strict-ed25519": "tsx --conditions=bap-source conformance/run_strict_ed25519.ts",
     "conformance:producer-canonicality": "tsx --conditions=bap-source conformance/run_producer_canonicality.ts",
     "conformance:selector-float-zero": "tsx --conditions=bap-source conformance/run_selector_float_zero.ts",

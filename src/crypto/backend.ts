@@ -33,3 +33,5 @@ export declare function p256Key(rawSec1_65: Uint8Array): BackendPublicKey;
 // ECDSA P-256 over SHA-256 of the message, signature in the raw 64-byte r || s form. Accepts both the
 // low-S and the high-S spelling: the low-S rule is the profile's gate, never the backend's.
 export declare function p256Verify(key: BackendPublicKey, message: Uint8Array, sig64: Uint8Array): boolean;
+
+export declare function digestEqual(a: Uint8Array, b: Uint8Array): boolean;

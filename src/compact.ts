@@ -91,7 +91,7 @@ function concat(...parts: Uint8Array[]): Uint8Array {
  * @inline
  * @category Canonical bytes
  */
-export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion";
+export type SigningInputKind = "grant" | "proof" | "local_loopback_http_proof" | "boundary_anchor" | "key_transition" | "role_attestation" | "content_assertion" | "content_assertion_es256";
 
 /**
  * Canonical unpadded-base64url JWS segments for external signing. Sign the exact ASCII
@@ -130,7 +130,7 @@ export function assembleSegments(input: SigningInput, signature: Uint8Array): Re
 // from Ed25519 R || S.
 export function assembleSegmentsEs256(input: SigningInput, signature: Uint8Array): Result<Uint8Array> {
   return trying(() => {
-    const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition"];
+    const KINDS: SigningInputKind[] = ["grant", "proof", "boundary_anchor", "key_transition", "content_assertion_es256"];
     if (!KINDS.includes(input.kind)) fail("assemble_segments: kind closed set");
     assert(signature.length === 64, "assemble_segments: signature width 64");
     const sigB64 = base64urlEncode(signature);

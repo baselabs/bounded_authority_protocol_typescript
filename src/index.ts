@@ -155,3 +155,9 @@ export { es256VerifyStrict } from "./es256.js";
 export { base64urlDecode, base64urlEncode } from "./base64url.js";
 export { parseSelector, selectorMatches, semanticIdentity } from "./selector.js";
 export { typedProject } from "./digest.js";
+
+/** Explicit ES256 content assertion profile using raw P-256 public keys. */
+export * as contentAssertionEs256 from "./content_assertion_es256.js";
+
+/** Canonical action approval records and suite-specific verification. */
+export * as actionApproval from "./action_approval.js";

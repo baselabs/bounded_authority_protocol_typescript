@@ -337,6 +337,10 @@ and they parse no major's bytes.
   attestor binds the digest of exact content bytes to an issuer, one audience, a subject lineage,
   a pinned semantic profile, a generation and predecessor, and a validity window. See
   [Content assertions](docs/guides/content-assertions.md).
+- **ES256 content assertions** (`bap-content-assertion-es256/1`, the `contentAssertionEs256`
+  namespace) use P-256 with a distinct wire profile and lineage.
+- **Action approval** (`bap-action-approval/1`, the `actionApproval` namespace) binds one
+  exact request revision through either preselected content assertion suite.
 
 ## Pairing with the signer
 
@@ -429,21 +433,48 @@ fault or a wrong-key rotation race fails as `signing_failed` instead of producin
 package rejects. Its full key-handle contract is in the
 [signer's README](https://github.com/baselabs/bounded_authority_signer_typescript#readme).
 
+## Verifying a grant before issuing it
+
+A host can require approval before it issues a capability grant, activates a configuration,
+publishes an artifact, or executes another exact request. The approver signs a content
+assertion over canonical approval record bytes. The host supplies the request ID, revision
+digest, subject, action, complete resource set, and eligible approver roles from its own
+operation. It selects the assertion suite and trust domain from configuration and supplies
+the executing audience, trusted time, and an independently enrolled key snapshot.
+
+Call `actionApproval.verifyEddsa` or `actionApproval.verifyEs256` before executing the
+operation. The successful facts bind the signature and record to those inputs. For one
+atomic execution, check the revision in the same transaction that conditionally claims both
+the verified artifact tuple and the exact request and revision. A collision on either claim
+refuses execution. Commit the effect or its durable intent with both claims. For an external
+effect, reuse the same committed intent and destination idempotency identity. Look up an
+indeterminate outcome at the destination before reconciling delivery.
+
+The [offline TypeScript example](docs/examples/action-approval.ts) uses SQLite and real
+Ed25519 signatures. It checks exact resource matching, both uniqueness constraints, rollback,
+and a concurrent revision update. It then runs a second process to reconcile delivery of the
+same committed intent. CI executes the example against the packed candidate.
+
+Use a capability grant with an exact record-digest selector and a holder proof when the
+executor must prove possession of a key. See the
+[content assertion guide](docs/guides/content-assertions.md#approve-one-request-revision) for the
+record codec, suite selection, and diagnostic handling.
+
 ## Conformance and release binding
 
-The snapshot at `conformance/priv/conformance/` preserves the protocol's entire published
+The snapshot at `conformance/priv/conformance/` preserves the protocol's entire pinned
 `priv/conformance/` subtree, including auxiliary schemas and vectors. Offline lanes prove
 self-consistency against `conformance/SOURCE`: its complete-tree SHA-256 and index pins cover
 all snapshot bytes, while each core checks indexed digests, counts, applicability, and unique,
 complete execution. These checks cannot establish the snapshot's origin by themselves.
 
-The online `corpus-artifact` job on every qualification run, and the release gate, establish the Hex
-binding: they fetch the named release, verify both archive checksums, and compare the whole tree
-in both directions. A Hex outage or retirement of the pinned release fails closed by design.
+The online `corpus-artifact` job compares the whole tree against the immutable commit archive for
+a candidate. For a release it verifies both Hex archive checksums before comparing the tree.
+Promotion to main and publication require a released source pin.
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
 
 <!-- corpus-source:start -->
-Pinned Hex corpus: [bounded_authority_protocol 1.1.0](https://hex.pm/packages/bounded_authority_protocol/1.1.0).
+Candidate corpus: monorepo commit `95ac5caf772c4cd18797674c46b796525b24d3b0`.
 
 | Corpus | Cases |
 |---|---|
@@ -456,15 +487,18 @@ Pinned Hex corpus: [bounded_authority_protocol 1.1.0](https://hex.pm/packages/bo
 | strict-ed25519 | 2410 |
 | producer-canonicality | 75 |
 | selector-float-zero | 161 |
+| content-assertion-es256 | 217 |
+| action-approval | 309 |
 <!-- corpus-source:end -->
 
 Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.
 Expected values come from the certified cases; computed values come from the SDK. A future
-published `bap-corpus-verdict-digests/1` file must agree as well. The npm tarball excludes the corpus.
+published `bap-corpus-verdict-digests/1` file must agree as well. The approval and ES256
+assertion indexes also pin the SHA-256 of JCS verdicts keyed by file and case ID.
+The npm tarball excludes the corpus.
 
 [Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring
-tool, candidate verification, and weekly adoption branches and landing issues. Candidate snapshots are refused
-by qualification and publication. Releases require the newest eligible stable, non-retired Hex version without build metadata after its revert window;
+tool, candidate verification, and weekly adoption branches and landing issues. Releases require the newest eligible stable, non-retired Hex version without build metadata after its revert window;
 per-push CI remains bound to the named version.
 
 Permissiveness bugs (a parser accepting what the spec forbids) are invisible to corpus agreement

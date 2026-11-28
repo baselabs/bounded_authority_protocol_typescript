@@ -4,7 +4,7 @@ The certification artifact is the entire `priv/conformance/` subtree of the Hex 
 [`bounded_authority_protocol`](https://hex.pm/packages/bounded_authority_protocol)
 named by `conformance/SOURCE`.
 This checkout preserves it byte for byte at `conformance/priv/conformance/`, including the
-schemas and auxiliary vectors outside the nine corpus directories. Tests read only this snapshot.
+schemas and auxiliary vectors outside the indexed corpus directories. Tests read only this snapshot.
 The npm package's `files` allowlist contains runtime output and package documentation, so none of
 the corpus, tests, or development tooling ships in the npm tarball.
 
@@ -14,7 +14,7 @@ the corpus, tests, or development tooling ships in the npm tarball.
 `bap-corpus-source/1` format contains `package`, `version`, `checksum`, `tree_sha256`, and `indexes`. The checksum
 is lowercase hexadecimal SHA-256 of the whole Hex tarball, obtained from the
 [release API](https://hex.pm/api/packages/bounded_authority_protocol), selecting the version in SOURCE.
-`indexes` has exactly nine keys, sorted lexicographically. Each key is a corpus directory relative
+`indexes` has exactly one key per catalogued corpus, sorted lexicographically. Each key is a corpus directory relative
 to `priv/conformance`; its value is unpadded base64url SHA-256 of that directory's `index.json`.
 The pins prove only offline self-consistency against SOURCE, not origin. The online artifact job
 and release gate bind SOURCE and every snapshot byte to the checksum-verified Hex release.
@@ -31,8 +31,8 @@ runtime lane, even when only one corpus is run.
 
 For a candidate, `version` and `checksum` are JSON null and `candidate` is the full lowercase
 40-character monorepo commit SHA. The other members and index pins follow the same rules. A
-candidate is for amendment verification with the candidate commands below. Qualification
-always checks a certified release (`ci --main`), and publication refuses a candidate.
+candidate is for amendment verification with the candidate commands below. The artifact job compares candidate bytes against the immutable commit archive. Its promotion
+gate (`offline --main`) and publication require a released source.
 
 ## Vendor and verify
 
@@ -50,7 +50,7 @@ corepack pnpm conformance:portable
 The tool fetches the release metadata, refuses retirement, fetches the tarball from `repo.hex.pm`,
 and checks its outer SHA-256 against the registry. It then verifies Hex's inner `CHECKSUM` over
 `VERSION || metadata.config || contents.tar.gz`, safely reads the inner archive, and extracts only
-`priv/conformance`. It verifies all nine index pins and every indexed file before staging SOURCE
+`priv/conformance`. It verifies every index pin and every indexed file before staging SOURCE
 and the whole snapshot together. Staging uses a temporary directory on the destination filesystem;
 renames install the completed tree with rollback on failure. The tool removes its temporary files.
 A changed checksum for an already pinned version fails closed and requires investigation.
@@ -65,15 +65,13 @@ digest derived from the corpus, independently of the per-case comparator.
 
 The GitHub commit archive over HTTPS is the equivalent of archiving a monorepo commit's subtree.
 The tool uses `https://codeload.github.com/baselabs/bounded_authority_protocol/tar.gz/<commit>`
-and selects only that commit's `priv/conformance/`. For example, this immutable commit contains
-a released corpus:
+and selects only that commit's `priv/conformance/`. Pass the full commit SHA under review:
 
 ```bash
-corepack pnpm vendor --candidate 61d26051eb1a400c9cbabf135a6c1e808bb73c30
+corepack pnpm vendor --candidate 95ac5caf772c4cd18797674c46b796525b24d3b0
 ```
 
-Replace the example SHA with the full commit SHA under review. Candidate branch CI compares the
-snapshot to that immutable commit archive. After the amendment has been released on Hex and its
+Candidate branch CI compares the snapshot to that immutable commit archive. After the amendment has been released on Hex and its
 revert window closes, vendor the released version and run the release gate:
 
 ```bash
@@ -132,6 +130,7 @@ projected outcome members:
 | Strict Ed25519 | All other surfaces, including `content_assertion` | `expected` verbatim |
 | Producer canonicality | Every case | `expected` verbatim |
 | Selector float-zero | Every case | `expected` verbatim |
+| ES256 content assertions and action approval | Every case | `expected` verbatim |
 
 Inputs and modifiers never enter the projection. An unknown or incomplete outcome schema fails.
 The runner computes the corresponding values from SDK results and orders them using the index,
@@ -143,6 +142,9 @@ to match. Its closed format is `bap-corpus-verdict-digests/1`, with `corpora` ke
 relative directory paths, each holding `index_sha256_base64url`, `case_count`, and
 `verdict_digest_sha256_base64url`. An offline test copies the real snapshot into a temporary
 directory, generates this file, proves agreement, changes its digest, and proves rejection.
+The profile indexes for ES256 content assertions and action approval additionally pin
+the reference and full-SDK verdict digests. These use the indexed file name followed by
+the case ID as the row identity.
 
 ## Derived documentation and secret scanning
 
@@ -156,8 +158,7 @@ CI installs checksum-verified Gitleaks 8.30.1 with `scripts/install_gitleaks.sh`
 merge-aware history using `.gitleaks.toml`. Developers run `pnpm secrets` with that version on PATH;
 `--check` proves sensitivity in a disposable scratch tree, `--history` scans history only, and the
 default also scans staged and unstaged changes. Rule-scoped anchored corpus path exceptions are
-justified only because every byte must match the checksum-verified Hex release, whose reference
-repository scans it. Historical removed paths are limited to the exact commits that carried them;
+limited to fixture rules, with byte identity checked against the immutable source artifact. Historical removed paths are limited to the exact commits that carried them;
 non-corpus fixture exceptions still require exact matched bytes and paths.
 
 ---

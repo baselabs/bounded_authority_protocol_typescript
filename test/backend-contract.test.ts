@@ -36,7 +36,7 @@ function refuses(fn: () => boolean): boolean {
 }
 
 test("both backends export exactly the contract's names, with their own BACKEND_ID", () => {
-  const names = ["BACKEND_ID", "ed25519Cofactorless", "ed25519Key", "p256Key", "p256Verify", "sha256", "sha256Concat"];
+  const names = ["BACKEND_ID", "digestEqual", "ed25519Cofactorless", "ed25519Key", "p256Key", "p256Verify", "sha256", "sha256Concat"];
   assert.deepEqual(Object.keys(node).sort(), names);
   assert.deepEqual(Object.keys(portable).sort(), names);
   assert.equal(node.BACKEND_ID, "node");
@@ -225,3 +225,16 @@ export function typeProbes(raw: Uint8Array, key: BackendPublicKey): void {
   portable.p256Verify(raw, raw, raw);
   node.p256Verify(key, raw, raw);
 }
+
+test("fixed-width equality works through both backends", () => {
+  for (const [name, backend] of BACKENDS) {
+    const value = new Uint8Array(32).fill(0xa5);
+    assert.equal(backend.digestEqual(value, value.slice()), true, name);
+    assert.equal(backend.digestEqual(value, value.subarray(1)), false, name);
+    for (let i = 0; i < value.length; i++) {
+      const other = value.slice();
+      other[i] = 0x5a;
+      assert.equal(backend.digestEqual(value, other), false, name);
+    }
+  }
+});

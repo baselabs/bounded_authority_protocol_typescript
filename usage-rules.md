@@ -13,6 +13,8 @@
 - Project only approved logging fields. Do not serialize or spread whole facts into events or responses.
 - Browser results are display-only. Trusted hosts verify raw credentials themselves.
 - Generate demonstration keys only in example code; private keys never enter verifier functions.
+- Select the approval suite and expected request from host configuration. Keep detailed approval
+  diagnostic codes local and commit both claims with the exact request effect or durable intent.
 - Validate signed content against the application's schema and persist rollback/fork protection separately.
 
 Candidate notebook and consumer journeys install this repository's package from the packed candidate.

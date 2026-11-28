@@ -27,8 +27,8 @@ function repinTree(dir: string): void {
 function red(label: string, run: () => unknown, pattern: RegExp): void {
   assert.throws(run, (error: Error) => { assert.match(error.message, pattern); console.log(`RED ${label}: ${error.message}`); return true; });
 }
-test("nine cores and nine SOURCE pins", () => {
-  assert.equal(CORES.length, 9);
+test("every core has a SOURCE pin", () => {
+  assert.equal(CORES.length, 11);
   const pins = JSON.parse(readFileSync(join(CONFORMANCE_DIR, "SOURCE"), "utf8")).indexes;
   assert.deepEqual(Object.keys(pins).sort(), CORES.map(c => c.dir.slice("priv/conformance/".length)).sort());
 });

@@ -14,7 +14,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const source = parseSource(readFileSync(join(root, "conformance/SOURCE")));
 const files = treeFiles(join(root, "conformance/priv/conformance"));
 // A release newer than the pinned one, so every policy test holds for whichever release is pinned.
-const later = semver.inc(source.version, "minor");
+const release = source.candidate === undefined ? source : sourceFor(files, {version: "1.0.0", checksum: "a".repeat(64)});
+const later = semver.inc(release.version, "minor");
 function tar(entries) {
   const chunks = [];
   for (const [path, data, type = "0"] of entries) {
@@ -57,7 +58,7 @@ test("transaction stages completely and removes its own residue on failure and s
     cpSync(join(root, "conformance"), join(dir, "conformance"), {recursive: true});
     const before = treeFiles(join(dir, "conformance"));
     const broken = new Map([...files, ["collision", Buffer.from("x")], ["collision/child", Buffer.from("x")]]);
-    red("transactional failure", () => installSnapshot(dir, broken, sourceFor(broken, {version: source.version, checksum: source.checksum})), /EEXIST|ENOTDIR/);
+    red("transactional failure", () => installSnapshot(dir, broken, sourceFor(broken, {version: release.version, checksum: release.checksum})), /EEXIST|ENOTDIR/);
     assert.deepEqual(treeFiles(join(dir, "conformance")), before);
     assert.deepEqual(readdirSync(dir), ["conformance"]);
     installSnapshot(dir, files, source);
@@ -70,12 +71,12 @@ test("transaction stages completely and removes its own residue on failure and s
   assert.equal(existsSync(dir), false);
 });
 test("stale SOURCE and candidate SOURCE fail release and main gates, then release pin is green", () => {
-  const newest = {version: source.version, checksum: source.checksum};
-  red("stale SOURCE", () => assertCurrent(source, {...newest, version: later}), /stale SOURCE/);
+  const newest = {version: release.version, checksum: release.checksum};
+  red("stale SOURCE", () => assertCurrent(release, {...newest, version: later}), /stale SOURCE/);
   const candidate = sourceFor(files, {candidate: "a".repeat(40)});
   red("candidate SOURCE on main", () => assertReleaseSource(candidate, true), /candidate SOURCE refused on main/);
   red("candidate release", () => assertCurrent(candidate, newest), /candidate SOURCE refused by release gate/);
-  assertCurrent(source, newest); assertReleaseSource(source, true);
+  assertCurrent(release, newest); assertReleaseSource(release, true);
   console.log("GREEN release gates: current release SOURCE accepted");
 });
 test("eligibility observes both revert windows, retirement and semantic version order", () => {
@@ -90,26 +91,26 @@ test("eligibility observes both revert windows, retirement and semantic version 
   assert.equal(newestEligible(initial, now + 1), "2.0.0");
 });
 test("release metadata refuses retirement and missing retirement before accepting a checksum", () => {
-  const metadata = {version: source.version, checksum: source.checksum, retirement: null};
-  red("retired release", () => validateReleaseMetadata({...metadata, retirement: {reason: "security"}}, source.version), /retired release/);
-  assert.throws(() => validateReleaseMetadata({version: source.version, checksum: source.checksum}, source.version), /invalid metadata/);
-  assert.deepEqual(validateReleaseMetadata(metadata, source.version), metadata);
+  const metadata = {version: release.version, checksum: release.checksum, retirement: null};
+  red("retired release", () => validateReleaseMetadata({...metadata, retirement: {reason: "security"}}, release.version), /retired release/);
+  assert.throws(() => validateReleaseMetadata({version: release.version, checksum: release.checksum}, release.version), /invalid metadata/);
+  assert.deepEqual(validateReleaseMetadata(metadata, release.version), metadata);
 });
 
 test("prereleases and build metadata never become a source, adoption target, or release target", () => {
   for (const version of ["99.0.0-rc.1", "99.0.0+build.1"]) {
     assert.throws(() => parseSource(JSON.stringify({...source, version})), /invalid release/);
-    assert.throws(() => adoptionDecision(source, {version, checksum: source.checksum}), /stable versions/);
-    assert.throws(() => assertCurrent(source, {version, checksum: source.checksum}), /stable versions/);
+    assert.throws(() => adoptionDecision(source, {version, checksum: release.checksum}), /stable versions/);
+    assert.throws(() => assertCurrent(source, {version, checksum: release.checksum}), /stable versions/);
   }
   assert.equal(adoptionDecision(source, {...source, version: later}), "adopt");
   assert.equal(adoptionDecision(source, source), "same");
   assert.equal(adoptionDecision({...source, version: later}, source), "ahead");
 });
 test("re-fetched registry metadata must agree with the eligibility checksum", () => {
-  const metadata = {version: source.version, checksum: source.checksum, retirement: null};
-  assert.deepEqual(validateReleaseMetadata(metadata, source.version, source.checksum), metadata);
-  assert.throws(() => validateReleaseMetadata({...metadata, checksum: "0".repeat(64)}, source.version, source.checksum), /differs from pinned eligibility/);
+  const metadata = {version: release.version, checksum: release.checksum, retirement: null};
+  assert.deepEqual(validateReleaseMetadata(metadata, release.version, release.checksum), metadata);
+  assert.throws(() => validateReleaseMetadata({...metadata, checksum: "0".repeat(64)}, release.version, release.checksum), /differs from pinned eligibility/);
 });
 test("subtree selection ignores irrelevant links but refuses every non-regular corpus entry", () => {
   const prefix = "bounded_authority_protocol-commit/priv/conformance/";
@@ -138,7 +139,7 @@ test("adoption rewrites the sole corpus summary and offline checks reject stale 
   const dir = mkdtempSync(join(tmpdir(), "bap-corpus-docs-"));
   try {
     cpSync(join(root, "README.md"), join(dir, "README.md"));
-    const next = {...source, version: later};
+    const next = {...release, version: later};
     assert.throws(() => assertDocumentation(dir, files, next, ["README.md"]), /summary differs/);
     rewriteCorpusSummary(dir, files, next);
     assertDocumentation(dir, files, next, ["README.md"]);

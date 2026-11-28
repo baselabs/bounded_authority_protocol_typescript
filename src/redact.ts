@@ -38,3 +38,17 @@ export function redactedInspection<T extends object>(value: T, module: string): 
   Object.defineProperty(value, INSPECT, hidden(() => rendering));
   return value;
 }
+
+// Approval results use a static rendering in inspection, string and JSON output.
+export function redactedRendering<T extends object>(fields: T, name: string): T {
+  const render = () => `#BoundedAuthorityProtocol.${name}<redacted>`;
+  return staticRendering(fields, render);
+}
+
+export function staticRendering<T extends object>(fields: T, render: () => string): T {
+  Object.defineProperties(fields, {
+    [INSPECT]: hidden(render), toJSON: hidden(render), toString: hidden(render),
+    [Symbol.toPrimitive]: hidden(render),
+  });
+  return Object.freeze(fields);
+}

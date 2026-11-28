@@ -4,6 +4,10 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Implement ES256 content assertions and action approval verification for explicitly selected
+  Ed25519 and ES256 profiles. Qualify against immutable candidate corpus indexes and preserve
+  the existing verdict pins.
+
 - Update @types/node to 26.6.7, the newest release within its declared range.
 
 - Refuse to publish a package whose changelog is not stamped for its version.

@@ -23,7 +23,7 @@ const NODE_MESSAGE =
 const NODE_BUILTINS = [...new Set(builtinModules.flatMap((name) => (name.startsWith("node:") ? [name, name.slice(5)] : [name, `node:${name}`])))].sort();
 
 const NOBLE_MESSAGE =
-  "@noble is reachable only from src/crypto/portable.ts, and only through @noble/ed25519, @noble/curves/nist.js and @noble/hashes/sha2.js (verify-only, AGENTS rule 6)";
+  "@noble is reachable only from src/crypto/portable.ts, and only through @noble/ed25519, @noble/curves/nist.js, @noble/curves/utils.js and @noble/hashes/sha2.js (verify-only, AGENTS rule 6)";
 const NOBLE_SIGNING = ["sign", "signAsync", "keygen", "keygenAsync", "getPublicKey", "getPublicKeyAsync", "utils", "hashes", "etc"];
 
 function restrictedImports({ allowNodeCrypto, allowNoble }) {
@@ -33,12 +33,13 @@ function restrictedImports({ allowNodeCrypto, allowNoble }) {
   }));
   const patterns = [{ group: allowNodeCrypto ? ["node:*", "!node:crypto"] : ["node:*"], message: NODE_MESSAGE }];
   if (allowNoble) {
+    paths.push({ name: "@noble/curves/utils.js", allowImportNames: ["equalBytes"], message: NOBLE_MESSAGE });
     paths.push({
       name: "@noble/ed25519",
       importNames: NOBLE_SIGNING,
       message: "verification only: signing, key generation, utils and the hash registry are banned (AGENTS rule 6)",
     });
-    patterns.push({ regex: "^@noble/(?!(?:ed25519|curves/nist\\.js|hashes/sha2\\.js)$)", message: NOBLE_MESSAGE });
+    patterns.push({ regex: "^@noble/(?!(?:ed25519|curves/(?:nist|utils)\\.js|hashes/sha2\\.js)$)", message: NOBLE_MESSAGE });
   } else {
     patterns.push({ group: ["@noble/**"], message: NOBLE_MESSAGE });
   }

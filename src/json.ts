@@ -172,7 +172,7 @@ function expectLit(ctx: DecodeCtx, lit: string): void {
 function parseString(ctx: DecodeCtx): Tagged {
   node(ctx);
   const start = ctx.pos;
-  const bytes = scanString(ctx, start);
+  const bytes = scanString(ctx, start, resolve(ctx.bounds, "string_bytes"));
   // RFC 8259 §2.5 / REQ1-JSON-no-normalization: a JSON string's bytes MUST be valid UTF-8. The
   // scanner copies raw bytes (multi-byte sequences pass through); validate here so an invalid byte
   // (e.g. a lone 0xff) rejects as InvalidError rather than producing a wrong JCS digest or a
@@ -189,12 +189,13 @@ function parseString(ctx: DecodeCtx): Tagged {
 // Scan a JSON string starting at the opening quote; return the decoded UTF-8 bytes. Validates escapes
 // and rejects unpaired surrogates / non-UTF-8 (REQ1-JSON-no-normalization: preserve without normalizing,
 // but the bytes must be valid UTF-8).
-function scanString(ctx: DecodeCtx, start: number): Uint8Array {
+function scanString(ctx: DecodeCtx, start: number, limit: number): Uint8Array {
   const src = ctx.src;
   // Skip opening quote.
   ctx.pos = start + 1;
   const out: number[] = [];
   for (;;) {
+    if (out.length > limit) fail("json: string byte bound");
     const c = src[ctx.pos];
     if (c === undefined) fail("json: unterminated string");
     if (c === 0x22 /* " */) {
@@ -399,7 +400,7 @@ function parseObject(ctx: DecodeCtx, childLevel: number): Tagged {
   for (;;) {
     skipWs(ctx);
     if (src[ctx.pos] !== 0x22 /* " */) fail("json: expected member name");
-    const nameBytes = scanString(ctx, ctx.pos);
+    const nameBytes = scanString(ctx, ctx.pos, resolve(ctx.bounds, "key_bytes"));
     if (nameBytes.length > resolve(ctx.bounds, "key_bytes" as MaximaKey)) fail("json: key_bytes bound");
     // A member name's bytes MUST be valid UTF-8 (RFC 8259 §2.5 / REQ1-JSON-no-normalization).
     // Validate before utf8Str so a lone 0xff in a name fails closed as InvalidError rather than
@@ -447,9 +448,9 @@ function parseArray(ctx: DecodeCtx, childLevel: number): Tagged {
   }
   for (;;) {
     skipWs(ctx);
+    if (items.length >= resolve(ctx.bounds, "array_items")) fail("json: array_items bound");
     const value = parseValue(ctx, childLevel);
     items.push(value);
-    if (items.length > resolve(ctx.bounds, "array_items" as MaximaKey)) fail("json: array_items bound");
     skipWs(ctx);
     const sep = src[ctx.pos];
     if (sep === 0x2c /* , */) {

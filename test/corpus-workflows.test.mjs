@@ -10,7 +10,7 @@ const owners = `contains(fromJSON('["corepay","palermo-git"]'), github.actor) &&
 test("candidate CI checks the named artifact and dispatch publication enforces freshness", () => {
   const ci = workflow("ci"), publish = workflow("publish");
   const ciRun = commands(ci.jobs["corpus-artifact"]);
-  assert.match(ciRun, /check-corpus.mjs ci --main/);
+  assert.match(ciRun, /check-corpus.mjs ci\n[\s\S]*check-corpus.mjs offline --main/);
   assert.doesNotMatch(ciRun, /check:corpus:release|check-corpus.mjs (release|adopt)/);
   assert.deepEqual(ci.on, {push: {branches: ["kci/**"]}});
   assert.equal(ci.jobs.qualified.if, "always()");

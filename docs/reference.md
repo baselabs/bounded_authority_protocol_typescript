@@ -833,3 +833,40 @@ assert.ok(digest.ok);
 assert.deepEqual(digest.value, sha256(compact.value));
 assert.deepEqual(contentAssertion.contentDigest(new Uint8Array(0)), { ok: false }); // empty content
 ```
+
+## ES256 content assertions
+
+`contentAssertionEs256` exposes `assertionSigningInput`, `assembleCompact`,
+`decodeAssertion`, `assertionDigest`, `contentDigest`, `verifyAssertion`, and
+`verifySuccessor` for the ES256 sibling. The namespace uses the same producer,
+decoded attributes and expected context described above, with a 65-byte uncompressed
+SEC1 key and ES256-specific verified facts. Signing input kind is
+`content_assertion_es256`. Assembly enforces canonical raw, low-S signatures.
+Decode and assertion digest validate framing, and verification checks the signature equation.
+
+## Action approval
+
+`actionApproval` implements the canonical record and its signed approval contract.
+
+| Surface | Result |
+|---|---|
+| `PROFILE` and `profileDigest` | Frozen semantic profile identifier and raw descriptor digest |
+| `encodeRecord` | Canonical approval record bytes under the effective bounds |
+| `decodeRecord` | Parsed `ApprovalRecord` with raw revision digest |
+| `verifyEddsa` and `verifyEs256` | Pure `VerificationResult` with `VerifiedApprovalFacts` or a value-free `Diagnostic` |
+| `verifyEddsaWithPredicates` and `verifyEs256WithPredicates` | `ApprovalResult` after pure verification and ordered local predicate checks |
+| `presenterResult` | `PresenterResult` containing only the closed outcome |
+
+`ApprovalContext` supplies the caller's expected request and time policy. `TrustSnapshot`
+carries entries of type `TrustedApprover` for one `Suite` and trust domain. `RecordBounds`
+tightens record bytes, per-string bytes, and resource count independently of assertion bounds.
+The parser applies the lower record and content size limits, and the lower record-string and
+content-assertion identifier limits to the request identity.
+
+The helper accepts two synchronous read-only callbacks. `IsRevoked` receives the admitted
+entry and its verified fingerprint. `IsReplayed` receives the trust domain, verified issuer,
+and artifact ID. `PredicateDiagnostic` reports `revoked_key`, `replayed`, or
+`predicate_failed`. A presenter receives the same `invalid` code for every refusal.
+
+[Approval guide](guides/content-assertions.md#approve-one-request-revision) ·
+[Diagnostic ordering](https://github.com/baselabs/bounded_authority_protocol/blob/main/spec/bap-action-approval-v1.md#43-ordered-outcome-contract)

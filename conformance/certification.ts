@@ -5,6 +5,11 @@ import { hash64, hashHex, jcs, verdictDigest } from "./digest.js";
 
 export const SNAPSHOT = "priv/conformance";
 const paths = Object.values(catalogue).sort();
+const candidatePins: Readonly<Record<string, string>> = {
+  [catalogue["content-assertion-es256"]]: "15Mp1DHeCT8WJhP70qL-g4dmtpD6Z8-8FHjq-jIrPGM",
+  [catalogue["action-approval"]]: "NUcBmDSfKwOwxd9DaFaaQ36uOYR_pLjfHNHySzPW-CY",
+};
+const releasedPaths = paths.filter(path => !Object.hasOwn(candidatePins, path));
 const stop = (message: string): never => { throw new CoreAbort("corpus certification", message); };
 const json = (source: CorpusSource, path: string): Record<string, unknown> => JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(source.read(path))) as Record<string, unknown>;
 const safe = (path: string) => path.length > 0 && !path.includes("\\") && path.split("/").every(p => p !== "" && p !== "." && p !== "..");
@@ -19,7 +24,7 @@ export function sourcePins(source: CorpusSource): Record<string, string> {
   if (candidate ? typeof pin.candidate !== "string" || !/^[a-f0-9]{40}$/.test(pin.candidate) || pin.version !== null || pin.checksum !== null
     : typeof pin.version !== "string" || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(pin.version) || typeof pin.checksum !== "string" || !/^[a-f0-9]{64}$/.test(pin.checksum)) stop("SOURCE: invalid release or candidate");
   const indexes = pin.indexes as Record<string, string>;
-  if (!indexes || jcs(Object.keys(indexes).sort()) !== jcs(paths) || Object.values(indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) stop("SOURCE: exactly nine index pins required");
+  if (!indexes || jcs(Object.keys(indexes).sort()) !== jcs(paths) || Object.values(indexes).some(v => typeof v !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(v))) stop("SOURCE: exactly the catalogued index pins required");
   if (typeof pin.tree_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(pin.tree_sha256)) stop("SOURCE: invalid tree_sha256");
   return indexes;
 }
@@ -61,6 +66,8 @@ export function certifyCorpus(source: CorpusSource, dir: string): Certification 
     const indexSha = hash64(source.read(`${dir}/index.json`));
     if (pins[path] !== indexSha) stop(`${path}/index.json: SOURCE pin mismatch`);
     const index = json(source, `${dir}/index.json`);
+    const candidate = Object.hasOwn(candidatePins, path);
+    if (candidate && indexSha !== candidatePins[path]) stop(`${path}/index.json: frozen profile pin mismatch`);
     const files = index.files as {path: string; cases?: number; sha256?: string; sha256_base64url?: string}[];
     if (!Array.isArray(files) || files.length === 0) stop(`${path}: no indexed files`);
     const declared = ["index.json", ...files.map(f => f.path)];
@@ -72,7 +79,13 @@ export function certifyCorpus(source: CorpusSource, dir: string): Certification 
       if ((major ? hash64(bytes) : hashHex(bytes)) !== (major ? f.sha256_base64url : f.sha256)) stop(`${path}/${f.path}: recorded digest mismatch`);
       let records: Record<string, unknown>[] = [];
       if (f.path.endsWith(".json")) {
-        const doc = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(bytes)) as unknown;
+        const text = new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+        // The typed corpus distinguishes numbers written with float lexemes from integer inputs.
+        const doc: unknown = candidate ? JSON.parse(text, (_key, value: unknown, context?: {source?: string}) => {
+          if (typeof value !== "number") return value;
+          if (context?.source === undefined) return stop("candidate corpus requires JSON numeric source lexemes");
+          return /[.eE]/.test(context.source) ? NaN : value;
+        }) : JSON.parse(text);
         if (Array.isArray(doc)) records = doc as Record<string, unknown>[];
         else if (doc && typeof doc === "object") {
           const object = doc as Record<string, unknown>;
@@ -88,7 +101,7 @@ export function certifyCorpus(source: CorpusSource, dir: string): Certification 
       byFile.set(f.path, records.length);
       if (f.cases !== undefined && (!Number.isSafeInteger(f.cases) || records.length !== f.cases)) stop(`${f.path}: per-file case count mismatch`);
     }
-    const total = index.total_cases ?? (path === catalogue["local-loopback-http"] ? Number(index.proof_cases) + Number(index.uri_cases)
+    const total = index.total_cases ?? (candidate ? files.reduce((n, f) => n + (f.cases ?? 0), 0) : undefined) ?? (path === catalogue["local-loopback-http"] ? Number(index.proof_cases) + Number(index.uri_cases)
       : path === catalogue["role-attestation"] ? index.attestation_cases : Number(index.assertion_cases) + Number(index.digest_cases) + Number(index.successor_cases));
     if (!Number.isSafeInteger(total) || cases.length !== total) stop(`${path}: total case count mismatch`);
     const checkCount = (key: string, names: string[]) => { if (names.reduce((n, f) => n + (byFile.get(f) ?? 0), 0) !== index[key]) stop(`${path}: ${key} count mismatch`); };
@@ -126,9 +139,21 @@ export function assertVerdictDigest(source: CorpusSource, dir: string, executed:
   if (jcs(ordered) !== jcs(executed)) stop(`${certificate.path}: verdicts are not in index order`);
   const digest = verdictDigest(ordered), expected = verdictDigest(certificate.cases.map(c => [c.id, c.value]));
   if (digest !== expected) stop(`${certificate.path}: verdict digest mismatch (${digest} != ${expected})`);
+  if (Object.hasOwn(candidatePins, certificate.path)) {
+    const index = json(source, `${dir}/index.json`);
+    const qualified = ordered.map(([id, outcome], i) => [`${certificate.cases[i]!.file}/${id}`, outcome] as const);
+    const hexDigest = (rows: readonly VerdictEntry[]) => hashHex(new TextEncoder().encode(jcs(rows)));
+    if (hexDigest(qualified) !== index.verdict_sha256) stop(`${certificate.path}: frozen profile verdict digest mismatch`);
+    const reference = qualified.filter((_, i) => {
+      const c = certificate.cases[i]!;
+      return c.file !== "helper-cases.json" && c.data.owner !== "sdk_helper";
+    });
+    if (hexDigest(reference) !== index.elixir_verdict_sha256) stop(`${certificate.path}: reference verdict digest mismatch`);
+  }
   if (source.list(SNAPSHOT).includes("verdict-digests.json")) {
     const doc = json(source, `${SNAPSHOT}/verdict-digests.json`), corpora = doc.corpora as Record<string, unknown>;
-    if (doc.format !== "bap-corpus-verdict-digests/1" || jcs(Object.keys(doc).sort()) !== jcs(["corpora", "format"]) || !corpora || jcs(Object.keys(corpora).sort()) !== jcs(paths)) stop("published verdict-digests.json: invalid format or corpus inventory");
+    if (doc.format !== "bap-corpus-verdict-digests/1" || jcs(Object.keys(doc).sort()) !== jcs(["corpora", "format"]) || !corpora || ![jcs(releasedPaths), jcs(paths)].includes(jcs(Object.keys(corpora).sort()))) stop("published verdict-digests.json: invalid format or corpus inventory");
+    if (!Object.hasOwn(corpora, certificate.path)) return digest; // profile-local verdict pin checked above
     const pin = {index_sha256_base64url: certificate.indexSha, case_count: certificate.cases.length, verdict_digest_sha256_base64url: digest};
     if (jcs(corpora[certificate.path]) !== jcs(pin)) stop(`${certificate.path}: published verdict digest mismatch`);
   }

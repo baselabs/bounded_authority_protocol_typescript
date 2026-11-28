@@ -57,16 +57,16 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Public Hex corpus jwt fixtures: every byte under this tree must equal the checksum-verified Hex release, which the reference repository itself scans; refreshes require no allowlist change"
+description = "Public corpus JWT fixtures bound to an immutable protocol artifact and indexed hashes"
 condition = "AND"
 targetRules = ["jwt"]
-paths = ['''^conformance/priv/conformance/(?:v[123]/(?:corpus|schemas|vectors)|application-profiles|attestation-profiles|strict-ed25519|producer-canonicality|selector-float-zero)/.+$''']
+paths = ['''^conformance/priv/conformance/(?:v[123]/(?:corpus|schemas|vectors)|application-profiles|attestation-profiles|content-profiles/action-approval|strict-ed25519|producer-canonicality|selector-float-zero)/.+$''']
 
 [[allowlists]]
-description = "Public Hex corpus generic-api-key fixtures: every byte under this tree must equal the checksum-verified Hex release, which the reference repository itself scans; refreshes require no allowlist change"
+description = "Public corpus generic-api-key fixtures bound to an immutable protocol artifact and indexed hashes"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^conformance/priv/conformance/(?:v[123]/(?:corpus|schemas|vectors)|application-profiles|attestation-profiles|strict-ed25519|producer-canonicality|selector-float-zero)/.+$''']
+paths = ['''^conformance/priv/conformance/(?:v[123]/(?:corpus|schemas|vectors)|application-profiles|attestation-profiles|content-profiles/action-approval|strict-ed25519|producer-canonicality|selector-float-zero)/.+$''']
 
 [[allowlists]]
 description = "Historical removed-path Exact public conformance generic-api-key matches"

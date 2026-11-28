@@ -1,7 +1,7 @@
 // The node:crypto backend (contract: ./backend.ts). These are the bodies that lived in ../ed25519.ts and
 // ../es256.ts through 0.6.0, moved without a behavior change. This is the only module in the package
 // that imports node:crypto (test/decoupling.test.ts) or uses Buffer.
-import { createHash, createPublicKey, verify as verifySig, type KeyObject } from "node:crypto";
+import { createHash, createPublicKey, timingSafeEqual, verify as verifySig, type KeyObject } from "node:crypto";
 import { base64urlEncode } from "../base64url.js";
 import { utf8Str } from "../json.js";
 import { checkedParts } from "./parts.js";
@@ -57,4 +57,8 @@ export function p256Key(rawSec1_65: Uint8Array): BackendPublicKey {
 // The raw P1363 r || s form through dsaEncoding "ieee-p1363"; DER is never a wire spelling.
 export function p256Verify(key: BackendPublicKey, message: Uint8Array, sig64: Uint8Array): boolean {
   return verifySig("sha256", Buffer.from(message), { key: asKeyObject(key), dsaEncoding: "ieee-p1363" }, Buffer.from(sig64));
+}
+
+export function digestEqual(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && timingSafeEqual(a, b);
 }
