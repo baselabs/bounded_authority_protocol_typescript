@@ -504,9 +504,12 @@ Candidate corpus: monorepo commit `919be3277facd16f5fdbd12945348e41a5f352a1`.
 <!-- corpus-source:end -->
 
 Verdict digests use unpadded base64url SHA-256 of JCS `[[id, value], ...]`, in index order.
-Expected values come from the certified cases; computed values come from the SDK. A future
-published `bap-corpus-verdict-digests/1` file must agree as well. The approval, ES256
-assertion, and holder custody indexes also pin the SHA-256 of JCS verdicts keyed by file and case ID.
+Expected values come from the certified cases. Computed values come from the SDK.
+When present, the published `bap-corpus-verdict-digests/1` manifest must cover every catalogued
+corpus. Each entry binds the index hash, case count, and verdict digest. For action approval, ES256
+content assertions, and holder custody attestations, the entry counts the cases executed in Elixir
+and digests those cases by file and case ID. The entry also records the remaining count as
+`sdk_owned_case_count`. The profile indexes pin both the full and the Elixir verdict projections.
 The npm tarball excludes the corpus.
 
 [Corpus adoption](docs/guides/corpus-adoption.md) documents SOURCE, the transactional vendoring

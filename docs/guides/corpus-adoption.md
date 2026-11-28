@@ -130,21 +130,27 @@ projected outcome members:
 | Strict Ed25519 | All other surfaces, including `content_assertion` | `expected` verbatim |
 | Producer canonicality | Every case | `expected` verbatim |
 | Selector float-zero | Every case | `expected` verbatim |
-| ES256 content assertions and action approval | Every case | `expected` verbatim |
+| ES256 content assertions, holder custody attestations, and action approval | Every case | `expected` verbatim |
 
 Inputs and modifiers never enter the projection. An unknown or incomplete outcome schema fails.
 The runner computes the corresponding values from SDK results and orders them using the index,
 even when its internal loader accumulates cases differently.
 
-Tests derive the expected digest from the snapshot cases. When the snapshot includes
-`priv/conformance/verdict-digests.json`, the runner also requires its entry
-to match. Its closed format is `bap-corpus-verdict-digests/1`, with `corpora` keyed by the same
-relative directory paths, each holding `index_sha256_base64url`, `case_count`, and
-`verdict_digest_sha256_base64url`. An offline test copies the real snapshot into a temporary
-directory, generates this file, proves agreement, changes its digest, and proves rejection.
-The profile indexes for ES256 content assertions and action approval additionally pin
-the reference and full-SDK verdict digests. These use the indexed file name followed by
-the case ID as the row identity.
+Tests derive the expected SDK digest from the snapshot cases. When the snapshot includes
+`priv/conformance/verdict-digests.json`, its closed `bap-corpus-verdict-digests/1` format requires
+`corpora` to contain exactly the catalogued relative directory paths. Entries contain
+`index_sha256_base64url`, `case_count`, and `verdict_digest_sha256_base64url`. For the original
+corpora, the count and digest cover the full SDK inventory.
+
+For ES256 content assertions, holder custody attestations, and action approval, the indexes pin
+the full projection as `verdict_sha256` and the Elixir reference projection as
+`elixir_verdict_sha256`, both in lowercase hexadecimal. Both projections use
+`[file + "/" + id, value]` rows. The reference projection excludes action approval's
+`helper-cases.json` and all cases marked `owner: "sdk_helper"`. In these manifest entries,
+`case_count` counts the reference cases, `sdk_owned_case_count` counts the remaining cases, and
+`verdict_digest_sha256_base64url` encodes the reference digest as unpadded base64url. The runner
+checks both index pins and the manifest digest against its own executed outcomes. Offline tests
+check the real entries and reject changes to their counts, digests, fields, and corpus inventory.
 
 ## Derived documentation and secret scanning
 

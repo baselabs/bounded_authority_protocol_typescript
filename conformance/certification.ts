@@ -10,7 +10,6 @@ const candidatePins: Readonly<Record<string, string>> = {
   [catalogue["action-approval"]]: "U4S4aA-2dXNgaWxoicXWs7cG6HKO3Mrm3QxcRoqBmmQ",
   [catalogue["holder-custody-attestation"]]: "b59Jd5LcqLr3eEuj52ugUHcx54WZhuidhl9fiaBLz6o",
 };
-const releasedPaths = paths.filter(path => !Object.hasOwn(candidatePins, path));
 const stop = (message: string): never => { throw new CoreAbort("corpus certification", message); };
 const json = (source: CorpusSource, path: string): Record<string, unknown> => JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(source.read(path))) as Record<string, unknown>;
 const safe = (path: string) => path.length > 0 && !path.includes("\\") && path.split("/").every(p => p !== "" && p !== "." && p !== "..");
@@ -140,22 +139,29 @@ export function assertVerdictDigest(source: CorpusSource, dir: string, executed:
   if (jcs(ordered) !== jcs(executed)) stop(`${certificate.path}: verdicts are not in index order`);
   const digest = verdictDigest(ordered), expected = verdictDigest(certificate.cases.map(c => [c.id, c.value]));
   if (digest !== expected) stop(`${certificate.path}: verdict digest mismatch (${digest} != ${expected})`);
+  let reference: VerdictEntry[] | undefined;
   if (Object.hasOwn(candidatePins, certificate.path)) {
     const index = json(source, `${dir}/index.json`);
     const qualified = ordered.map(([id, outcome], i) => [`${certificate.cases[i]!.file}/${id}`, outcome] as const);
     const hexDigest = (rows: readonly VerdictEntry[]) => hashHex(new TextEncoder().encode(jcs(rows)));
     if (hexDigest(qualified) !== index.verdict_sha256) stop(`${certificate.path}: frozen profile verdict digest mismatch`);
-    const reference = qualified.filter((_, i) => {
+    const approval = certificate.path === catalogue["action-approval"];
+    reference = qualified.filter((_, i) => {
       const c = certificate.cases[i]!;
-      return c.file !== "helper-cases.json" && c.data.owner !== "sdk_helper";
+      return c.data.owner !== "sdk_helper" && !(approval && c.file === "helper-cases.json");
     });
     if (hexDigest(reference) !== index.elixir_verdict_sha256) stop(`${certificate.path}: reference verdict digest mismatch`);
   }
   if (source.list(SNAPSHOT).includes("verdict-digests.json")) {
     const doc = json(source, `${SNAPSHOT}/verdict-digests.json`), corpora = doc.corpora as Record<string, unknown>;
-    if (doc.format !== "bap-corpus-verdict-digests/1" || jcs(Object.keys(doc).sort()) !== jcs(["corpora", "format"]) || !corpora || ![jcs(releasedPaths), jcs(paths)].includes(jcs(Object.keys(corpora).sort()))) stop("published verdict-digests.json: invalid format or corpus inventory");
-    if (!Object.hasOwn(corpora, certificate.path)) return digest; // profile-local verdict pin checked above
-    const pin = {index_sha256_base64url: certificate.indexSha, case_count: certificate.cases.length, verdict_digest_sha256_base64url: digest};
+    if (doc.format !== "bap-corpus-verdict-digests/1" || jcs(Object.keys(doc).sort()) !== jcs(["corpora", "format"]) || !corpora || jcs(Object.keys(corpora).sort()) !== jcs(paths)) stop("published verdict-digests.json: invalid format or corpus inventory");
+    // The Hex profile entries certify the Elixir reference projection of the executed SDK outcomes.
+    const pin = {
+      index_sha256_base64url: certificate.indexSha,
+      case_count: reference?.length ?? certificate.cases.length,
+      verdict_digest_sha256_base64url: reference ? verdictDigest(reference) : digest,
+      ...(reference ? {sdk_owned_case_count: certificate.cases.length - reference.length} : {}),
+    };
     if (jcs(corpora[certificate.path]) !== jcs(pin)) stop(`${certificate.path}: published verdict digest mismatch`);
   }
   return digest;

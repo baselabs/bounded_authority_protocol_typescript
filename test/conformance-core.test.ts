@@ -110,17 +110,53 @@ test("applicability and counts remain total even when an index is rehashed", () 
   writeFileSync(indexPath, bytes); cpSync(join(CONFORMANCE_DIR, "SOURCE"), pinPath);
   assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
 }));
-test("future published digests are checked from a real snapshot plus a generated file", () => fixture(dir => {
-  const corpora = Object.fromEntries(CORES.map(core => { const cert = certifyCorpus(source, core.dir); return [cert.path, {index_sha256_base64url: cert.indexSha, case_count: cert.cases.length, verdict_digest_sha256_base64url: verdictDigest(expectedVerdicts(source, core.dir))}]; }));
+const publishedProfiles = ["content-assertion-es256", "action-approval", "holder-custody-attestation"] as const;
+for (const profile of publishedProfiles) {
+  test(`${profile}: the published verdict manifest requires the exact profile entry`, () => fixture(dir => {
+    const core = CORES.find(c => c.corpus === profile)!;
+    const {verdicts, failures} = core.run(source);
+    assert.deepEqual(failures, []);
+    const path = join(dir, "priv/conformance/verdict-digests.json");
+    const original = readFileSync(path), manifest = JSON.parse(original.toString("utf8"));
+    const entry = manifest.corpora[catalogue[profile]];
+    const {sdk_owned_case_count, ...withoutSdkCount} = entry;
+    const mutations = {
+      "SDK digest in place of the reference digest": {...entry, verdict_digest_sha256_base64url: verdictDigest(verdicts)},
+      "wrong reference case count": {...entry, case_count: entry.case_count + 1},
+      "wrong SDK-owned case count": {...entry, sdk_owned_case_count: sdk_owned_case_count + 1},
+      "missing SDK-owned case count": withoutSdkCount,
+      "extra entry member": {...entry, extra: true},
+    };
+    const check = () => assertVerdictDigest(fsSource(dir), core.dir, verdicts);
+    assert.equal(check(), verdictDigest(verdicts));
+    for (const [label, changed] of Object.entries(mutations)) {
+      manifest.corpora[catalogue[profile]] = changed;
+      writeFileSync(path, jcs(manifest));
+      repinTree(dir);
+      red(`${profile}: ${label}`, check, /published verdict digest mismatch/);
+    }
+    writeFileSync(path, original);
+    repinTree(dir);
+    assert.equal(check(), verdictDigest(verdicts));
+  }));
+}
+test("the published verdict manifest requires the exact corpus inventory", () => fixture(dir => {
+  const core = CORES[0]!, {verdicts} = core.run(source);
   const path = join(dir, "priv/conformance/verdict-digests.json");
-  const write = () => { writeFileSync(path, JSON.stringify({format: "bap-corpus-verdict-digests/1", corpora}, null, 2) + "\n"); repinTree(dir); };
-  write();
-  for (const core of CORES) assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
-  const core = CORES[0]!, pin = corpora[certifyCorpus(source, core.dir).path]!, original = pin.verdict_digest_sha256_base64url;
-  pin.verdict_digest_sha256_base64url = "A".repeat(43); write();
-  red("published verdict digest", () => assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts), /published verdict digest mismatch/);
-  pin.verdict_digest_sha256_base64url = original; write();
-  assertVerdictDigest(fsSource(dir), core.dir, core.run(fsSource(dir)).verdicts);
+  const original = readFileSync(path);
+  const check = () => assertVerdictDigest(fsSource(dir), core.dir, verdicts);
+  assert.equal(check(), verdictDigest(verdicts));
+  for (const profiles of [publishedProfiles.slice(0, 1), publishedProfiles, []]) {
+    const manifest = JSON.parse(original.toString("utf8"));
+    for (const profile of profiles) delete manifest.corpora[catalogue[profile]];
+    if (profiles.length === 0) manifest.corpora.extra = manifest.corpora[catalogue.v1];
+    writeFileSync(path, jcs(manifest));
+    repinTree(dir);
+    assert.throws(check, /published verdict-digests.json: invalid format or corpus inventory/);
+  }
+  writeFileSync(path, original);
+  repinTree(dir);
+  assert.equal(check(), verdictDigest(verdicts));
 }));
 test("always-pass comparator cannot conceal a wrong computed result", async () => {
   const core = CORES.find(c => c.corpus === "v2")!;

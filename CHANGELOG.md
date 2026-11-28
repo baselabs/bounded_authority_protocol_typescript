@@ -4,6 +4,9 @@ All notable changes to `@bounded-authority-protocol/verifier` are documented her
 
 ## Unreleased
 
+- Check the published Elixir verdict projections and SDK-owned case counts for ES256 content
+  assertions, holder custody attestations, and action approval during corpus certification.
+
 - Add the holder custody attestation profile with explicit Ed25519 signing inputs, compact
   assembly, bounded decode, and signature and window verification against a pinned corpus.
 
