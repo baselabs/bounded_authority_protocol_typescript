@@ -160,9 +160,9 @@ in the
 
 ## Select ES256 explicitly
 
-Use `contentAssertionEs256` when the enrolled signing backend uses P-256. Supply a raw
-uncompressed 65-byte SEC1 public key. Use a raw 64-byte low-S signature for assembly
-and leave hashing and signing to the external backend. The verifier checks the original
+Use `contentAssertionEs256`, added in verifier 2.1.0, when the enrolled signing backend uses
+P-256. Supply a raw uncompressed 65-byte SEC1 public key. Use a raw 64-byte low-S signature for
+assembly and leave hashing and signing to the external backend. The verifier checks the original
 JWS signing input and fingerprints the admitted public key using its P-256 JWK thumbprint.
 
 The ES256 compact has its own protected type and signing-input kind. Configure the suite
@@ -172,10 +172,11 @@ digest uses the same domain under both suites.
 
 ## Approve one request revision
 
-An approval record binds the action and exact resource set for one subject and request
-revision. Publish documentation, activate a configuration, or authorize access to selected
-records by choosing the action and resources in host policy. The approver role is checked
-against both the host's role set for that operation and the enrolled key's current roles.
+Verifier 2.1.0 adds `actionApproval`. An approval record binds the action and exact resource
+set for one subject and request revision. Publish documentation, activate a configuration, or
+authorize access to selected records by choosing the action and resources in host policy. The
+approver role is checked against both the host's role set for that operation and the enrolled
+key's current roles.
 
 1. Encode the record with `actionApproval.encodeRecord`. Authoring can explicitly sort and
    deduplicate a resource list. Wire input must already be canonical. Ordering uses unsigned

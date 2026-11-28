@@ -2,21 +2,28 @@
 
 All notable changes to `@bounded-authority-protocol/verifier` are documented here.
 
-## Unreleased
+## [2.1.0] (2026-11-28)
+
+2.1.0 is a minor release. It adds ES256 content assertions, action approval, and holder custody
+attestations, qualifies StringOrURI handling against erratum 7, and adopts the protocol 1.5.0
+conformance corpus. Existing public APIs and wire contract-majors remain compatible.
 
 - Check the published Elixir verdict projections and SDK-owned case counts for ES256 content
-  assertions, holder custody attestations, and action approval during corpus certification.
+  assertions, holder custody attestations, and action approval against the protocol 1.5.0
+  verdict manifest during corpus certification.
 
 - Add the holder custody attestation profile with explicit Ed25519 signing inputs, compact
-  assembly, bounded decode, and signature and window verification against a pinned corpus.
+  assembly, bounded decode, and signature and window verification.
 
-- Qualify IPv6-only StringOrURI hosts with the additive erratum corpus and candidate rejection cases.
+- Qualify IPv6-only bracketed hosts in StringOrURI identifiers with the 24-case erratum 7 corpus
+  and the IPvFuture rejection cases in the released ES256 content assertion and action approval
+  corpora.
 
 - Implement ES256 content assertions and action approval verification for explicitly selected
-  Ed25519 and ES256 profiles. Qualify against immutable candidate corpus indexes and preserve
-  the existing verdict pins.
+  Ed25519 and ES256 suites. Qualify the new profiles against the published protocol 1.5.0
+  corpus indexes and preserve the existing verdict pins.
 
-- Update @types/node to 26.6.7, the newest release within its declared range.
+- Update @types/node to 26.6.11, the newest release within its declared range.
 
 - Refuse to publish a package whose changelog is not stamped for its version.
 

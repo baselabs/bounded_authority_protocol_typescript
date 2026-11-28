@@ -1,6 +1,6 @@
 # Upgrade index
 
-This guide targets verifier **2.0.1**. Only the current npm latest line receives fixes; earlier
+This guide targets verifier **2.1.0**. Only the current npm latest line receives fixes; earlier
 lines below are migration sources, not alternative parsers or compatibility modes.
 
 | Earlier release line | Route to the current API |
@@ -14,6 +14,20 @@ lines below are migration sources, not alternative parsers or compatibility mode
 | 0.7.x | migrate 0.8 producer signature framing, checked JWKs, UTF-8 errors and facts serialization |
 | 0.8.x | close every deep import at 1.0; select namespaces from the root, then apply the 2.0 selector rules |
 | 1.x | apply the selector float-zero and producer integral-float changes below |
+| 2.0.x | update the dependency and opt in to the new profiles as needed |
+
+## From 2.0.x
+
+Update the dependency to `^2.1.0` and run your integration tests. Existing imports and wire
+contract-majors carry forward. The protocol 1.5.0 corpus qualifies the existing StringOrURI
+rule from erratum 7. Bracketed hosts must be IPv6 literals.
+
+- Select `contentAssertionEs256` for [ES256 content assertions](content-assertions.md#select-es256-explicitly).
+  Use a separate lineage when enrolling a subject under the ES256 suite.
+- Use `actionApproval` to [verify approval for one request revision](content-assertions.md#approve-one-request-revision).
+  Configure the assertion suite and eligible approver roles in host policy.
+- Use `holderCustodyAttestation` to [verify the custody class of an Ed25519 holder key](holder-custody-attestations.md)
+  against a trusted attestor and an expected holder binding.
 
 ## Before 1.0
 
@@ -101,12 +115,12 @@ assert.deepEqual(affected, ["sensors.calibrate", "jobs.retry"]);
 
 1. Run a check like the one above over the selector values your issuers emit, and change each
    hit to an integer or to a float with a fractional part.
-2. Move the dependency to `^2.0.1` (for an exact migration trial, `npm install @bounded-authority-protocol/verifier@2.0.1`).
+2. Move the dependency to `^2.1.0` (for an exact migration trial, `npm install @bounded-authority-protocol/verifier@2.1.0`).
 3. Run your own tests. Nothing else in your code changes: no import, function name, parameter or
    result shape moved.
 
 If you use the companion [signer](https://www.npmjs.com/package/@bounded-authority-protocol/signer),
-it resolves the verifier through its own caret range, so installing verifier 2.0.1 in your project
+it resolves the verifier through its own caret range, so installing verifier 2.1.0 in your project
 does not change the verifier copy a signer 1.x release uses. The signer's changelog names the
 release that moves to `^2.0.0`.
 

@@ -8,7 +8,7 @@ digest. The online artifact job and release gate bind that snapshot to the named
 Hex outages and retirement fail closed. See [Corpus adoption](guides/corpus-adoption.md) for the
 vendoring tool, candidate mode, weekly adoption branches, dispatched CI, and issues, release eligibility, and verdict digest contract.
 
-This page covers the public exports of `@bounded-authority-protocol/verifier`. The
+This page covers the public exports of `@bounded-authority-protocol/verifier` 2.1.0. The
 [changelog](../CHANGELOG.md) records when profiles and other behavior were added. The task
 guides show the functions in context. The repository's test suite typechecks and runs
 the `ts` samples on this page and in the guides.
@@ -26,6 +26,8 @@ the `ts` samples on this page and in the guides.
 - [The `roleAttestation` namespace](#the-roleattestation-namespace)
 - [The `holderCustodyAttestation` namespace](#the-holdercustodyattestation-namespace)
 - [The `contentAssertion` namespace](#the-contentassertion-namespace)
+- [ES256 content assertions](#es256-content-assertions)
+- [Action approval](#action-approval)
 
 ## Conventions
 
@@ -38,8 +40,9 @@ the `ts` samples on this page and in the guides.
   digests and fingerprints 32 bytes. Node's `Buffer` is a `Uint8Array` and is accepted.
 - **Times** are integer seconds you supply. Nothing reads a clock.
 - **Strings** such as issuers, audiences and ids compare exactly, byte for byte. Identifier fields
-  must be RFC 7519 StringOrURI values (a bare string, or a URI with a valid scheme and authority)
-  of at most 512 UTF-8 bytes; key ids (`kid`) are 1 to 128 characters from `A-Z a-z 0-9 . _ ~ -`.
+  must be RFC 7519 StringOrURI values of at most 512 UTF-8 bytes. The verifier checks the URI scheme
+  and any authority. A bracketed host must be an IPv6 literal under erratum 7. Key ids (`kid`)
+  are 1 to 128 characters from `A-Z a-z 0-9 . _ ~ -`.
 - **Bounds.** Most functions take an optional `bounds` (or `expected.bounds`) that can only tighten
   the profile limits; see [Bounds](#bounds).
 - **Signing inputs.** A producer returns a `SigningInput`; the bytes to sign are

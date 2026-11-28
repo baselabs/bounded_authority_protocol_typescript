@@ -54,7 +54,7 @@ Guides, searchable API field contracts and notebook transcripts share one TypeDo
 ## Install
 
 ```bash
-npm install @bounded-authority-protocol/verifier@2.0.1
+npm install @bounded-authority-protocol/verifier@2.1.0
 ```
 
 The package is ESM-only. It needs Node.js 22 or later (CI runs Node 22.23.1 and 24.22.3), or a
@@ -75,7 +75,7 @@ Set up a new project (the package is ESM-only, so the project is `"type": "modul
 mkdir bap-quickstart && cd bap-quickstart
 npm init -y
 npm pkg set type=module
-npm install @bounded-authority-protocol/verifier@2.0.1
+npm install @bounded-authority-protocol/verifier@2.1.0
 ```
 
 Save the code below as `quickstart.ts` in that directory and run `node quickstart.ts`. Running a `.ts`

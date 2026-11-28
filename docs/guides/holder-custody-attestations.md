@@ -3,8 +3,9 @@
 An attestor signs the custody class of a specific Ed25519 holder key for a bounded
 window. The class `standard` means the holder holds its own key. The class `hosted`
 means an operator holds the key under a non-exporting handle and signs on the holder's
-behalf. The host selects `holderCustodyAttestation` and supplies its own trusted
-attestor, expected holder binding, time, and optional tighter bounds.
+behalf. The `holderCustodyAttestation` namespace is available starting in verifier 2.1.0.
+The host supplies its own trusted attestor, expected holder binding, time, and optional
+tighter bounds.
 
 The example generates keys to show all four calls. In a deployment, sign the canonical
 segments using the attestor's external key handle. Install trusted attestor keys and enroll
