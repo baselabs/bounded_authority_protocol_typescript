@@ -3,8 +3,8 @@
   "package": "bounded_authority_protocol",
   "version": null,
   "checksum": null,
-  "candidate": "468a914dfe11235869855f3e0a08c0d8c6271270",
-  "tree_sha256": "ec0ef42144dc313048db37d2ace1972c630653de1e1649befb599138ac50ddb3",
+  "candidate": "919be3277facd16f5fdbd12945348e41a5f352a1",
+  "tree_sha256": "590d9035ca5240d49429233533ca428bb24b2215493cdb9a8e3658258d608b5e",
   "indexes": {
     "application-profiles/local-loopback-http/v1": "EPxM8Fr_zdyeY0D_OSwkfiWrA4zZOPJVeCmnzmOxpeQ",
     "attestation-profiles/content-assertion-es256/v1": "K7Qbj7yfvcAmf3KXbVYoC-BUFCDkwUJBymIvHdBx0Ms",
