@@ -19,6 +19,7 @@ import { CoreAbort, type Core, type CorpusSource, type VerdictEntry } from "./ty
 
 import * as v1 from "../../src/v1.js";
 import * as v2 from "../../src/v2.js";
+import * as v3 from "../../src/v3.js";
 import * as ra from "../../src/role_attestation.js";
 import * as ca from "../../src/content_assertion.js";
 import { acceptablePublicKey, torsionFree, verifyStrict } from "../../src/ed25519.js";
@@ -314,6 +315,17 @@ const HANDLERS: Record<string, Handler> = {
     const r = runThunk(() => major(c).requestDigest(str(i, "operation", c.id), jsToTagged(i.cast_arguments ?? fail("cast_arguments"))));
     if (r === INVALID || !r.ok) return INVALID;
     return { digest: b64e(r.value) };
+  },
+
+  // ---- contract-major grant decoding (v1, v2 and v3) ----
+  "decode_grant": (c) => {
+    const compact = strUtf8(str(obj(c, "input"), "compact", c.id));
+    switch (c.major) {
+      case 1: return ok(v1.decodeGrant(compact));
+      case 2: return ok(v2.decodeGrant(compact));
+      case 3: return ok(v3.decodeGrant(compact));
+      default: return abort(`${c.id}: unsupported grant contract major ${String(c.major)}`);
+    }
   },
 
   // ---- contract-major verification surfaces (v1 and v2) ----
