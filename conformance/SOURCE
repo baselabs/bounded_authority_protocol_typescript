@@ -1,9 +1,8 @@
 {
   "format": "bap-corpus-source/1",
   "package": "bounded_authority_protocol",
-  "version": null,
-  "checksum": null,
-  "candidate": "919be3277facd16f5fdbd12945348e41a5f352a1",
+  "version": "1.5.0",
+  "checksum": "0a3b4a7e3d442761c29e6de2894a5b7754edbcb4cdb4c443d02e1e43286bf6b3",
   "tree_sha256": "590d9035ca5240d49429233533ca428bb24b2215493cdb9a8e3658258d608b5e",
   "indexes": {
     "application-profiles/local-loopback-http/v1": "EPxM8Fr_zdyeY0D_OSwkfiWrA4zZOPJVeCmnzmOxpeQ",
