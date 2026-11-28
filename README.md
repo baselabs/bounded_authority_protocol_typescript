@@ -474,7 +474,7 @@ Promotion to main and publication require a released source pin.
 See [Corpus adoption](docs/guides/corpus-adoption.md) for the exact tree-digest encoding.
 
 <!-- corpus-source:start -->
-Candidate corpus: monorepo commit `178a31b43f985443f43947be122ef482c04566c7`.
+Candidate corpus: monorepo commit `c966228b4b3be26a9295cae96c537bc938c8146b`.
 
 | Corpus | Cases |
 |---|---|

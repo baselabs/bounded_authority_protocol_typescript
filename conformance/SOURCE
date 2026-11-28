@@ -3,7 +3,7 @@
   "package": "bounded_authority_protocol",
   "version": null,
   "checksum": null,
-  "candidate": "178a31b43f985443f43947be122ef482c04566c7",
+  "candidate": "c966228b4b3be26a9295cae96c537bc938c8146b",
   "tree_sha256": "da1cb8094a65233e8a53c0fb61a7e2769fbd0e765709cd46df990a861dd31bff",
   "indexes": {
     "application-profiles/local-loopback-http/v1": "EPxM8Fr_zdyeY0D_OSwkfiWrA4zZOPJVeCmnzmOxpeQ",
